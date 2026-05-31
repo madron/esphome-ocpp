@@ -39,6 +39,10 @@ class OcppServer : public Component {
   void remote_stop();
   void remote_stop(uint32_t transaction_id);
   void set_current_limit(uint8_t connector_id, float current_limit);
+  bool has_latest_current_import() const { return this->has_latest_current_import_; }
+  bool has_latest_power_active_import() const { return this->has_latest_power_active_import_; }
+  float get_latest_current_import() const { return this->latest_current_import_; }
+  float get_latest_power_active_import() const { return this->latest_power_active_import_; }
 
  protected:
   void accept_client_();
@@ -78,6 +82,10 @@ class OcppServer : public Component {
   int32_t active_transaction_id_{-1};
   uint8_t pending_profile_connector_id_{0};
   float pending_profile_current_limit_{0.0f};
+  bool has_latest_current_import_{false};
+  bool has_latest_power_active_import_{false};
+  float latest_current_import_{0.0f};
+  float latest_power_active_import_{0.0f};
   uint32_t next_message_id_{1};
   uint32_t next_transaction_id_{1};
 };

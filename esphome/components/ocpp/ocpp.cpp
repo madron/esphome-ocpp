@@ -10,6 +10,7 @@
 #include <cerrno>
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 namespace esphome::ocpp {
@@ -131,6 +132,17 @@ std::string json_escape(const std::string &value) {
     out.push_back(c);
   }
   return out;
+}
+
+bool parse_float(const char *value, float *out) {
+  if (value == nullptr || value[0] == '\0')
+    return false;
+  char *end = nullptr;
+  float parsed = std::strtof(value, &end);
+  if (end == value)
+    return false;
+  *out = parsed;
+  return true;
 }
 
 }  // namespace
@@ -668,6 +680,8 @@ void OcppServer::handle_stop_transaction_(const std::string &unique_id, JsonObje
 void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject payload) {
   int connector_id = payload["connectorId"] | -1;
   int transaction_id = payload["transactionId"] | -1;
+  bool current_updated = false;
+  bool power_updated = false;
   if (transaction_id >= 0 && this->active_transaction_id_ < 0)
     this->active_transaction_id_ = transaction_id;
   if (transaction_id >= 0 && this->next_transaction_id_ <= static_cast<uint32_t>(transaction_id))
@@ -693,6 +707,19 @@ void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject p
         const char *phase = sampled_value["phase"] | "";
         const char *context = sampled_value["context"] | "";
         const char *location = sampled_value["location"] | "";
+        float parsed_value;
+        if (parse_float(value, &parsed_value)) {
+          if (std::strcmp(measurand, "Current.Import") == 0 && (unit[0] == '\0' || std::strcmp(unit, "A") == 0)) {
+            this->latest_current_import_ = parsed_value;
+            this->has_latest_current_import_ = true;
+            current_updated = true;
+          } else if (std::strcmp(measurand, "Power.Active.Import") == 0 &&
+                     (unit[0] == '\0' || std::strcmp(unit, "W") == 0)) {
+            this->latest_power_active_import_ = parsed_value;
+            this->has_latest_power_active_import_ = true;
+            power_updated = true;
+          }
+        }
         ESP_LOGD(TAG,
                  "MeterValues: charge_point='%s' connectorId=%d transactionId=%d timestamp='%s' value='%s' "
                  "measurand='%s' unit='%s' phase='%s' context='%s' location='%s'",
@@ -700,6 +727,11 @@ void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject p
                  phase, context, location);
       }
     }
+  }
+
+  if (current_updated || power_updated) {
+    ESP_LOGD(TAG, "Latest meter values: current=%.1f A power=%.1f W", this->latest_current_import_,
+             this->latest_power_active_import_);
   }
 
   std::string response = "[3,\"" + json_escape(unique_id) + "\",{}]";
