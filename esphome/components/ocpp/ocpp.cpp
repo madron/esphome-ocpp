@@ -18,6 +18,7 @@ namespace {
 static const char *const TAG = "ocpp";
 static constexpr size_t MAX_RX_BUFFER = 4096;
 static constexpr size_t MAX_WS_PAYLOAD = 2048;
+static constexpr size_t MAX_WS_FRAMES_PER_LOOP = 1;
 static constexpr const char *CURRENT_TIME = "1970-01-01T00:00:00Z";
 static constexpr const char *WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
@@ -143,9 +144,11 @@ void OcppServer::set_path(std::string path) {
 }
 
 void OcppServer::add_charger(std::string charge_point_id) {
-  if (this->find_charger_(charge_point_id) != nullptr)
+  if (this->has_charger_ && this->charger_.charge_point_id == charge_point_id)
     return;
-  this->chargers_.push_back(ConfiguredCharger{std::move(charge_point_id), {}});
+  this->charger_.charge_point_id = std::move(charge_point_id);
+  this->charger_.has_connector = false;
+  this->has_charger_ = true;
 }
 
 void OcppServer::add_connector(std::string charge_point_id, uint8_t connector_id, float max_current) {
@@ -156,7 +159,8 @@ void OcppServer::add_connector(std::string charge_point_id, uint8_t connector_id
   }
   if (charger == nullptr)
     return;
-  charger->connectors.push_back(ConfiguredConnector{connector_id, max_current});
+  charger->connector = ConfiguredConnector{connector_id, max_current};
+  charger->has_connector = true;
 }
 
 void OcppServer::setup() {
@@ -188,14 +192,14 @@ void OcppServer::loop() {
 void OcppServer::dump_config() {
   ESP_LOGCONFIG(TAG, "OCPP server:");
   ESP_LOGCONFIG(TAG, "  Listen: 0.0.0.0:%u%s", this->port_, this->path_.c_str());
-  ESP_LOGCONFIG(TAG, "  Configured chargers: %u", static_cast<unsigned>(this->chargers_.size()));
-  for (const auto &charger : this->chargers_) {
-    ESP_LOGCONFIG(TAG, "    Charge point: %s", charger.charge_point_id.c_str());
-    for (const auto &connector : charger.connectors) {
-      ESP_LOGCONFIG(TAG, "      Connector %u max_current=%.1f A", connector.id, connector.max_current);
-    }
+  ESP_LOGCONFIG(TAG, "  Configured charger: %s", this->has_charger_ ? this->charger_.charge_point_id.c_str() : "none");
+  if (this->has_charger_ && this->charger_.has_connector) {
+    ESP_LOGCONFIG(TAG, "    Connector %u max_current=%.1f A", this->charger_.connector.id,
+                  this->charger_.connector.max_current);
   }
-  ESP_LOGCONFIG(TAG, "  Implemented messages: BootNotification, Heartbeat, Authorize, StatusNotification, StartTransaction");
+  ESP_LOGCONFIG(TAG,
+                "  Implemented messages: BootNotification, Heartbeat, Authorize, StatusNotification, "
+                "StartTransaction, StopTransaction, MeterValues");
 }
 
 float OcppServer::get_setup_priority() const { return setup_priority::WIFI - 1.0f; }
@@ -221,7 +225,7 @@ void OcppServer::remote_start(uint8_t connector_id, std::string id_tag, float cu
 
   float limit = current_limit;
   const auto *connector = this->find_connector_(connector_id);
-  if (!this->chargers_.empty() && connector == nullptr) {
+  if (this->has_charger_ && connector == nullptr) {
     ESP_LOGW(TAG, "Cannot send RemoteStartTransaction; connector %u is not configured for charge point '%s'",
              connector_id, this->charge_point_id_.c_str());
     return;
@@ -239,7 +243,7 @@ void OcppServer::remote_start(uint8_t connector_id, std::string id_tag, float cu
   payload += "\"connectorId\":" + to_string(connector_id);
   payload += ",\"idTag\":\"" + json_escape(id_tag) + "\"";
   payload += ",\"chargingProfile\":{\"chargingProfileId\":1,\"stackLevel\":0,";
-  payload += "\"chargingProfilePurpose\":\"TxProfile\",\"chargingProfileKind\":\"Absolute\",";
+  payload += "\"chargingProfilePurpose\":\"TxProfile\",\"chargingProfileKind\":\"Relative\",";
   payload += "\"chargingSchedule\":{\"chargingRateUnit\":\"A\",\"chargingSchedulePeriod\":[{";
   payload += "\"startPeriod\":0,\"limit\":";
   payload += limit_buf;
@@ -247,7 +251,62 @@ void OcppServer::remote_start(uint8_t connector_id, std::string id_tag, float cu
 
   ESP_LOGI(TAG, "Sending RemoteStartTransaction: charge_point='%s' connectorId=%u idTag='%s' current_limit=%.1f A",
            this->charge_point_id_.c_str(), connector_id, id_tag.c_str(), limit);
+  this->pending_profile_connector_id_ = connector_id;
+  this->pending_profile_current_limit_ = limit;
   this->send_ws_text_(payload);
+}
+
+void OcppServer::remote_stop() {
+  if (this->active_transaction_id_ < 0) {
+    ESP_LOGW(TAG, "Cannot send RemoteStopTransaction; no active transaction ID is known yet");
+    return;
+  }
+  this->remote_stop(static_cast<uint32_t>(this->active_transaction_id_));
+}
+
+void OcppServer::remote_stop(uint32_t transaction_id) {
+  if (this->client_ == nullptr || !this->handshake_done_) {
+    ESP_LOGW(TAG, "Cannot send RemoteStopTransaction; no OCPP wallbox is connected");
+    return;
+  }
+
+  std::string unique_id = "remote-stop-" + to_string(this->next_message_id_++);
+  std::string payload = "[2,\"" + json_escape(unique_id) + "\",\"RemoteStopTransaction\",{\"transactionId\":" +
+                        to_string(transaction_id) + "}]";
+
+  ESP_LOGI(TAG, "Sending RemoteStopTransaction: charge_point='%s' transactionId=%u", this->charge_point_id_.c_str(),
+           transaction_id);
+  this->send_ws_text_(payload);
+}
+
+void OcppServer::set_current_limit(uint8_t connector_id, float current_limit) {
+  if (this->client_ == nullptr || !this->handshake_done_) {
+    ESP_LOGW(TAG, "Cannot send SetChargingProfile; no OCPP wallbox is connected");
+    return;
+  }
+  if (this->active_transaction_id_ < 0) {
+    ESP_LOGW(TAG, "Cannot send SetChargingProfile; no active transaction ID is known yet");
+    return;
+  }
+  if (current_limit <= 0) {
+    ESP_LOGW(TAG, "Cannot send SetChargingProfile with non-positive current limit %.1f A", current_limit);
+    return;
+  }
+
+  float limit = current_limit;
+  const auto *connector = this->find_connector_(connector_id);
+  if (this->has_charger_ && connector == nullptr) {
+    ESP_LOGW(TAG, "Cannot send SetChargingProfile; connector %u is not configured for charge point '%s'", connector_id,
+             this->charge_point_id_.c_str());
+    return;
+  }
+  if (connector != nullptr && limit > connector->max_current) {
+    ESP_LOGW(TAG, "Clamping SetChargingProfile current limit %.1f A to configured connector maximum %.1f A", limit,
+             connector->max_current);
+    limit = connector->max_current;
+  }
+
+  this->send_set_charging_profile_(connector_id, static_cast<uint32_t>(this->active_transaction_id_), limit);
 }
 
 void OcppServer::accept_client_() {
@@ -322,18 +381,14 @@ bool OcppServer::request_matches_path_(const std::string &uri) {
 }
 
 ConfiguredCharger *OcppServer::find_charger_(const std::string &charge_point_id) {
-  for (auto &charger : this->chargers_) {
-    if (charger.charge_point_id == charge_point_id)
-      return &charger;
-  }
+  if (this->has_charger_ && this->charger_.charge_point_id == charge_point_id)
+    return &this->charger_;
   return nullptr;
 }
 
 const ConfiguredCharger *OcppServer::find_charger_(const std::string &charge_point_id) const {
-  for (const auto &charger : this->chargers_) {
-    if (charger.charge_point_id == charge_point_id)
-      return &charger;
-  }
+  if (this->has_charger_ && this->charger_.charge_point_id == charge_point_id)
+    return &this->charger_;
   return nullptr;
 }
 
@@ -341,10 +396,8 @@ const ConfiguredConnector *OcppServer::find_connector_(int connector_id) const {
   const auto *charger = this->find_charger_(this->charge_point_id_);
   if (charger == nullptr)
     return nullptr;
-  for (const auto &connector : charger->connectors) {
-    if (connector.id == connector_id)
-      return &connector;
-  }
+  if (charger->has_connector && charger->connector.id == connector_id)
+    return &charger->connector;
   return nullptr;
 }
 
@@ -370,7 +423,7 @@ void OcppServer::handle_http_handshake_() {
     return;
   }
   const auto *configured_charger = this->find_charger_(this->charge_point_id_);
-  if (!this->chargers_.empty() && configured_charger == nullptr) {
+  if (this->has_charger_ && configured_charger == nullptr) {
     ESP_LOGW(TAG, "Rejecting unknown OCPP charge point '%s'", this->charge_point_id_.c_str());
     static constexpr const char *FORBIDDEN = "HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n";
     this->client_->write(FORBIDDEN, std::strlen(FORBIDDEN));
@@ -387,8 +440,7 @@ void OcppServer::handle_http_handshake_() {
   this->handshake_done_ = true;
   ESP_LOGI(TAG, "OCPP WebSocket accepted for charge point '%s'", this->charge_point_id_.c_str());
   if (configured_charger != nullptr) {
-    ESP_LOGI(TAG, "Using configured charger '%s' with %u connector(s)", configured_charger->charge_point_id.c_str(),
-             static_cast<unsigned>(configured_charger->connectors.size()));
+    ESP_LOGI(TAG, "Using configured charger '%s'", configured_charger->charge_point_id.c_str());
   }
 }
 
@@ -398,6 +450,7 @@ std::string OcppServer::websocket_accept_key_(const std::string &client_key) {
 }
 
 void OcppServer::handle_ws_frames_() {
+  size_t frames_handled = 0;
   while (this->rx_buffer_.size() >= 2) {
     const uint8_t *data = reinterpret_cast<const uint8_t *>(this->rx_buffer_.data());
     uint8_t opcode = data[0] & 0x0F;
@@ -444,6 +497,9 @@ void OcppServer::handle_ws_frames_() {
     }
     if (opcode == 0x1)
       this->handle_ws_text_(payload);
+
+    if (++frames_handled >= MAX_WS_FRAMES_PER_LOOP)
+      return;
   }
 }
 
@@ -490,6 +546,10 @@ void OcppServer::handle_ws_text_(const std::string &message) {
     this->handle_status_notification_(unique_id, root[3].as<JsonObject>());
   } else if (action == "StartTransaction") {
     this->handle_start_transaction_(unique_id, root[3].as<JsonObject>());
+  } else if (action == "StopTransaction") {
+    this->handle_stop_transaction_(unique_id, root[3].as<JsonObject>());
+  } else if (action == "MeterValues") {
+    this->handle_meter_values_(unique_id, root[3].as<JsonObject>());
   } else {
     ESP_LOGW(TAG, "Unsupported OCPP action '%s' from charge point '%s'", action.c_str(), this->charge_point_id_.c_str());
     this->send_ocpp_error_(unique_id, "NotImplemented", "This OCPP action is not implemented");
@@ -538,7 +598,7 @@ void OcppServer::handle_status_notification_(const std::string &unique_id, JsonO
            "info='%s' vendorId='%s' vendorErrorCode='%s'",
            this->charge_point_id_.c_str(), connector_id, status, error_code, timestamp, info, vendor_id,
            vendor_error_code);
-  if (!this->chargers_.empty() && connector_id > 0 && this->find_connector_(connector_id) == nullptr) {
+  if (this->has_charger_ && connector_id > 0 && this->find_connector_(connector_id) == nullptr) {
     ESP_LOGW(TAG, "StatusNotification referenced unconfigured connector %d for charge point '%s'", connector_id,
              this->charge_point_id_.c_str());
   }
@@ -553,8 +613,9 @@ void OcppServer::handle_start_transaction_(const std::string &unique_id, JsonObj
   int meter_start = payload["meterStart"] | 0;
   const char *timestamp = payload["timestamp"] | "";
   uint32_t transaction_id = this->next_transaction_id_++;
+  this->active_transaction_id_ = transaction_id;
   const auto *connector = this->find_connector_(connector_id);
-  if (!this->chargers_.empty() && connector == nullptr) {
+  if (this->has_charger_ && connector == nullptr) {
     ESP_LOGW(TAG, "StartTransaction referenced unconfigured connector %d for charge point '%s'", connector_id,
              this->charge_point_id_.c_str());
   }
@@ -575,6 +636,74 @@ void OcppServer::handle_start_transaction_(const std::string &unique_id, JsonObj
   std::string response = "[3,\"" + json_escape(unique_id) + "\",{\"transactionId\":" + to_string(transaction_id) +
                          ",\"idTagInfo\":{\"status\":\"Accepted\"}}]";
   this->send_ws_text_(response);
+
+  if (this->pending_profile_current_limit_ > 0.0f && this->pending_profile_connector_id_ == connector_id) {
+    this->send_set_charging_profile_(static_cast<uint8_t>(connector_id), transaction_id,
+                                     this->pending_profile_current_limit_);
+    this->pending_profile_connector_id_ = 0;
+    this->pending_profile_current_limit_ = 0.0f;
+  }
+}
+
+void OcppServer::handle_stop_transaction_(const std::string &unique_id, JsonObject payload) {
+  int transaction_id = payload["transactionId"] | -1;
+  int meter_stop = payload["meterStop"] | 0;
+  const char *timestamp = payload["timestamp"] | "";
+  const char *id_tag = payload["idTag"] | "";
+  const char *reason = payload["reason"] | "";
+
+  ESP_LOGI(TAG,
+           "StopTransaction accepted: charge_point='%s' transactionId=%d idTag='%s' meterStop=%d timestamp='%s' "
+           "reason='%s'",
+           this->charge_point_id_.c_str(), transaction_id, id_tag, meter_stop, timestamp, reason);
+  if (transaction_id >= 0 && transaction_id == this->active_transaction_id_)
+    this->active_transaction_id_ = -1;
+  if (transaction_id >= 0 && this->next_transaction_id_ <= static_cast<uint32_t>(transaction_id))
+    this->next_transaction_id_ = static_cast<uint32_t>(transaction_id) + 1;
+
+  std::string response = "[3,\"" + json_escape(unique_id) + "\",{}]";
+  this->send_ws_text_(response);
+}
+
+void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject payload) {
+  int connector_id = payload["connectorId"] | -1;
+  int transaction_id = payload["transactionId"] | -1;
+  if (transaction_id >= 0 && this->active_transaction_id_ < 0)
+    this->active_transaction_id_ = transaction_id;
+  if (transaction_id >= 0 && this->next_transaction_id_ <= static_cast<uint32_t>(transaction_id))
+    this->next_transaction_id_ = static_cast<uint32_t>(transaction_id) + 1;
+  JsonArray meter_values = payload["meterValue"].as<JsonArray>();
+
+  if (meter_values.isNull()) {
+    ESP_LOGI(TAG, "MeterValues: charge_point='%s' connectorId=%d transactionId=%d", this->charge_point_id_.c_str(),
+             connector_id, transaction_id);
+  } else {
+    for (JsonObject meter_value : meter_values) {
+      const char *timestamp = meter_value["timestamp"] | "";
+      JsonArray sampled_values = meter_value["sampledValue"].as<JsonArray>();
+      if (sampled_values.isNull()) {
+        ESP_LOGI(TAG, "MeterValues: charge_point='%s' connectorId=%d transactionId=%d timestamp='%s'",
+                 this->charge_point_id_.c_str(), connector_id, transaction_id, timestamp);
+        continue;
+      }
+      for (JsonObject sampled_value : sampled_values) {
+        const char *value = sampled_value["value"] | "";
+        const char *measurand = sampled_value["measurand"] | "";
+        const char *unit = sampled_value["unit"] | "";
+        const char *phase = sampled_value["phase"] | "";
+        const char *context = sampled_value["context"] | "";
+        const char *location = sampled_value["location"] | "";
+        ESP_LOGI(TAG,
+                 "MeterValues: charge_point='%s' connectorId=%d transactionId=%d timestamp='%s' value='%s' "
+                 "measurand='%s' unit='%s' phase='%s' context='%s' location='%s'",
+                 this->charge_point_id_.c_str(), connector_id, transaction_id, timestamp, value, measurand, unit,
+                 phase, context, location);
+      }
+    }
+  }
+
+  std::string response = "[3,\"" + json_escape(unique_id) + "\",{}]";
+  this->send_ws_text_(response);
 }
 
 void OcppServer::handle_call_result_(const std::string &unique_id, JsonObject payload) {
@@ -592,6 +721,28 @@ void OcppServer::handle_call_error_(const std::string &unique_id, const std::str
                                     const std::string &description) {
   ESP_LOGW(TAG, "OCPP CALLERROR: charge_point='%s' uniqueId='%s' errorCode='%s' description='%s'",
            this->charge_point_id_.c_str(), unique_id.c_str(), error_code.c_str(), description.c_str());
+}
+
+void OcppServer::send_set_charging_profile_(uint8_t connector_id, uint32_t transaction_id, float current_limit) {
+  char limit_buf[16];
+  std::snprintf(limit_buf, sizeof(limit_buf), "%.1f", current_limit);
+
+  std::string unique_id = "set-charging-profile-" + to_string(this->next_message_id_++);
+  std::string payload = "[2,\"" + json_escape(unique_id) + "\",\"SetChargingProfile\",{";
+  payload += "\"connectorId\":" + to_string(connector_id);
+  payload += ",\"csChargingProfiles\":{\"chargingProfileId\":1";
+  payload += ",\"transactionId\":" + to_string(transaction_id);
+  payload += ",\"stackLevel\":1,\"chargingProfilePurpose\":\"TxProfile\"";
+  payload += ",\"chargingProfileKind\":\"Relative\"";
+  payload += ",\"chargingSchedule\":{\"chargingRateUnit\":\"A\",\"chargingSchedulePeriod\":[{";
+  payload += "\"startPeriod\":0,\"limit\":";
+  payload += limit_buf;
+  payload += "}]}}}]";
+
+  ESP_LOGI(TAG,
+           "Sending SetChargingProfile: charge_point='%s' connectorId=%u transactionId=%u current_limit=%.1f A",
+           this->charge_point_id_.c_str(), connector_id, transaction_id, current_limit);
+  this->send_ws_text_(payload);
 }
 
 void OcppServer::send_ws_text_(const std::string &message) {

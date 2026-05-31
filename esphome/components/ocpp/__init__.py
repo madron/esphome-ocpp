@@ -71,7 +71,7 @@ CHARGER_SCHEMA = cv.Schema(
     {
         cv.Required(CONF_ID): cv.string_strict,
         cv.Required(CONF_CHARGE_POINT_ID): cv.string_strict,
-        cv.Required(CONF_CONNECTORS): cv.All(cv.ensure_list(CONNECTOR_SCHEMA), cv.Length(min=1)),
+        cv.Required(CONF_CONNECTORS): cv.All(cv.ensure_list(CONNECTOR_SCHEMA), cv.Length(min=1, max=1)),
     }
 )
 
@@ -82,7 +82,7 @@ CONFIG_SCHEMA = cv.All(
             cv.GenerateID(): cv.declare_id(OcppServer),
             cv.Optional(CONF_SERVER, default={}): SERVER_SCHEMA,
             cv.Optional(CONF_CHARGERS, default=[]): cv.All(
-                cv.ensure_list(CHARGER_SCHEMA), _validate_chargers
+                cv.ensure_list(CHARGER_SCHEMA), cv.Length(max=1), _validate_chargers
             ),
         }
     ).extend(cv.COMPONENT_SCHEMA),

@@ -8,7 +8,6 @@
 
 #include <memory>
 #include <string>
-#include <vector>
 
 namespace esphome::ocpp {
 
@@ -19,7 +18,8 @@ struct ConfiguredConnector {
 
 struct ConfiguredCharger {
   std::string charge_point_id;
-  std::vector<ConfiguredConnector> connectors;
+  ConfiguredConnector connector;
+  bool has_connector{false};
 };
 
 class OcppServer : public Component {
@@ -36,6 +36,9 @@ class OcppServer : public Component {
 
   void disconnect();
   void remote_start(uint8_t connector_id, std::string id_tag, float current_limit);
+  void remote_stop();
+  void remote_stop(uint32_t transaction_id);
+  void set_current_limit(uint8_t connector_id, float current_limit);
 
  protected:
   void accept_client_();
@@ -49,8 +52,11 @@ class OcppServer : public Component {
   void handle_authorize_(const std::string &unique_id, JsonObject payload);
   void handle_status_notification_(const std::string &unique_id, JsonObject payload);
   void handle_start_transaction_(const std::string &unique_id, JsonObject payload);
+  void handle_stop_transaction_(const std::string &unique_id, JsonObject payload);
+  void handle_meter_values_(const std::string &unique_id, JsonObject payload);
   void handle_call_result_(const std::string &unique_id, JsonObject payload);
   void handle_call_error_(const std::string &unique_id, const std::string &error_code, const std::string &description);
+  void send_set_charging_profile_(uint8_t connector_id, uint32_t transaction_id, float current_limit);
   void send_ws_text_(const std::string &message);
   void send_ocpp_error_(const std::string &unique_id, const char *code, const char *description);
 
@@ -62,12 +68,16 @@ class OcppServer : public Component {
 
   uint16_t port_{9000};
   std::string path_{"/ocpp"};
-  std::vector<ConfiguredCharger> chargers_;
+  ConfiguredCharger charger_;
+  bool has_charger_{false};
   std::unique_ptr<socket::ListenSocket> server_;
   std::unique_ptr<socket::Socket> client_;
   std::string rx_buffer_;
   std::string charge_point_id_;
   bool handshake_done_{false};
+  int32_t active_transaction_id_{-1};
+  uint8_t pending_profile_connector_id_{0};
+  float pending_profile_current_limit_{0.0f};
   uint32_t next_message_id_{1};
   uint32_t next_transaction_id_{1};
 };
