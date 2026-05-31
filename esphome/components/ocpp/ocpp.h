@@ -8,6 +8,7 @@
 
 #ifdef USE_OCPP
 
+#include <array>
 #include <memory>
 #include <string>
 
@@ -50,6 +51,15 @@ struct ConfiguredCharger {
   std::string charge_point_id;
   ConfiguredConnector connector;
   bool has_connector{false};
+};
+
+struct PendingOcppCall {
+  bool active{false};
+  char unique_id[40]{};
+  const char *action{nullptr};
+  uint8_t connector_id{0};
+  uint32_t transaction_id{0};
+  float current_limit{0.0f};
 };
 
 class OcppServer : public Component {
@@ -96,6 +106,8 @@ class OcppServer : public Component {
   void handle_call_result_(const std::string &unique_id, JsonObject payload);
   void handle_call_error_(const std::string &unique_id, const std::string &error_code, const std::string &description);
   void send_set_charging_profile_(uint8_t connector_id, uint32_t transaction_id, float current_limit);
+  std::string send_ocpp_call_(const char *unique_prefix, const char *action, const std::string &payload_json,
+                              uint8_t connector_id = 0, uint32_t transaction_id = 0, float current_limit = 0.0f);
   void send_ws_text_(const std::string &message);
   void send_ocpp_error_(const std::string &unique_id, const char *code, const char *description);
 
@@ -110,6 +122,12 @@ class OcppServer : public Component {
   void mark_transaction_started_(uint8_t connector_id, uint32_t transaction_id, const char *id_tag);
   void recover_transaction_from_meter_values_(uint8_t connector_id, uint32_t transaction_id);
   void clear_transaction_(uint32_t transaction_id);
+  std::string next_unique_id_(const char *prefix);
+  void track_pending_call_(const std::string &unique_id, const char *action, uint8_t connector_id,
+                           uint32_t transaction_id, float current_limit);
+  PendingOcppCall *find_pending_call_(const std::string &unique_id);
+  void clear_pending_call_(const std::string &unique_id);
+  void clear_pending_calls_();
   std::string websocket_accept_key_(const std::string &client_key);
 
   uint16_t port_{9000};
@@ -123,6 +141,7 @@ class OcppServer : public Component {
   bool handshake_done_{false};
   uint8_t pending_profile_connector_id_{0};
   float pending_profile_current_limit_{0.0f};
+  std::array<PendingOcppCall, 4> pending_calls_{};
   uint32_t next_message_id_{1};
   uint32_t next_transaction_id_{1};
 };

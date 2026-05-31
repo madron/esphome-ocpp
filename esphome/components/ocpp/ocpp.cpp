@@ -321,8 +321,7 @@ void OcppServer::remote_start(uint8_t connector_id, std::string id_tag, float cu
 
   char limit_buf[16];
   std::snprintf(limit_buf, sizeof(limit_buf), "%.1f", limit);
-  std::string unique_id = "remote-start-" + to_string(this->next_message_id_++);
-  std::string payload = "[2,\"" + json_escape(unique_id) + "\",\"RemoteStartTransaction\",{";
+  std::string payload = "{";
   payload += "\"connectorId\":" + to_string(connector_id);
   payload += ",\"idTag\":\"" + json_escape(id_tag) + "\"";
   payload += ",\"chargingProfile\":{\"chargingProfileId\":1,\"stackLevel\":0,";
@@ -330,13 +329,13 @@ void OcppServer::remote_start(uint8_t connector_id, std::string id_tag, float cu
   payload += "\"chargingSchedule\":{\"chargingRateUnit\":\"A\",\"chargingSchedulePeriod\":[{";
   payload += "\"startPeriod\":0,\"limit\":";
   payload += limit_buf;
-  payload += "}]}}}]";
+  payload += "}]}}}";
 
   ESP_LOGI(TAG, "Sending RemoteStartTransaction: charge_point='%s' connectorId=%u idTag='%s' current_limit=%.1f A",
            this->charge_point_id_.c_str(), connector_id, id_tag.c_str(), limit);
   this->pending_profile_connector_id_ = connector_id;
   this->pending_profile_current_limit_ = limit;
-  this->send_ws_text_(payload);
+  this->send_ocpp_call_("remote-start", "RemoteStartTransaction", payload, connector_id, 0, limit);
 }
 
 void OcppServer::remote_stop() {
@@ -354,13 +353,11 @@ void OcppServer::remote_stop(uint32_t transaction_id) {
     return;
   }
 
-  std::string unique_id = "remote-stop-" + to_string(this->next_message_id_++);
-  std::string payload = "[2,\"" + json_escape(unique_id) + "\",\"RemoteStopTransaction\",{\"transactionId\":" +
-                        to_string(transaction_id) + "}]";
+  std::string payload = "{\"transactionId\":" + to_string(transaction_id) + "}";
 
   ESP_LOGI(TAG, "Sending RemoteStopTransaction: charge_point='%s' transactionId=%u", this->charge_point_id_.c_str(),
            transaction_id);
-  this->send_ws_text_(payload);
+  this->send_ocpp_call_("remote-stop", "RemoteStopTransaction", payload, 0, transaction_id);
 }
 
 void OcppServer::set_current_limit(uint8_t connector_id, float current_limit) {
@@ -434,6 +431,9 @@ void OcppServer::close_client_() {
   this->rx_buffer_.clear();
   this->handshake_done_ = false;
   this->charge_point_id_.clear();
+  this->pending_profile_connector_id_ = 0;
+  this->pending_profile_current_limit_ = 0.0f;
+  this->clear_pending_calls_();
 }
 
 void OcppServer::read_client_() {
@@ -584,6 +584,53 @@ void OcppServer::clear_transaction_(uint32_t transaction_id) {
     connector->current_sensor->publish_state(0.0f);
   if (connector->power_sensor != nullptr)
     connector->power_sensor->publish_state(0.0f);
+}
+
+std::string OcppServer::next_unique_id_(const char *prefix) {
+  return std::string(prefix) + "-" + to_string(this->next_message_id_++);
+}
+
+void OcppServer::track_pending_call_(const std::string &unique_id, const char *action, uint8_t connector_id,
+                                     uint32_t transaction_id, float current_limit) {
+  PendingOcppCall *slot = nullptr;
+  for (auto &call : this->pending_calls_) {
+    if (call.active && std::strcmp(call.unique_id, unique_id.c_str()) == 0) {
+      slot = &call;
+      break;
+    }
+    if (!call.active && slot == nullptr)
+      slot = &call;
+  }
+  if (slot == nullptr) {
+    slot = &this->pending_calls_[0];
+    ESP_LOGW(TAG, "Pending OCPP call table full; replacing uniqueId='%s' action='%s'", slot->unique_id,
+             slot->action == nullptr ? "" : slot->action);
+  }
+  slot->active = true;
+  std::snprintf(slot->unique_id, sizeof(slot->unique_id), "%s", unique_id.c_str());
+  slot->action = action;
+  slot->connector_id = connector_id;
+  slot->transaction_id = transaction_id;
+  slot->current_limit = current_limit;
+}
+
+PendingOcppCall *OcppServer::find_pending_call_(const std::string &unique_id) {
+  for (auto &call : this->pending_calls_) {
+    if (call.active && std::strcmp(call.unique_id, unique_id.c_str()) == 0)
+      return &call;
+  }
+  return nullptr;
+}
+
+void OcppServer::clear_pending_call_(const std::string &unique_id) {
+  auto *call = this->find_pending_call_(unique_id);
+  if (call != nullptr)
+    *call = PendingOcppCall{};
+}
+
+void OcppServer::clear_pending_calls_() {
+  for (auto &call : this->pending_calls_)
+    call = PendingOcppCall{};
 }
 
 void OcppServer::handle_http_handshake_() {
@@ -926,27 +973,50 @@ void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject p
 
 void OcppServer::handle_call_result_(const std::string &unique_id, JsonObject payload) {
   const char *status = payload["status"] | "";
-  if (status[0] != '\0') {
+  auto *pending = this->find_pending_call_(unique_id);
+  if (pending != nullptr && status[0] != '\0') {
+    ESP_LOGI(TAG,
+             "OCPP CALLRESULT: charge_point='%s' uniqueId='%s' action='%s' status='%s' connectorId=%u "
+             "transactionId=%u current_limit=%.1f A",
+             this->charge_point_id_.c_str(), unique_id.c_str(), pending->action == nullptr ? "" : pending->action, status, pending->connector_id,
+             pending->transaction_id, pending->current_limit);
+  } else if (pending != nullptr) {
+    ESP_LOGI(TAG,
+             "OCPP CALLRESULT: charge_point='%s' uniqueId='%s' action='%s' connectorId=%u transactionId=%u "
+             "current_limit=%.1f A",
+             this->charge_point_id_.c_str(), unique_id.c_str(), pending->action == nullptr ? "" : pending->action, pending->connector_id,
+             pending->transaction_id, pending->current_limit);
+  } else if (status[0] != '\0') {
     ESP_LOGI(TAG, "OCPP CALLRESULT: charge_point='%s' uniqueId='%s' status='%s'", this->charge_point_id_.c_str(),
              unique_id.c_str(), status);
   } else {
     ESP_LOGI(TAG, "OCPP CALLRESULT: charge_point='%s' uniqueId='%s'", this->charge_point_id_.c_str(),
              unique_id.c_str());
   }
+  this->clear_pending_call_(unique_id);
 }
 
 void OcppServer::handle_call_error_(const std::string &unique_id, const std::string &error_code,
                                     const std::string &description) {
-  ESP_LOGW(TAG, "OCPP CALLERROR: charge_point='%s' uniqueId='%s' errorCode='%s' description='%s'",
-           this->charge_point_id_.c_str(), unique_id.c_str(), error_code.c_str(), description.c_str());
+  auto *pending = this->find_pending_call_(unique_id);
+  if (pending != nullptr) {
+    ESP_LOGW(TAG,
+             "OCPP CALLERROR: charge_point='%s' uniqueId='%s' action='%s' errorCode='%s' description='%s' "
+             "connectorId=%u transactionId=%u current_limit=%.1f A",
+             this->charge_point_id_.c_str(), unique_id.c_str(), pending->action == nullptr ? "" : pending->action, error_code.c_str(),
+             description.c_str(), pending->connector_id, pending->transaction_id, pending->current_limit);
+  } else {
+    ESP_LOGW(TAG, "OCPP CALLERROR: charge_point='%s' uniqueId='%s' errorCode='%s' description='%s'",
+             this->charge_point_id_.c_str(), unique_id.c_str(), error_code.c_str(), description.c_str());
+  }
+  this->clear_pending_call_(unique_id);
 }
 
 void OcppServer::send_set_charging_profile_(uint8_t connector_id, uint32_t transaction_id, float current_limit) {
   char limit_buf[16];
   std::snprintf(limit_buf, sizeof(limit_buf), "%.1f", current_limit);
 
-  std::string unique_id = "set-charging-profile-" + to_string(this->next_message_id_++);
-  std::string payload = "[2,\"" + json_escape(unique_id) + "\",\"SetChargingProfile\",{";
+  std::string payload = "{";
   payload += "\"connectorId\":" + to_string(connector_id);
   payload += ",\"csChargingProfiles\":{\"chargingProfileId\":1";
   payload += ",\"transactionId\":" + to_string(transaction_id);
@@ -955,12 +1025,22 @@ void OcppServer::send_set_charging_profile_(uint8_t connector_id, uint32_t trans
   payload += ",\"chargingSchedule\":{\"chargingRateUnit\":\"A\",\"chargingSchedulePeriod\":[{";
   payload += "\"startPeriod\":0,\"limit\":";
   payload += limit_buf;
-  payload += "}]}}}]";
+  payload += "}]}}}";
 
   ESP_LOGI(TAG,
            "Sending SetChargingProfile: charge_point='%s' connectorId=%u transactionId=%u current_limit=%.1f A",
            this->charge_point_id_.c_str(), connector_id, transaction_id, current_limit);
-  this->send_ws_text_(payload);
+  this->send_ocpp_call_("set-charging-profile", "SetChargingProfile", payload, connector_id, transaction_id,
+                        current_limit);
+}
+
+std::string OcppServer::send_ocpp_call_(const char *unique_prefix, const char *action, const std::string &payload_json,
+                                        uint8_t connector_id, uint32_t transaction_id, float current_limit) {
+  std::string unique_id = this->next_unique_id_(unique_prefix);
+  std::string message = "[2,\"" + json_escape(unique_id) + "\",\"" + action + "\"," + payload_json + "]";
+  this->track_pending_call_(unique_id, action, connector_id, transaction_id, current_limit);
+  this->send_ws_text_(message);
+  return unique_id;
 }
 
 void OcppServer::send_ws_text_(const std::string &message) {
