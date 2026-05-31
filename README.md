@@ -64,6 +64,10 @@ ocpp:
             name: Garage Left Power
           current_limit:
             name: Garage Left Current Limit
+          start:
+            name: Garage Left Start
+          stop:
+            name: Garage Left Stop
 
     - id: garage_right
       charge_point_id: GARAGE_RIGHT
@@ -78,6 +82,10 @@ ocpp:
             name: Garage Right Power
           current_limit:
             name: Garage Right Current Limit
+          start:
+            name: Garage Right Start
+          stop:
+            name: Garage Right Stop
 ```
 
 ## Configuration Reference
@@ -342,6 +350,10 @@ ocpp:
             name: Garage Left Power
           current_limit:
             name: Garage Left Current Limit
+          start:
+            name: Garage Left Start
+          stop:
+            name: Garage Left Stop
 ```
 
 ### Charger Options
@@ -361,9 +373,12 @@ ocpp:
 | `phase` (Conditionally required) | Required for single-phase connectors on three-phase sites.<br>Values: `L1`, `L2`, or `L3`. |
 | `phase_mapping` (Optional)       | Three-phase mapping. Defaults to `[L1, L2, L3]`.<br>Example: `[L2, L3, L1]`. |
 | `max_current` (Required)         | Physical maximum current in `A`, for example `16` or `32`. |
+| `id_tag` (Optional)              | OCPP idTag used by this connector's `start` button. Defaults to `ESPHome`. |
 | `current` (Optional)             | ESPHome sensor that receives this connector's latest OCPP `Current.Import` value from `MeterValues`, in `A`. Defaults to not configured. |
 | `power` (Optional)               | ESPHome sensor that receives this connector's latest OCPP `Power.Active.Import` value from `MeterValues`, in `W`. Defaults to not configured. |
-| `current_limit` (Optional)       | ESPHome number entity for this connector's requested charging current limit in `A`. Defaults: `min_value: 6`, `max_value: max_current`, `step: 1`. When changed during an active transaction, the component sends `SetChargingProfile`; otherwise it stores the value for the next remote start. |
+| `current_limit` (Optional)       | ESPHome number entity for this connector's requested charging current limit in `A`. Defaults: `min_value: 6`, `max_value: max_current`, `step: 1`. When changed during an active transaction, the component sends `SetChargingProfile`; otherwise it stores the value for the next remote start. If omitted, the `start` button sends `RemoteStartTransaction` without a charging profile. |
+| `start` (Optional)               | ESPHome button entity that sends `RemoteStartTransaction` for this connector. If `current_limit` is configured, the start command uses the number's current value and a transaction-scoped `SetChargingProfile` is sent after `StartTransaction`; otherwise no current limit is requested. |
+| `stop` (Optional)                | ESPHome button entity that sends `RemoteStopTransaction` for this connector's active transaction. |
 
 ### Connector Current Limit Number
 
@@ -379,20 +394,16 @@ connectors:
       min_value: 6
       max_value: 16
       step: 1
+    start:
+      name: Garage Left Start
+    stop:
+      name: Garage Left Stop
 ```
 
-If `max_value` is omitted, it defaults to the connector's `max_current`. To start
-with the configured/preferred value, call `remote_start` without the current
-argument:
-
-```yaml
-button:
-  - platform: template
-    name: OCPP Start
-    on_press:
-      - lambda: |-
-          id(ocpp_server).remote_start(1, "ESPHome");
-```
+If `max_value` is omitted, it defaults to the connector's `max_current`. Pressing
+the connector's `start` button uses the current value of `current_limit`. If
+`current_limit` is not configured, the start command is sent without a charging
+profile and the charger uses its own configured limit.
 
 ### Phase Mapping
 

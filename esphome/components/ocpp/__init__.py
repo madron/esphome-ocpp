@@ -1,6 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import number, sensor
+from esphome.components import button, number, sensor
 from esphome.const import (
     CONF_CURRENT,
     CONF_ID,
@@ -17,18 +17,22 @@ from esphome.const import (
 )
 
 DEPENDENCIES = ["network"]
-AUTO_LOAD = ["json", "socket", "sensor", "number"]
+AUTO_LOAD = ["json", "socket", "sensor", "number", "button"]
 
 CONF_CHARGE_POINT_ID = "charge_point_id"
 CONF_CHARGERS = "chargers"
 CONF_CONNECTORS = "connectors"
 CONF_CURRENT_LIMIT = "current_limit"
+CONF_ID_TAG = "id_tag"
 CONF_MAX_CURRENT = "max_current"
 CONF_SERVER = "server"
 CONF_PATH = "path"
+CONF_START = "start"
+CONF_STOP = "stop"
 
 ocpp_ns = cg.esphome_ns.namespace("ocpp")
 OcppServer = ocpp_ns.class_("OcppServer", cg.Component)
+OcppConnectorButton = ocpp_ns.class_("OcppConnectorButton", button.Button)
 OcppCurrentLimitNumber = ocpp_ns.class_("OcppCurrentLimitNumber", number.Number)
 
 
@@ -91,6 +95,7 @@ CONNECTOR_SCHEMA = cv.Schema(
     {
         cv.Required(CONF_ID): cv.int_range(min=1, max=255),
         cv.Required(CONF_MAX_CURRENT): cv.positive_float,
+        cv.Optional(CONF_ID_TAG, default="ESPHome"): cv.string_strict,
         cv.Optional(CONF_CURRENT): sensor.sensor_schema(
             unit_of_measurement=UNIT_AMPERE,
             accuracy_decimals=1,
@@ -114,6 +119,8 @@ CONNECTOR_SCHEMA = cv.Schema(
                 cv.Optional(CONF_STEP, default=1): cv.positive_float,
             }
         ),
+        cv.Optional(CONF_START): button.button_schema(OcppConnectorButton),
+        cv.Optional(CONF_STOP): button.button_schema(OcppConnectorButton),
     }
 )
 
@@ -155,6 +162,7 @@ async def to_code(config):
                     charger[CONF_CHARGE_POINT_ID],
                     connector[CONF_ID],
                     connector[CONF_MAX_CURRENT],
+                    connector[CONF_ID_TAG],
                 )
             )
             if current_config := connector.get(CONF_CURRENT):
@@ -184,6 +192,20 @@ async def to_code(config):
                         connector[CONF_ID],
                         num,
                         limit_config[CONF_MIN_VALUE],
+                    )
+                )
+            if start_config := connector.get(CONF_START):
+                btn = await button.new_button(start_config)
+                cg.add(
+                    var.set_connector_start_button(
+                        charger[CONF_CHARGE_POINT_ID], connector[CONF_ID], btn
+                    )
+                )
+            if stop_config := connector.get(CONF_STOP):
+                btn = await button.new_button(stop_config)
+                cg.add(
+                    var.set_connector_stop_button(
+                        charger[CONF_CHARGE_POINT_ID], connector[CONF_ID], btn
                     )
                 )
     cg.add_define("USE_OCPP")

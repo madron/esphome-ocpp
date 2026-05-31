@@ -1,5 +1,6 @@
 #pragma once
 
+#include "esphome/components/button/button.h"
 #include "esphome/components/json/json_util.h"
 #include "esphome/components/number/number.h"
 #include "esphome/components/sensor/sensor.h"
@@ -15,6 +16,22 @@
 namespace esphome::ocpp {
 
 class OcppServer;
+
+class OcppConnectorButton : public button::Button {
+ public:
+  void set_parent(OcppServer *parent, uint8_t connector_id, bool start) {
+    this->parent_ = parent;
+    this->connector_id_ = connector_id;
+    this->start_ = start;
+  }
+
+ protected:
+  void press_action() override;
+
+  OcppServer *parent_{nullptr};
+  uint8_t connector_id_{0};
+  bool start_{false};
+};
 
 class OcppCurrentLimitNumber : public number::Number {
  public:
@@ -33,9 +50,12 @@ class OcppCurrentLimitNumber : public number::Number {
 struct ConfiguredConnector {
   uint8_t id;
   float max_current;
+  std::string id_tag{"ESPHome"};
   sensor::Sensor *current_sensor{nullptr};
   sensor::Sensor *power_sensor{nullptr};
   OcppCurrentLimitNumber *current_limit_number{nullptr};
+  OcppConnectorButton *start_button{nullptr};
+  OcppConnectorButton *stop_button{nullptr};
   bool has_preferred_current_limit{false};
   float preferred_current_limit{0.0f};
   bool has_active_transaction{false};
@@ -67,11 +87,13 @@ class OcppServer : public Component {
   void set_port(uint16_t port) { this->port_ = port; }
   void set_path(std::string path);
   void add_charger(std::string charge_point_id);
-  void add_connector(std::string charge_point_id, uint8_t connector_id, float max_current);
+  void add_connector(std::string charge_point_id, uint8_t connector_id, float max_current, std::string id_tag);
   void set_connector_current_sensor(std::string charge_point_id, uint8_t connector_id, sensor::Sensor *current_sensor);
   void set_connector_power_sensor(std::string charge_point_id, uint8_t connector_id, sensor::Sensor *power_sensor);
   void set_connector_current_limit_number(std::string charge_point_id, uint8_t connector_id,
                                           OcppCurrentLimitNumber *current_limit_number, float initial_limit);
+  void set_connector_start_button(std::string charge_point_id, uint8_t connector_id, OcppConnectorButton *start_button);
+  void set_connector_stop_button(std::string charge_point_id, uint8_t connector_id, OcppConnectorButton *stop_button);
 
   void setup() override;
   void loop() override;
@@ -79,9 +101,11 @@ class OcppServer : public Component {
   float get_setup_priority() const override;
 
   void disconnect();
+  void remote_start(uint8_t connector_id);
   void remote_start(uint8_t connector_id, std::string id_tag);
   void remote_start(uint8_t connector_id, std::string id_tag, float current_limit);
   void remote_stop();
+  void remote_stop_connector(uint8_t connector_id);
   void remote_stop(uint32_t transaction_id);
   void set_current_limit(uint8_t connector_id, float current_limit);
   bool has_latest_current_import(uint8_t connector_id) const;
@@ -105,6 +129,7 @@ class OcppServer : public Component {
   void handle_meter_values_(const std::string &unique_id, JsonObject payload);
   void handle_call_result_(const std::string &unique_id, JsonObject payload);
   void handle_call_error_(const std::string &unique_id, const std::string &error_code, const std::string &description);
+  void remote_start_(uint8_t connector_id, std::string id_tag, bool use_current_limit, float current_limit);
   void send_set_charging_profile_(uint8_t connector_id, uint32_t transaction_id, float current_limit);
   std::string send_ocpp_call_(const char *unique_prefix, const char *action, const std::string &payload_json,
                               uint8_t connector_id = 0, uint32_t transaction_id = 0, float current_limit = 0.0f);
