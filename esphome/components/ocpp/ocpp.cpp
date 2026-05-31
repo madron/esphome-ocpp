@@ -17,6 +17,7 @@ namespace {
 static const char *const TAG = "ocpp";
 static constexpr size_t MAX_RX_BUFFER = 4096;
 static constexpr size_t MAX_WS_PAYLOAD = 2048;
+static constexpr const char *CURRENT_TIME = "1970-01-01T00:00:00Z";
 static constexpr const char *WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
 uint32_t rol(uint32_t value, uint8_t bits) { return (value << bits) | (value >> (32 - bits)); }
@@ -169,7 +170,7 @@ void OcppServer::loop() {
 void OcppServer::dump_config() {
   ESP_LOGCONFIG(TAG, "OCPP server:");
   ESP_LOGCONFIG(TAG, "  Listen: 0.0.0.0:%u%s", this->port_, this->path_.c_str());
-  ESP_LOGCONFIG(TAG, "  Implemented messages: StartTransaction");
+  ESP_LOGCONFIG(TAG, "  Implemented messages: BootNotification, Heartbeat, Authorize, StartTransaction");
 }
 
 float OcppServer::get_setup_priority() const { return setup_priority::WIFI - 1.0f; }
@@ -346,12 +347,46 @@ void OcppServer::handle_ws_text_(const std::string &message) {
 
   std::string unique_id = root[1] | "";
   std::string action = root[2] | "";
-  if (action == "StartTransaction") {
+  if (action == "BootNotification") {
+    this->handle_boot_notification_(unique_id, root[3].as<JsonObject>());
+  } else if (action == "Heartbeat") {
+    this->handle_heartbeat_(unique_id);
+  } else if (action == "Authorize") {
+    this->handle_authorize_(unique_id, root[3].as<JsonObject>());
+  } else if (action == "StartTransaction") {
     this->handle_start_transaction_(unique_id, root[3].as<JsonObject>());
   } else {
     ESP_LOGW(TAG, "Unsupported OCPP action '%s' from charge point '%s'", action.c_str(), this->charge_point_id_.c_str());
-    this->send_ocpp_error_(unique_id, "NotImplemented", "Only StartTransaction is implemented");
+    this->send_ocpp_error_(unique_id, "NotImplemented", "This OCPP action is not implemented");
   }
+}
+
+void OcppServer::handle_boot_notification_(const std::string &unique_id, JsonObject payload) {
+  const char *vendor = payload["chargePointVendor"] | "";
+  const char *model = payload["chargePointModel"] | "";
+  const char *serial = payload["chargePointSerialNumber"] | "";
+  const char *firmware = payload["firmwareVersion"] | "";
+
+  ESP_LOGI(TAG, "BootNotification accepted: charge_point='%s' vendor='%s' model='%s' serial='%s' firmware='%s'",
+           this->charge_point_id_.c_str(), vendor, model, serial, firmware);
+
+  std::string response = "[3,\"" + json_escape(unique_id) + "\",{\"currentTime\":\"" + CURRENT_TIME +
+                         "\",\"interval\":300,\"status\":\"Accepted\"}]";
+  this->send_ws_text_(response);
+}
+
+void OcppServer::handle_heartbeat_(const std::string &unique_id) {
+  ESP_LOGD(TAG, "Heartbeat from charge point '%s'", this->charge_point_id_.c_str());
+  std::string response = "[3,\"" + json_escape(unique_id) + "\",{\"currentTime\":\"" + CURRENT_TIME + "\"}]";
+  this->send_ws_text_(response);
+}
+
+void OcppServer::handle_authorize_(const std::string &unique_id, JsonObject payload) {
+  const char *id_tag = payload["idTag"] | "";
+  ESP_LOGI(TAG, "Authorize accepted: charge_point='%s' idTag='%s'", this->charge_point_id_.c_str(), id_tag);
+
+  std::string response = "[3,\"" + json_escape(unique_id) + "\",{\"idTagInfo\":{\"status\":\"Accepted\"}}]";
+  this->send_ws_text_(response);
 }
 
 void OcppServer::handle_start_transaction_(const std::string &unique_id, JsonObject payload) {
