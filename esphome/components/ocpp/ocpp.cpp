@@ -576,6 +576,14 @@ void OcppServer::clear_transaction_(uint32_t transaction_id) {
   connector->has_active_transaction = false;
   connector->active_transaction_id = 0;
   connector->active_id_tag.clear();
+  connector->latest_current_import = 0.0f;
+  connector->latest_power_active_import = 0.0f;
+  connector->has_latest_current_import = true;
+  connector->has_latest_power_active_import = true;
+  if (connector->current_sensor != nullptr)
+    connector->current_sensor->publish_state(0.0f);
+  if (connector->power_sensor != nullptr)
+    connector->power_sensor->publish_state(0.0f);
 }
 
 void OcppServer::handle_http_handshake_() {
