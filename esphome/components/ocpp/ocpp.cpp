@@ -340,11 +340,12 @@ void OcppServer::remote_start(uint8_t connector_id, std::string id_tag, float cu
 }
 
 void OcppServer::remote_stop() {
-  if (this->active_transaction_id_ < 0) {
-    ESP_LOGW(TAG, "Cannot send RemoteStopTransaction; no active transaction ID is known yet");
+  auto *connector = this->find_active_transaction_connector_();
+  if (connector == nullptr) {
+    ESP_LOGW(TAG, "Cannot send RemoteStopTransaction; no connector has a known active transaction");
     return;
   }
-  this->remote_stop(static_cast<uint32_t>(this->active_transaction_id_));
+  this->remote_stop(connector->active_transaction_id);
 }
 
 void OcppServer::remote_stop(uint32_t transaction_id) {
@@ -392,13 +393,13 @@ void OcppServer::set_current_limit(uint8_t connector_id, float current_limit) {
     ESP_LOGI(TAG, "Stored current limit %.1f A for connector %u; no OCPP wallbox is connected", limit, connector_id);
     return;
   }
-  if (this->active_transaction_id_ < 0) {
+  if (connector == nullptr || !connector->has_active_transaction) {
     ESP_LOGI(TAG, "Stored current limit %.1f A for connector %u; no active transaction ID is known yet", limit,
              connector_id);
     return;
   }
 
-  this->send_set_charging_profile_(connector_id, static_cast<uint32_t>(this->active_transaction_id_), limit);
+  this->send_set_charging_profile_(connector_id, connector->active_transaction_id, limit);
 }
 
 void OcppCurrentLimitNumber::control(float value) {
@@ -510,6 +511,71 @@ const ConfiguredConnector *OcppServer::find_connector_(int connector_id) const {
   if (charger->has_connector && charger->connector.id == connector_id)
     return &charger->connector;
   return nullptr;
+}
+
+ConfiguredConnector *OcppServer::find_active_transaction_connector_() {
+  if (this->has_charger_ && this->charger_.has_connector && this->charger_.connector.has_active_transaction)
+    return &this->charger_.connector;
+  return nullptr;
+}
+
+ConfiguredConnector *OcppServer::find_transaction_connector_(uint32_t transaction_id) {
+  if (this->has_charger_ && this->charger_.has_connector && this->charger_.connector.has_active_transaction &&
+      this->charger_.connector.active_transaction_id == transaction_id)
+    return &this->charger_.connector;
+  return nullptr;
+}
+
+void OcppServer::note_transaction_id_(uint32_t transaction_id) {
+  if (this->next_transaction_id_ <= transaction_id)
+    this->next_transaction_id_ = transaction_id + 1;
+}
+
+void OcppServer::mark_transaction_started_(uint8_t connector_id, uint32_t transaction_id, const char *id_tag) {
+  auto *connector = this->find_connector_(connector_id);
+  if (connector == nullptr)
+    return;
+  if (connector->has_active_transaction && connector->active_transaction_id != transaction_id) {
+    ESP_LOGW(TAG, "Replacing active transaction state: connectorId=%u oldTransactionId=%u newTransactionId=%u",
+             connector_id, connector->active_transaction_id, transaction_id);
+  }
+  connector->has_active_transaction = true;
+  connector->active_transaction_id = transaction_id;
+  connector->active_id_tag = id_tag == nullptr ? "" : id_tag;
+  this->note_transaction_id_(transaction_id);
+}
+
+void OcppServer::recover_transaction_from_meter_values_(uint8_t connector_id, uint32_t transaction_id) {
+  auto *connector = this->find_connector_(connector_id);
+  if (connector == nullptr)
+    return;
+  if (connector->has_active_transaction) {
+    if (connector->active_transaction_id == transaction_id)
+      return;
+    ESP_LOGW(TAG,
+             "MeterValues referenced transactionId=%u for connectorId=%u, but transactionId=%u was tracked; replacing",
+             transaction_id, connector_id, connector->active_transaction_id);
+  } else {
+    ESP_LOGI(TAG, "Recovered active transaction from MeterValues: charge_point='%s' connectorId=%u transactionId=%u",
+             this->charge_point_id_.c_str(), connector_id, transaction_id);
+  }
+  connector->has_active_transaction = true;
+  connector->active_transaction_id = transaction_id;
+  connector->active_id_tag.clear();
+  this->note_transaction_id_(transaction_id);
+}
+
+void OcppServer::clear_transaction_(uint32_t transaction_id) {
+  auto *connector = this->find_transaction_connector_(transaction_id);
+  if (connector == nullptr) {
+    ESP_LOGD(TAG, "StopTransaction referenced untracked transactionId=%u", transaction_id);
+    return;
+  }
+  ESP_LOGI(TAG, "Cleared active transaction: charge_point='%s' connectorId=%u transactionId=%u",
+           this->charge_point_id_.c_str(), connector->id, transaction_id);
+  connector->has_active_transaction = false;
+  connector->active_transaction_id = 0;
+  connector->active_id_tag.clear();
 }
 
 void OcppServer::handle_http_handshake_() {
@@ -724,7 +790,6 @@ void OcppServer::handle_start_transaction_(const std::string &unique_id, JsonObj
   int meter_start = payload["meterStart"] | 0;
   const char *timestamp = payload["timestamp"] | "";
   uint32_t transaction_id = this->next_transaction_id_++;
-  this->active_transaction_id_ = transaction_id;
   const auto *connector = this->find_connector_(connector_id);
   if (this->has_charger_ && connector == nullptr) {
     ESP_LOGW(TAG, "StartTransaction referenced unconfigured connector %d for charge point '%s'", connector_id,
@@ -743,6 +808,9 @@ void OcppServer::handle_start_transaction_(const std::string &unique_id, JsonObj
              "transactionId=%u",
              this->charge_point_id_.c_str(), connector_id, id_tag, meter_start, timestamp, transaction_id);
   }
+
+  if (connector_id > 0 && connector_id <= 255)
+    this->mark_transaction_started_(static_cast<uint8_t>(connector_id), transaction_id, id_tag);
 
   std::string response = "[3,\"" + json_escape(unique_id) + "\",{\"transactionId\":" + to_string(transaction_id) +
                          ",\"idTagInfo\":{\"status\":\"Accepted\"}}]";
@@ -767,10 +835,10 @@ void OcppServer::handle_stop_transaction_(const std::string &unique_id, JsonObje
            "StopTransaction accepted: charge_point='%s' transactionId=%d idTag='%s' meterStop=%d timestamp='%s' "
            "reason='%s'",
            this->charge_point_id_.c_str(), transaction_id, id_tag, meter_stop, timestamp, reason);
-  if (transaction_id >= 0 && transaction_id == this->active_transaction_id_)
-    this->active_transaction_id_ = -1;
-  if (transaction_id >= 0 && this->next_transaction_id_ <= static_cast<uint32_t>(transaction_id))
-    this->next_transaction_id_ = static_cast<uint32_t>(transaction_id) + 1;
+  if (transaction_id >= 0) {
+    this->note_transaction_id_(static_cast<uint32_t>(transaction_id));
+    this->clear_transaction_(static_cast<uint32_t>(transaction_id));
+  }
 
   std::string response = "[3,\"" + json_escape(unique_id) + "\",{}]";
   this->send_ws_text_(response);
@@ -782,10 +850,12 @@ void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject p
   auto *connector = this->find_connector_(connector_id);
   bool current_updated = false;
   bool power_updated = false;
-  if (transaction_id >= 0 && this->active_transaction_id_ < 0)
-    this->active_transaction_id_ = transaction_id;
-  if (transaction_id >= 0 && this->next_transaction_id_ <= static_cast<uint32_t>(transaction_id))
-    this->next_transaction_id_ = static_cast<uint32_t>(transaction_id) + 1;
+  if (transaction_id >= 0) {
+    this->note_transaction_id_(static_cast<uint32_t>(transaction_id));
+    if (connector_id > 0 && connector_id <= 255)
+      this->recover_transaction_from_meter_values_(static_cast<uint8_t>(connector_id),
+                                                   static_cast<uint32_t>(transaction_id));
+  }
   JsonArray meter_values = payload["meterValue"].as<JsonArray>();
 
   if (meter_values.isNull()) {

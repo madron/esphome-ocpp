@@ -37,6 +37,9 @@ struct ConfiguredConnector {
   OcppCurrentLimitNumber *current_limit_number{nullptr};
   bool has_preferred_current_limit{false};
   float preferred_current_limit{0.0f};
+  bool has_active_transaction{false};
+  uint32_t active_transaction_id{0};
+  std::string active_id_tag;
   bool has_latest_current_import{false};
   bool has_latest_power_active_import{false};
   float latest_current_import{0.0f};
@@ -101,6 +104,12 @@ class OcppServer : public Component {
   const ConfiguredCharger *find_charger_(const std::string &charge_point_id) const;
   ConfiguredConnector *find_connector_(int connector_id);
   const ConfiguredConnector *find_connector_(int connector_id) const;
+  ConfiguredConnector *find_active_transaction_connector_();
+  ConfiguredConnector *find_transaction_connector_(uint32_t transaction_id);
+  void note_transaction_id_(uint32_t transaction_id);
+  void mark_transaction_started_(uint8_t connector_id, uint32_t transaction_id, const char *id_tag);
+  void recover_transaction_from_meter_values_(uint8_t connector_id, uint32_t transaction_id);
+  void clear_transaction_(uint32_t transaction_id);
   std::string websocket_accept_key_(const std::string &client_key);
 
   uint16_t port_{9000};
@@ -112,7 +121,6 @@ class OcppServer : public Component {
   std::string rx_buffer_;
   std::string charge_point_id_;
   bool handshake_done_{false};
-  int32_t active_transaction_id_{-1};
   uint8_t pending_profile_connector_id_{0};
   float pending_profile_current_limit_{0.0f};
   uint32_t next_message_id_{1};
