@@ -675,14 +675,14 @@ void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject p
   JsonArray meter_values = payload["meterValue"].as<JsonArray>();
 
   if (meter_values.isNull()) {
-    ESP_LOGI(TAG, "MeterValues: charge_point='%s' connectorId=%d transactionId=%d", this->charge_point_id_.c_str(),
+    ESP_LOGD(TAG, "MeterValues: charge_point='%s' connectorId=%d transactionId=%d", this->charge_point_id_.c_str(),
              connector_id, transaction_id);
   } else {
     for (JsonObject meter_value : meter_values) {
       const char *timestamp = meter_value["timestamp"] | "";
       JsonArray sampled_values = meter_value["sampledValue"].as<JsonArray>();
       if (sampled_values.isNull()) {
-        ESP_LOGI(TAG, "MeterValues: charge_point='%s' connectorId=%d transactionId=%d timestamp='%s'",
+        ESP_LOGD(TAG, "MeterValues: charge_point='%s' connectorId=%d transactionId=%d timestamp='%s'",
                  this->charge_point_id_.c_str(), connector_id, transaction_id, timestamp);
         continue;
       }
@@ -693,7 +693,7 @@ void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject p
         const char *phase = sampled_value["phase"] | "";
         const char *context = sampled_value["context"] | "";
         const char *location = sampled_value["location"] | "";
-        ESP_LOGI(TAG,
+        ESP_LOGD(TAG,
                  "MeterValues: charge_point='%s' connectorId=%d transactionId=%d timestamp='%s' value='%s' "
                  "measurand='%s' unit='%s' phase='%s' context='%s' location='%s'",
                  this->charge_point_id_.c_str(), connector_id, transaction_id, timestamp, value, measurand, unit,
