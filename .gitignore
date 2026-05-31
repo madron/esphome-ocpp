@@ -1,1 +1,4 @@
 log.txt
+
+# Python bytecode
+**/__pycache__
