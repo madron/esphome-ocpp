@@ -9,6 +9,7 @@
 #include <array>
 #include <cerrno>
 #include <cctype>
+#include <cstdio>
 #include <cstring>
 
 namespace esphome::ocpp {
@@ -141,6 +142,23 @@ void OcppServer::set_path(std::string path) {
   this->path_ = std::move(path);
 }
 
+void OcppServer::add_charger(std::string charge_point_id) {
+  if (this->find_charger_(charge_point_id) != nullptr)
+    return;
+  this->chargers_.push_back(ConfiguredCharger{std::move(charge_point_id), {}});
+}
+
+void OcppServer::add_connector(std::string charge_point_id, uint8_t connector_id, float max_current) {
+  auto *charger = this->find_charger_(charge_point_id);
+  if (charger == nullptr) {
+    this->add_charger(charge_point_id);
+    charger = this->find_charger_(charge_point_id);
+  }
+  if (charger == nullptr)
+    return;
+  charger->connectors.push_back(ConfiguredConnector{connector_id, max_current});
+}
+
 void OcppServer::setup() {
   this->server_ = socket::socket_ip_loop_monitored(SOCK_STREAM, 0);
   if (this->server_ == nullptr) {
@@ -170,6 +188,13 @@ void OcppServer::loop() {
 void OcppServer::dump_config() {
   ESP_LOGCONFIG(TAG, "OCPP server:");
   ESP_LOGCONFIG(TAG, "  Listen: 0.0.0.0:%u%s", this->port_, this->path_.c_str());
+  ESP_LOGCONFIG(TAG, "  Configured chargers: %u", static_cast<unsigned>(this->chargers_.size()));
+  for (const auto &charger : this->chargers_) {
+    ESP_LOGCONFIG(TAG, "    Charge point: %s", charger.charge_point_id.c_str());
+    for (const auto &connector : charger.connectors) {
+      ESP_LOGCONFIG(TAG, "      Connector %u max_current=%.1f A", connector.id, connector.max_current);
+    }
+  }
   ESP_LOGCONFIG(TAG, "  Implemented messages: BootNotification, Heartbeat, Authorize, StatusNotification, StartTransaction");
 }
 
@@ -182,6 +207,47 @@ void OcppServer::disconnect() {
   }
   ESP_LOGI(TAG, "Disconnecting OCPP wallbox '%s' on request", this->charge_point_id_.c_str());
   this->close_client_();
+}
+
+void OcppServer::remote_start(uint8_t connector_id, std::string id_tag, float current_limit) {
+  if (this->client_ == nullptr || !this->handshake_done_) {
+    ESP_LOGW(TAG, "Cannot send RemoteStartTransaction; no OCPP wallbox is connected");
+    return;
+  }
+  if (current_limit <= 0) {
+    ESP_LOGW(TAG, "Cannot send RemoteStartTransaction with non-positive current limit %.1f A", current_limit);
+    return;
+  }
+
+  float limit = current_limit;
+  const auto *connector = this->find_connector_(connector_id);
+  if (!this->chargers_.empty() && connector == nullptr) {
+    ESP_LOGW(TAG, "Cannot send RemoteStartTransaction; connector %u is not configured for charge point '%s'",
+             connector_id, this->charge_point_id_.c_str());
+    return;
+  }
+  if (connector != nullptr && limit > connector->max_current) {
+    ESP_LOGW(TAG, "Clamping RemoteStartTransaction current limit %.1f A to configured connector maximum %.1f A",
+             limit, connector->max_current);
+    limit = connector->max_current;
+  }
+
+  char limit_buf[16];
+  std::snprintf(limit_buf, sizeof(limit_buf), "%.1f", limit);
+  std::string unique_id = "remote-start-" + to_string(this->next_message_id_++);
+  std::string payload = "[2,\"" + json_escape(unique_id) + "\",\"RemoteStartTransaction\",{";
+  payload += "\"connectorId\":" + to_string(connector_id);
+  payload += ",\"idTag\":\"" + json_escape(id_tag) + "\"";
+  payload += ",\"chargingProfile\":{\"chargingProfileId\":1,\"stackLevel\":0,";
+  payload += "\"chargingProfilePurpose\":\"TxProfile\",\"chargingProfileKind\":\"Absolute\",";
+  payload += "\"chargingSchedule\":{\"chargingRateUnit\":\"A\",\"chargingSchedulePeriod\":[{";
+  payload += "\"startPeriod\":0,\"limit\":";
+  payload += limit_buf;
+  payload += "}]}}}]";
+
+  ESP_LOGI(TAG, "Sending RemoteStartTransaction: charge_point='%s' connectorId=%u idTag='%s' current_limit=%.1f A",
+           this->charge_point_id_.c_str(), connector_id, id_tag.c_str(), limit);
+  this->send_ws_text_(payload);
 }
 
 void OcppServer::accept_client_() {
@@ -255,6 +321,33 @@ bool OcppServer::request_matches_path_(const std::string &uri) {
   return true;
 }
 
+ConfiguredCharger *OcppServer::find_charger_(const std::string &charge_point_id) {
+  for (auto &charger : this->chargers_) {
+    if (charger.charge_point_id == charge_point_id)
+      return &charger;
+  }
+  return nullptr;
+}
+
+const ConfiguredCharger *OcppServer::find_charger_(const std::string &charge_point_id) const {
+  for (const auto &charger : this->chargers_) {
+    if (charger.charge_point_id == charge_point_id)
+      return &charger;
+  }
+  return nullptr;
+}
+
+const ConfiguredConnector *OcppServer::find_connector_(int connector_id) const {
+  const auto *charger = this->find_charger_(this->charge_point_id_);
+  if (charger == nullptr)
+    return nullptr;
+  for (const auto &connector : charger->connectors) {
+    if (connector.id == connector_id)
+      return &connector;
+  }
+  return nullptr;
+}
+
 void OcppServer::handle_http_handshake_() {
   size_t header_end = this->rx_buffer_.find("\r\n\r\n");
   if (header_end == std::string::npos)
@@ -276,6 +369,14 @@ void OcppServer::handle_http_handshake_() {
     this->close_client_();
     return;
   }
+  const auto *configured_charger = this->find_charger_(this->charge_point_id_);
+  if (!this->chargers_.empty() && configured_charger == nullptr) {
+    ESP_LOGW(TAG, "Rejecting unknown OCPP charge point '%s'", this->charge_point_id_.c_str());
+    static constexpr const char *FORBIDDEN = "HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n";
+    this->client_->write(FORBIDDEN, std::strlen(FORBIDDEN));
+    this->close_client_();
+    return;
+  }
 
   std::string response = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n";
   response += "Sec-WebSocket-Accept: " + this->websocket_accept_key_(key) + "\r\n";
@@ -285,6 +386,10 @@ void OcppServer::handle_http_handshake_() {
   this->client_->write(response.data(), response.size());
   this->handshake_done_ = true;
   ESP_LOGI(TAG, "OCPP WebSocket accepted for charge point '%s'", this->charge_point_id_.c_str());
+  if (configured_charger != nullptr) {
+    ESP_LOGI(TAG, "Using configured charger '%s' with %u connector(s)", configured_charger->charge_point_id.c_str(),
+             static_cast<unsigned>(configured_charger->connectors.size()));
+  }
 }
 
 std::string OcppServer::websocket_accept_key_(const std::string &client_key) {
@@ -349,7 +454,24 @@ void OcppServer::handle_ws_text_(const std::string &message) {
     return;
   }
   JsonArray root = doc.as<JsonArray>();
-  if (root.size() < 4 || (root[0] | 0) != 2) {
+  int message_type = root[0] | 0;
+  if (message_type == 3) {
+    if (root.size() < 3) {
+      ESP_LOGW(TAG, "Ignoring invalid OCPP CALLRESULT message: %s", message.c_str());
+      return;
+    }
+    this->handle_call_result_(root[1] | "", root[2].as<JsonObject>());
+    return;
+  }
+  if (message_type == 4) {
+    if (root.size() < 5) {
+      ESP_LOGW(TAG, "Ignoring invalid OCPP CALLERROR message: %s", message.c_str());
+      return;
+    }
+    this->handle_call_error_(root[1] | "", root[2] | "", root[3] | "");
+    return;
+  }
+  if (root.size() < 4 || message_type != 2) {
     ESP_LOGW(TAG, "Ignoring unsupported OCPP message: %s", message.c_str());
     return;
   }
@@ -416,6 +538,10 @@ void OcppServer::handle_status_notification_(const std::string &unique_id, JsonO
            "info='%s' vendorId='%s' vendorErrorCode='%s'",
            this->charge_point_id_.c_str(), connector_id, status, error_code, timestamp, info, vendor_id,
            vendor_error_code);
+  if (!this->chargers_.empty() && connector_id > 0 && this->find_connector_(connector_id) == nullptr) {
+    ESP_LOGW(TAG, "StatusNotification referenced unconfigured connector %d for charge point '%s'", connector_id,
+             this->charge_point_id_.c_str());
+  }
 
   std::string response = "[3,\"" + json_escape(unique_id) + "\",{}]";
   this->send_ws_text_(response);
@@ -427,6 +553,11 @@ void OcppServer::handle_start_transaction_(const std::string &unique_id, JsonObj
   int meter_start = payload["meterStart"] | 0;
   const char *timestamp = payload["timestamp"] | "";
   uint32_t transaction_id = this->next_transaction_id_++;
+  const auto *connector = this->find_connector_(connector_id);
+  if (!this->chargers_.empty() && connector == nullptr) {
+    ESP_LOGW(TAG, "StartTransaction referenced unconfigured connector %d for charge point '%s'", connector_id,
+             this->charge_point_id_.c_str());
+  }
 
   if (payload["reservationId"].is<int>()) {
     ESP_LOGI(TAG,
@@ -444,6 +575,23 @@ void OcppServer::handle_start_transaction_(const std::string &unique_id, JsonObj
   std::string response = "[3,\"" + json_escape(unique_id) + "\",{\"transactionId\":" + to_string(transaction_id) +
                          ",\"idTagInfo\":{\"status\":\"Accepted\"}}]";
   this->send_ws_text_(response);
+}
+
+void OcppServer::handle_call_result_(const std::string &unique_id, JsonObject payload) {
+  const char *status = payload["status"] | "";
+  if (status[0] != '\0') {
+    ESP_LOGI(TAG, "OCPP CALLRESULT: charge_point='%s' uniqueId='%s' status='%s'", this->charge_point_id_.c_str(),
+             unique_id.c_str(), status);
+  } else {
+    ESP_LOGI(TAG, "OCPP CALLRESULT: charge_point='%s' uniqueId='%s'", this->charge_point_id_.c_str(),
+             unique_id.c_str());
+  }
+}
+
+void OcppServer::handle_call_error_(const std::string &unique_id, const std::string &error_code,
+                                    const std::string &description) {
+  ESP_LOGW(TAG, "OCPP CALLERROR: charge_point='%s' uniqueId='%s' errorCode='%s' description='%s'",
+           this->charge_point_id_.c_str(), unique_id.c_str(), error_code.c_str(), description.c_str());
 }
 
 void OcppServer::send_ws_text_(const std::string &message) {
