@@ -170,10 +170,19 @@ void OcppServer::loop() {
 void OcppServer::dump_config() {
   ESP_LOGCONFIG(TAG, "OCPP server:");
   ESP_LOGCONFIG(TAG, "  Listen: 0.0.0.0:%u%s", this->port_, this->path_.c_str());
-  ESP_LOGCONFIG(TAG, "  Implemented messages: BootNotification, Heartbeat, Authorize, StartTransaction");
+  ESP_LOGCONFIG(TAG, "  Implemented messages: BootNotification, Heartbeat, Authorize, StatusNotification, StartTransaction");
 }
 
 float OcppServer::get_setup_priority() const { return setup_priority::WIFI - 1.0f; }
+
+void OcppServer::disconnect() {
+  if (this->client_ == nullptr) {
+    ESP_LOGI(TAG, "No OCPP wallbox connection to disconnect");
+    return;
+  }
+  ESP_LOGI(TAG, "Disconnecting OCPP wallbox '%s' on request", this->charge_point_id_.c_str());
+  this->close_client_();
+}
 
 void OcppServer::accept_client_() {
   sockaddr_storage addr{};
@@ -353,6 +362,8 @@ void OcppServer::handle_ws_text_(const std::string &message) {
     this->handle_heartbeat_(unique_id);
   } else if (action == "Authorize") {
     this->handle_authorize_(unique_id, root[3].as<JsonObject>());
+  } else if (action == "StatusNotification") {
+    this->handle_status_notification_(unique_id, root[3].as<JsonObject>());
   } else if (action == "StartTransaction") {
     this->handle_start_transaction_(unique_id, root[3].as<JsonObject>());
   } else {
@@ -386,6 +397,25 @@ void OcppServer::handle_authorize_(const std::string &unique_id, JsonObject payl
   ESP_LOGI(TAG, "Authorize accepted: charge_point='%s' idTag='%s'", this->charge_point_id_.c_str(), id_tag);
 
   std::string response = "[3,\"" + json_escape(unique_id) + "\",{\"idTagInfo\":{\"status\":\"Accepted\"}}]";
+  this->send_ws_text_(response);
+}
+
+void OcppServer::handle_status_notification_(const std::string &unique_id, JsonObject payload) {
+  int connector_id = payload["connectorId"] | -1;
+  const char *status = payload["status"] | "";
+  const char *error_code = payload["errorCode"] | "";
+  const char *timestamp = payload["timestamp"] | "";
+  const char *info = payload["info"] | "";
+  const char *vendor_id = payload["vendorId"] | "";
+  const char *vendor_error_code = payload["vendorErrorCode"] | "";
+
+  ESP_LOGI(TAG,
+           "StatusNotification: charge_point='%s' connectorId=%d status='%s' errorCode='%s' timestamp='%s' "
+           "info='%s' vendorId='%s' vendorErrorCode='%s'",
+           this->charge_point_id_.c_str(), connector_id, status, error_code, timestamp, info, vendor_id,
+           vendor_error_code);
+
+  std::string response = "[3,\"" + json_escape(unique_id) + "\",{}]";
   this->send_ws_text_(response);
 }
 

@@ -21,6 +21,8 @@ class OcppServer : public Component {
   void dump_config() override;
   float get_setup_priority() const override;
 
+  void disconnect();
+
  protected:
   void accept_client_();
   void close_client_();
@@ -31,6 +33,7 @@ class OcppServer : public Component {
   void handle_boot_notification_(const std::string &unique_id, JsonObject payload);
   void handle_heartbeat_(const std::string &unique_id);
   void handle_authorize_(const std::string &unique_id, JsonObject payload);
+  void handle_status_notification_(const std::string &unique_id, JsonObject payload);
   void handle_start_transaction_(const std::string &unique_id, JsonObject payload);
   void send_ws_text_(const std::string &message);
   void send_ocpp_error_(const std::string &unique_id, const char *code, const char *description);
