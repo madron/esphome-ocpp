@@ -191,6 +191,18 @@ void OcppServer::set_connector_power_sensor(std::string charge_point_id, uint8_t
   charger->connector.power_sensor = power_sensor;
 }
 
+void OcppServer::set_connector_current_limit_number(std::string charge_point_id, uint8_t connector_id,
+                                                    OcppCurrentLimitNumber *current_limit_number,
+                                                    float initial_limit) {
+  auto *charger = this->find_charger_(charge_point_id);
+  if (charger == nullptr || !charger->has_connector || charger->connector.id != connector_id)
+    return;
+  charger->connector.current_limit_number = current_limit_number;
+  charger->connector.preferred_current_limit = initial_limit;
+  charger->connector.has_preferred_current_limit = true;
+  current_limit_number->set_parent(this, connector_id);
+}
+
 bool OcppServer::has_latest_current_import(uint8_t connector_id) const {
   const auto *connector = this->find_connector_(connector_id);
   return connector != nullptr && connector->has_latest_current_import;
@@ -228,6 +240,11 @@ void OcppServer::setup() {
     ESP_LOGE(TAG, "Could not start OCPP listener on port %u", this->port_);
     this->mark_failed();
   }
+
+  if (this->has_charger_ && this->charger_.has_connector && this->charger_.connector.current_limit_number != nullptr &&
+      this->charger_.connector.has_preferred_current_limit) {
+    this->charger_.connector.current_limit_number->publish_state(this->charger_.connector.preferred_current_limit);
+  }
 }
 
 void OcppServer::loop() {
@@ -261,6 +278,14 @@ void OcppServer::disconnect() {
   this->close_client_();
 }
 
+void OcppServer::remote_start(uint8_t connector_id, std::string id_tag) {
+  const auto *connector = this->find_connector_(connector_id);
+  float current_limit = 6.0f;
+  if (connector != nullptr)
+    current_limit = connector->has_preferred_current_limit ? connector->preferred_current_limit : connector->max_current;
+  this->remote_start(connector_id, std::move(id_tag), current_limit);
+}
+
 void OcppServer::remote_start(uint8_t connector_id, std::string id_tag, float current_limit) {
   if (this->client_ == nullptr || !this->handshake_done_) {
     ESP_LOGW(TAG, "Cannot send RemoteStartTransaction; no OCPP wallbox is connected");
@@ -282,6 +307,16 @@ void OcppServer::remote_start(uint8_t connector_id, std::string id_tag, float cu
     ESP_LOGW(TAG, "Clamping RemoteStartTransaction current limit %.1f A to configured connector maximum %.1f A",
              limit, connector->max_current);
     limit = connector->max_current;
+  }
+
+  if (connector != nullptr) {
+    auto *mutable_connector = this->find_connector_(connector_id);
+    if (mutable_connector != nullptr) {
+      mutable_connector->preferred_current_limit = limit;
+      mutable_connector->has_preferred_current_limit = true;
+      if (mutable_connector->current_limit_number != nullptr)
+        mutable_connector->current_limit_number->publish_state(limit);
+    }
   }
 
   char limit_buf[16];
@@ -328,21 +363,13 @@ void OcppServer::remote_stop(uint32_t transaction_id) {
 }
 
 void OcppServer::set_current_limit(uint8_t connector_id, float current_limit) {
-  if (this->client_ == nullptr || !this->handshake_done_) {
-    ESP_LOGW(TAG, "Cannot send SetChargingProfile; no OCPP wallbox is connected");
-    return;
-  }
-  if (this->active_transaction_id_ < 0) {
-    ESP_LOGW(TAG, "Cannot send SetChargingProfile; no active transaction ID is known yet");
-    return;
-  }
   if (current_limit <= 0) {
     ESP_LOGW(TAG, "Cannot send SetChargingProfile with non-positive current limit %.1f A", current_limit);
     return;
   }
 
   float limit = current_limit;
-  const auto *connector = this->find_connector_(connector_id);
+  auto *connector = this->find_connector_(connector_id);
   if (this->has_charger_ && connector == nullptr) {
     ESP_LOGW(TAG, "Cannot send SetChargingProfile; connector %u is not configured for charge point '%s'", connector_id,
              this->charge_point_id_.c_str());
@@ -354,7 +381,30 @@ void OcppServer::set_current_limit(uint8_t connector_id, float current_limit) {
     limit = connector->max_current;
   }
 
+  if (connector != nullptr) {
+    connector->preferred_current_limit = limit;
+    connector->has_preferred_current_limit = true;
+    if (connector->current_limit_number != nullptr)
+      connector->current_limit_number->publish_state(limit);
+  }
+
+  if (this->client_ == nullptr || !this->handshake_done_) {
+    ESP_LOGI(TAG, "Stored current limit %.1f A for connector %u; no OCPP wallbox is connected", limit, connector_id);
+    return;
+  }
+  if (this->active_transaction_id_ < 0) {
+    ESP_LOGI(TAG, "Stored current limit %.1f A for connector %u; no active transaction ID is known yet", limit,
+             connector_id);
+    return;
+  }
+
   this->send_set_charging_profile_(connector_id, static_cast<uint32_t>(this->active_transaction_id_), limit);
+}
+
+void OcppCurrentLimitNumber::control(float value) {
+  if (this->parent_ == nullptr)
+    return;
+  this->parent_->set_current_limit(this->connector_id_, value);
 }
 
 void OcppServer::accept_client_() {
@@ -442,6 +492,8 @@ const ConfiguredCharger *OcppServer::find_charger_(const std::string &charge_poi
 
 ConfiguredConnector *OcppServer::find_connector_(int connector_id) {
   auto *charger = this->find_charger_(this->charge_point_id_);
+  if (charger == nullptr && this->has_charger_ && this->charge_point_id_.empty())
+    charger = &this->charger_;
   if (charger == nullptr)
     return nullptr;
   if (charger->has_connector && charger->connector.id == connector_id)
@@ -451,6 +503,8 @@ ConfiguredConnector *OcppServer::find_connector_(int connector_id) {
 
 const ConfiguredConnector *OcppServer::find_connector_(int connector_id) const {
   const auto *charger = this->find_charger_(this->charge_point_id_);
+  if (charger == nullptr && this->has_charger_ && this->charge_point_id_.empty())
+    charger = &this->charger_;
   if (charger == nullptr)
     return nullptr;
   if (charger->has_connector && charger->connector.id == connector_id)

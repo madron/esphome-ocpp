@@ -1,6 +1,7 @@
 #pragma once
 
 #include "esphome/components/json/json_util.h"
+#include "esphome/components/number/number.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/socket/socket.h"
 #include "esphome/core/component.h"
@@ -12,11 +13,30 @@
 
 namespace esphome::ocpp {
 
+class OcppServer;
+
+class OcppCurrentLimitNumber : public number::Number {
+ public:
+  void set_parent(OcppServer *parent, uint8_t connector_id) {
+    this->parent_ = parent;
+    this->connector_id_ = connector_id;
+  }
+
+ protected:
+  void control(float value) override;
+
+  OcppServer *parent_{nullptr};
+  uint8_t connector_id_{0};
+};
+
 struct ConfiguredConnector {
   uint8_t id;
   float max_current;
   sensor::Sensor *current_sensor{nullptr};
   sensor::Sensor *power_sensor{nullptr};
+  OcppCurrentLimitNumber *current_limit_number{nullptr};
+  bool has_preferred_current_limit{false};
+  float preferred_current_limit{0.0f};
   bool has_latest_current_import{false};
   bool has_latest_power_active_import{false};
   float latest_current_import{0.0f};
@@ -37,6 +57,8 @@ class OcppServer : public Component {
   void add_connector(std::string charge_point_id, uint8_t connector_id, float max_current);
   void set_connector_current_sensor(std::string charge_point_id, uint8_t connector_id, sensor::Sensor *current_sensor);
   void set_connector_power_sensor(std::string charge_point_id, uint8_t connector_id, sensor::Sensor *power_sensor);
+  void set_connector_current_limit_number(std::string charge_point_id, uint8_t connector_id,
+                                          OcppCurrentLimitNumber *current_limit_number, float initial_limit);
 
   void setup() override;
   void loop() override;
@@ -44,6 +66,7 @@ class OcppServer : public Component {
   float get_setup_priority() const override;
 
   void disconnect();
+  void remote_start(uint8_t connector_id, std::string id_tag);
   void remote_start(uint8_t connector_id, std::string id_tag, float current_limit);
   void remote_stop();
   void remote_stop(uint32_t transaction_id);

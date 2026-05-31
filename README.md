@@ -62,6 +62,8 @@ ocpp:
             name: Garage Left Current
           power:
             name: Garage Left Power
+          current_limit:
+            name: Garage Left Current Limit
 
     - id: garage_right
       charge_point_id: GARAGE_RIGHT
@@ -74,6 +76,8 @@ ocpp:
             name: Garage Right Current
           power:
             name: Garage Right Power
+          current_limit:
+            name: Garage Right Current Limit
 ```
 
 ## Configuration Reference
@@ -336,6 +340,8 @@ ocpp:
             name: Garage Left Current
           power:
             name: Garage Left Power
+          current_limit:
+            name: Garage Left Current Limit
 ```
 
 ### Charger Options
@@ -357,6 +363,36 @@ ocpp:
 | `max_current` (Required)         | Physical maximum current in `A`, for example `16` or `32`. |
 | `current` (Optional)             | ESPHome sensor that receives this connector's latest OCPP `Current.Import` value from `MeterValues`, in `A`. Defaults to not configured. |
 | `power` (Optional)               | ESPHome sensor that receives this connector's latest OCPP `Power.Active.Import` value from `MeterValues`, in `W`. Defaults to not configured. |
+| `current_limit` (Optional)       | ESPHome number entity for this connector's requested charging current limit in `A`. Defaults: `min_value: 6`, `max_value: max_current`, `step: 1`. When changed during an active transaction, the component sends `SetChargingProfile`; otherwise it stores the value for the next remote start. |
+
+### Connector Current Limit Number
+
+The optional `current_limit` number stores the preferred current limit for the
+connector and can also update an active transaction.
+
+```yaml
+connectors:
+  - id: 1
+    max_current: 16
+    current_limit:
+      name: Garage Left Current Limit
+      min_value: 6
+      max_value: 16
+      step: 1
+```
+
+If `max_value` is omitted, it defaults to the connector's `max_current`. To start
+with the configured/preferred value, call `remote_start` without the current
+argument:
+
+```yaml
+button:
+  - platform: template
+    name: OCPP Start
+    on_press:
+      - lambda: |-
+          id(ocpp_server).remote_start(1, "ESPHome");
+```
 
 ### Phase Mapping
 

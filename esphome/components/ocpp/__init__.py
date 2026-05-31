@@ -1,11 +1,14 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import sensor
+from esphome.components import number, sensor
 from esphome.const import (
     CONF_CURRENT,
     CONF_ID,
+    CONF_MAX_VALUE,
+    CONF_MIN_VALUE,
     CONF_PORT,
     CONF_POWER,
+    CONF_STEP,
     DEVICE_CLASS_CURRENT,
     DEVICE_CLASS_POWER,
     STATE_CLASS_MEASUREMENT,
@@ -14,17 +17,19 @@ from esphome.const import (
 )
 
 DEPENDENCIES = ["network"]
-AUTO_LOAD = ["json", "socket", "sensor"]
+AUTO_LOAD = ["json", "socket", "sensor", "number"]
 
 CONF_CHARGE_POINT_ID = "charge_point_id"
 CONF_CHARGERS = "chargers"
 CONF_CONNECTORS = "connectors"
+CONF_CURRENT_LIMIT = "current_limit"
 CONF_MAX_CURRENT = "max_current"
 CONF_SERVER = "server"
 CONF_PATH = "path"
 
 ocpp_ns = cg.esphome_ns.namespace("ocpp")
 OcppServer = ocpp_ns.class_("OcppServer", cg.Component)
+OcppCurrentLimitNumber = ocpp_ns.class_("OcppCurrentLimitNumber", number.Number)
 
 
 def _validate_path(value):
@@ -61,6 +66,17 @@ def _validate_chargers(value):
             if connector_id in connector_ids:
                 raise cv.Invalid(f"Duplicate connector id '{connector_id}' for charger '{charger_id}'")
             connector_ids.add(connector_id)
+
+            if limit := connector.get(CONF_CURRENT_LIMIT):
+                limit.setdefault(CONF_MAX_VALUE, connector[CONF_MAX_CURRENT])
+                if limit[CONF_MAX_VALUE] > connector[CONF_MAX_CURRENT]:
+                    raise cv.Invalid(
+                        f"current_limit max_value for connector '{connector_id}' must not exceed max_current"
+                    )
+                if limit[CONF_MIN_VALUE] >= limit[CONF_MAX_VALUE]:
+                    raise cv.Invalid(
+                        f"current_limit min_value for connector '{connector_id}' must be less than max_value"
+                    )
     return value
 
 
@@ -86,6 +102,17 @@ CONNECTOR_SCHEMA = cv.Schema(
             accuracy_decimals=0,
             device_class=DEVICE_CLASS_POWER,
             state_class=STATE_CLASS_MEASUREMENT,
+        ),
+        cv.Optional(CONF_CURRENT_LIMIT): number.number_schema(
+            OcppCurrentLimitNumber,
+            unit_of_measurement=UNIT_AMPERE,
+            device_class=DEVICE_CLASS_CURRENT,
+        ).extend(
+            {
+                cv.Optional(CONF_MIN_VALUE, default=6): cv.positive_float,
+                cv.Optional(CONF_MAX_VALUE): cv.positive_float,
+                cv.Optional(CONF_STEP, default=1): cv.positive_float,
+            }
         ),
     }
 )
@@ -142,6 +169,21 @@ async def to_code(config):
                 cg.add(
                     var.set_connector_power_sensor(
                         charger[CONF_CHARGE_POINT_ID], connector[CONF_ID], sens
+                    )
+                )
+            if limit_config := connector.get(CONF_CURRENT_LIMIT):
+                num = await number.new_number(
+                    limit_config,
+                    min_value=limit_config[CONF_MIN_VALUE],
+                    max_value=limit_config[CONF_MAX_VALUE],
+                    step=limit_config[CONF_STEP],
+                )
+                cg.add(
+                    var.set_connector_current_limit_number(
+                        charger[CONF_CHARGE_POINT_ID],
+                        connector[CONF_ID],
+                        num,
+                        limit_config[CONF_MIN_VALUE],
                     )
                 )
     cg.add_define("USE_OCPP")
