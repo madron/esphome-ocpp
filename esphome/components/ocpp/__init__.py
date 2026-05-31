@@ -1,9 +1,20 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.const import CONF_ID, CONF_PORT
+from esphome.components import sensor
+from esphome.const import (
+    CONF_CURRENT,
+    CONF_ID,
+    CONF_PORT,
+    CONF_POWER,
+    DEVICE_CLASS_CURRENT,
+    DEVICE_CLASS_POWER,
+    STATE_CLASS_MEASUREMENT,
+    UNIT_AMPERE,
+    UNIT_WATT,
+)
 
 DEPENDENCIES = ["network"]
-AUTO_LOAD = ["json", "socket"]
+AUTO_LOAD = ["json", "socket", "sensor"]
 
 CONF_CHARGE_POINT_ID = "charge_point_id"
 CONF_CHARGERS = "chargers"
@@ -64,6 +75,18 @@ CONNECTOR_SCHEMA = cv.Schema(
     {
         cv.Required(CONF_ID): cv.int_range(min=1, max=255),
         cv.Required(CONF_MAX_CURRENT): cv.positive_float,
+        cv.Optional(CONF_CURRENT): sensor.sensor_schema(
+            unit_of_measurement=UNIT_AMPERE,
+            accuracy_decimals=1,
+            device_class=DEVICE_CLASS_CURRENT,
+            state_class=STATE_CLASS_MEASUREMENT,
+        ),
+        cv.Optional(CONF_POWER): sensor.sensor_schema(
+            unit_of_measurement=UNIT_WATT,
+            accuracy_decimals=0,
+            device_class=DEVICE_CLASS_POWER,
+            state_class=STATE_CLASS_MEASUREMENT,
+        ),
     }
 )
 
@@ -107,4 +130,18 @@ async def to_code(config):
                     connector[CONF_MAX_CURRENT],
                 )
             )
+            if current_config := connector.get(CONF_CURRENT):
+                sens = await sensor.new_sensor(current_config)
+                cg.add(
+                    var.set_connector_current_sensor(
+                        charger[CONF_CHARGE_POINT_ID], connector[CONF_ID], sens
+                    )
+                )
+            if power_config := connector.get(CONF_POWER):
+                sens = await sensor.new_sensor(power_config)
+                cg.add(
+                    var.set_connector_power_sensor(
+                        charger[CONF_CHARGE_POINT_ID], connector[CONF_ID], sens
+                    )
+                )
     cg.add_define("USE_OCPP")

@@ -175,6 +175,42 @@ void OcppServer::add_connector(std::string charge_point_id, uint8_t connector_id
   charger->has_connector = true;
 }
 
+void OcppServer::set_connector_current_sensor(std::string charge_point_id, uint8_t connector_id,
+                                              sensor::Sensor *current_sensor) {
+  auto *charger = this->find_charger_(charge_point_id);
+  if (charger == nullptr || !charger->has_connector || charger->connector.id != connector_id)
+    return;
+  charger->connector.current_sensor = current_sensor;
+}
+
+void OcppServer::set_connector_power_sensor(std::string charge_point_id, uint8_t connector_id,
+                                            sensor::Sensor *power_sensor) {
+  auto *charger = this->find_charger_(charge_point_id);
+  if (charger == nullptr || !charger->has_connector || charger->connector.id != connector_id)
+    return;
+  charger->connector.power_sensor = power_sensor;
+}
+
+bool OcppServer::has_latest_current_import(uint8_t connector_id) const {
+  const auto *connector = this->find_connector_(connector_id);
+  return connector != nullptr && connector->has_latest_current_import;
+}
+
+bool OcppServer::has_latest_power_active_import(uint8_t connector_id) const {
+  const auto *connector = this->find_connector_(connector_id);
+  return connector != nullptr && connector->has_latest_power_active_import;
+}
+
+float OcppServer::get_latest_current_import(uint8_t connector_id) const {
+  const auto *connector = this->find_connector_(connector_id);
+  return connector != nullptr ? connector->latest_current_import : 0.0f;
+}
+
+float OcppServer::get_latest_power_active_import(uint8_t connector_id) const {
+  const auto *connector = this->find_connector_(connector_id);
+  return connector != nullptr ? connector->latest_power_active_import : 0.0f;
+}
+
 void OcppServer::setup() {
   this->server_ = socket::socket_ip_loop_monitored(SOCK_STREAM, 0);
   if (this->server_ == nullptr) {
@@ -401,6 +437,15 @@ ConfiguredCharger *OcppServer::find_charger_(const std::string &charge_point_id)
 const ConfiguredCharger *OcppServer::find_charger_(const std::string &charge_point_id) const {
   if (this->has_charger_ && this->charger_.charge_point_id == charge_point_id)
     return &this->charger_;
+  return nullptr;
+}
+
+ConfiguredConnector *OcppServer::find_connector_(int connector_id) {
+  auto *charger = this->find_charger_(this->charge_point_id_);
+  if (charger == nullptr)
+    return nullptr;
+  if (charger->has_connector && charger->connector.id == connector_id)
+    return &charger->connector;
   return nullptr;
 }
 
@@ -680,6 +725,7 @@ void OcppServer::handle_stop_transaction_(const std::string &unique_id, JsonObje
 void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject payload) {
   int connector_id = payload["connectorId"] | -1;
   int transaction_id = payload["transactionId"] | -1;
+  auto *connector = this->find_connector_(connector_id);
   bool current_updated = false;
   bool power_updated = false;
   if (transaction_id >= 0 && this->active_transaction_id_ < 0)
@@ -710,13 +756,17 @@ void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject p
         float parsed_value;
         if (parse_float(value, &parsed_value)) {
           if (std::strcmp(measurand, "Current.Import") == 0 && (unit[0] == '\0' || std::strcmp(unit, "A") == 0)) {
-            this->latest_current_import_ = parsed_value;
-            this->has_latest_current_import_ = true;
+            if (connector != nullptr) {
+              connector->latest_current_import = parsed_value;
+              connector->has_latest_current_import = true;
+            }
             current_updated = true;
           } else if (std::strcmp(measurand, "Power.Active.Import") == 0 &&
                      (unit[0] == '\0' || std::strcmp(unit, "W") == 0)) {
-            this->latest_power_active_import_ = parsed_value;
-            this->has_latest_power_active_import_ = true;
+            if (connector != nullptr) {
+              connector->latest_power_active_import = parsed_value;
+              connector->has_latest_power_active_import = true;
+            }
             power_updated = true;
           }
         }
@@ -729,10 +779,14 @@ void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject p
     }
   }
 
-  if (current_updated || power_updated) {
-    ESP_LOGD(TAG, "Latest meter values: current=%.1f A power=%.1f W", this->latest_current_import_,
-             this->latest_power_active_import_);
+  if ((current_updated || power_updated) && connector != nullptr) {
+    ESP_LOGD(TAG, "Latest meter values: connectorId=%d current=%.1f A power=%.1f W", connector_id,
+             connector->latest_current_import, connector->latest_power_active_import);
   }
+  if (connector != nullptr && current_updated && connector->current_sensor != nullptr)
+    connector->current_sensor->publish_state(connector->latest_current_import);
+  if (connector != nullptr && power_updated && connector->power_sensor != nullptr)
+    connector->power_sensor->publish_state(connector->latest_power_active_import);
 
   std::string response = "[3,\"" + json_escape(unique_id) + "\",{}]";
   this->send_ws_text_(response);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "esphome/components/json/json_util.h"
+#include "esphome/components/sensor/sensor.h"
 #include "esphome/components/socket/socket.h"
 #include "esphome/core/component.h"
 
@@ -14,6 +15,12 @@ namespace esphome::ocpp {
 struct ConfiguredConnector {
   uint8_t id;
   float max_current;
+  sensor::Sensor *current_sensor{nullptr};
+  sensor::Sensor *power_sensor{nullptr};
+  bool has_latest_current_import{false};
+  bool has_latest_power_active_import{false};
+  float latest_current_import{0.0f};
+  float latest_power_active_import{0.0f};
 };
 
 struct ConfiguredCharger {
@@ -28,6 +35,8 @@ class OcppServer : public Component {
   void set_path(std::string path);
   void add_charger(std::string charge_point_id);
   void add_connector(std::string charge_point_id, uint8_t connector_id, float max_current);
+  void set_connector_current_sensor(std::string charge_point_id, uint8_t connector_id, sensor::Sensor *current_sensor);
+  void set_connector_power_sensor(std::string charge_point_id, uint8_t connector_id, sensor::Sensor *power_sensor);
 
   void setup() override;
   void loop() override;
@@ -39,10 +48,10 @@ class OcppServer : public Component {
   void remote_stop();
   void remote_stop(uint32_t transaction_id);
   void set_current_limit(uint8_t connector_id, float current_limit);
-  bool has_latest_current_import() const { return this->has_latest_current_import_; }
-  bool has_latest_power_active_import() const { return this->has_latest_power_active_import_; }
-  float get_latest_current_import() const { return this->latest_current_import_; }
-  float get_latest_power_active_import() const { return this->latest_power_active_import_; }
+  bool has_latest_current_import(uint8_t connector_id) const;
+  bool has_latest_power_active_import(uint8_t connector_id) const;
+  float get_latest_current_import(uint8_t connector_id) const;
+  float get_latest_power_active_import(uint8_t connector_id) const;
 
  protected:
   void accept_client_();
@@ -67,6 +76,7 @@ class OcppServer : public Component {
   bool request_matches_path_(const std::string &uri);
   ConfiguredCharger *find_charger_(const std::string &charge_point_id);
   const ConfiguredCharger *find_charger_(const std::string &charge_point_id) const;
+  ConfiguredConnector *find_connector_(int connector_id);
   const ConfiguredConnector *find_connector_(int connector_id) const;
   std::string websocket_accept_key_(const std::string &client_key);
 
@@ -82,10 +92,6 @@ class OcppServer : public Component {
   int32_t active_transaction_id_{-1};
   uint8_t pending_profile_connector_id_{0};
   float pending_profile_current_limit_{0.0f};
-  bool has_latest_current_import_{false};
-  bool has_latest_power_active_import_{false};
-  float latest_current_import_{0.0f};
-  float latest_power_active_import_{0.0f};
   uint32_t next_message_id_{1};
   uint32_t next_transaction_id_{1};
 };

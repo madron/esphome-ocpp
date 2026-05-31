@@ -58,6 +58,10 @@ ocpp:
         - id: 1
           phases: 3
           max_current: 16
+          current:
+            name: Garage Left Current
+          power:
+            name: Garage Left Power
 
     - id: garage_right
       charge_point_id: GARAGE_RIGHT
@@ -66,6 +70,10 @@ ocpp:
           phases: 1
           phase: L1
           max_current: 32
+          current:
+            name: Garage Right Current
+          power:
+            name: Garage Right Power
 ```
 
 ## Configuration Reference
@@ -324,6 +332,10 @@ ocpp:
         - id: 1
           phases: 3
           max_current: 16
+          current:
+            name: Garage Left Current
+          power:
+            name: Garage Left Power
 ```
 
 ### Charger Options
@@ -342,7 +354,9 @@ ocpp:
 | `phases` (Required)              | Number of phases used by this connector. Values: `1` or `3`. |
 | `phase` (Conditionally required) | Required for single-phase connectors on three-phase sites.<br>Values: `L1`, `L2`, or `L3`. |
 | `phase_mapping` (Optional)       | Three-phase mapping. Defaults to `[L1, L2, L3]`.<br>Example: `[L2, L3, L1]`. |
-| `max_current` (Required)         | Physical maximum current, for example `16` or `32`. |
+| `max_current` (Required)         | Physical maximum current in `A`, for example `16` or `32`. |
+| `current` (Optional)             | ESPHome sensor that receives this connector's latest OCPP `Current.Import` value from `MeterValues`, in `A`. Defaults to not configured. |
+| `power` (Optional)               | ESPHome sensor that receives this connector's latest OCPP `Power.Active.Import` value from `MeterValues`, in `W`. Defaults to not configured. |
 
 ### Phase Mapping
 
