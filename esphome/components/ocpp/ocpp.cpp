@@ -356,6 +356,8 @@ void OcppServer::handle_ws_text_(const std::string &message) {
 
   std::string unique_id = root[1] | "";
   std::string action = root[2] | "";
+  ESP_LOGD(TAG, "OCPP message: charge_point='%s' action='%s' uniqueId='%s'", this->charge_point_id_.c_str(),
+           action.c_str(), unique_id.c_str());
   if (action == "BootNotification") {
     this->handle_boot_notification_(unique_id, root[3].as<JsonObject>());
   } else if (action == "Heartbeat") {
