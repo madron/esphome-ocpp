@@ -61,6 +61,8 @@ struct ConfiguredConnector {
   bool has_active_transaction{false};
   uint32_t active_transaction_id{0};
   std::string active_id_tag;
+  bool is_charging{false};
+  bool charging_profile_applied{false};
   bool has_latest_current_import{false};
   bool has_latest_power_active_import{false};
   float latest_current_import{0.0f};
@@ -147,6 +149,7 @@ class OcppServer : public Component {
   void mark_transaction_started_(uint8_t connector_id, uint32_t transaction_id, const char *id_tag);
   void recover_transaction_from_meter_values_(uint8_t connector_id, uint32_t transaction_id);
   void clear_transaction_(uint32_t transaction_id);
+  void send_preferred_current_limit_if_needed_(uint8_t connector_id);
   std::string next_unique_id_(const char *prefix);
   void track_pending_call_(const std::string &unique_id, const char *action, uint8_t connector_id,
                            uint32_t transaction_id, float current_limit);

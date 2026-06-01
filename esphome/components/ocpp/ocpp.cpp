@@ -628,6 +628,8 @@ void OcppServer::recover_transaction_from_meter_values_(uint8_t connector_id, ui
   connector->active_transaction_id = transaction_id;
   connector->active_id_tag.clear();
   this->note_transaction_id_(transaction_id);
+  if (connector->is_charging)
+    this->send_preferred_current_limit_if_needed_(connector_id);
 }
 
 void OcppServer::clear_transaction_(uint32_t transaction_id) {
@@ -641,6 +643,8 @@ void OcppServer::clear_transaction_(uint32_t transaction_id) {
   connector->has_active_transaction = false;
   connector->active_transaction_id = 0;
   connector->active_id_tag.clear();
+  connector->is_charging = false;
+  connector->charging_profile_applied = false;
   connector->latest_current_import = 0.0f;
   connector->latest_power_active_import = 0.0f;
   connector->has_latest_current_import = true;
@@ -649,6 +653,17 @@ void OcppServer::clear_transaction_(uint32_t transaction_id) {
     connector->current_sensor->publish_state(0.0f);
   if (connector->power_sensor != nullptr)
     connector->power_sensor->publish_state(0.0f);
+}
+
+void OcppServer::send_preferred_current_limit_if_needed_(uint8_t connector_id) {
+  auto *connector = this->find_connector_(connector_id);
+  if (connector == nullptr || !connector->has_preferred_current_limit || connector->charging_profile_applied)
+    return;
+  if (!connector->has_active_transaction) {
+    ESP_LOGD(TAG, "Deferring SetChargingProfile for connectorId=%u; no active transaction ID is known yet", connector_id);
+    return;
+  }
+  this->send_set_charging_profile_(connector_id, connector->active_transaction_id, connector->preferred_current_limit);
 }
 
 std::string OcppServer::next_unique_id_(const char *prefix) {
@@ -895,13 +910,25 @@ void OcppServer::handle_status_notification_(const std::string &unique_id, JsonO
            "info='%s' vendorId='%s' vendorErrorCode='%s'",
            this->charge_point_id_.c_str(), connector_id, status, error_code, timestamp, info, vendor_id,
            vendor_error_code);
-  if (this->has_charger_ && connector_id > 0 && this->find_connector_(connector_id) == nullptr) {
+  auto *connector = this->find_connector_(connector_id);
+  bool started_charging = false;
+  if (this->has_charger_ && connector_id > 0 && connector == nullptr) {
     ESP_LOGW(TAG, "StatusNotification referenced unconfigured connector %d for charge point '%s'", connector_id,
              this->charge_point_id_.c_str());
+  }
+  if (connector != nullptr) {
+    bool is_charging = std::strcmp(status, "Charging") == 0;
+    started_charging = is_charging && !connector->is_charging;
+    connector->is_charging = is_charging;
+    if (!is_charging)
+      connector->charging_profile_applied = false;
   }
 
   std::string response = "[3,\"" + json_escape(unique_id) + "\",{}]";
   this->send_ws_text_(response);
+
+  if (started_charging && connector_id > 0 && connector_id <= 255)
+    this->send_preferred_current_limit_if_needed_(static_cast<uint8_t>(connector_id));
 }
 
 void OcppServer::handle_start_transaction_(const std::string &unique_id, JsonObject payload) {
@@ -942,6 +969,9 @@ void OcppServer::handle_start_transaction_(const std::string &unique_id, JsonObj
     this->pending_profile_connector_id_ = 0;
     this->pending_profile_current_limit_ = 0.0f;
   }
+
+  if (connector_id > 0 && connector_id <= 255)
+    this->send_preferred_current_limit_if_needed_(static_cast<uint8_t>(connector_id));
 }
 
 void OcppServer::handle_stop_transaction_(const std::string &unique_id, JsonObject payload) {
@@ -1095,6 +1125,9 @@ void OcppServer::send_set_charging_profile_(uint8_t connector_id, uint32_t trans
   ESP_LOGI(TAG,
            "Sending SetChargingProfile: charge_point='%s' connectorId=%u transactionId=%u current_limit=%.1f A",
            this->charge_point_id_.c_str(), connector_id, transaction_id, current_limit);
+  auto *connector = this->find_connector_(connector_id);
+  if (connector != nullptr && connector->has_active_transaction && connector->active_transaction_id == transaction_id)
+    connector->charging_profile_applied = true;
   this->send_ocpp_call_("set-charging-profile", "SetChargingProfile", payload, connector_id, transaction_id,
                         current_limit);
 }
