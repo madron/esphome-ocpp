@@ -23,12 +23,23 @@ CONF_CHARGE_POINT_ID = "charge_point_id"
 CONF_CHARGERS = "chargers"
 CONF_CONNECTORS = "connectors"
 CONF_CURRENT_LIMIT = "current_limit"
+CONF_GRID = "grid"
 CONF_ID_TAG = "id_tag"
+CONF_L1 = "l1"
+CONF_L2 = "l2"
+CONF_L3 = "l3"
+CONF_AGGREGATE = "aggregate"
 CONF_MAX_CURRENT = "max_current"
+CONF_MAX_CURRENT_PER_PHASE = "max_current_per_phase"
+CONF_MAX_PHASE_IMBALANCE = "max_phase_imbalance"
+CONF_MAX_POWER = "max_power"
+CONF_PHASES = "phases"
 CONF_SERVER = "server"
+CONF_SITE = "site"
 CONF_PATH = "path"
 CONF_START = "start"
 CONF_STOP = "stop"
+CONF_VOLTAGE = "voltage"
 
 ocpp_ns = cg.esphome_ns.namespace("ocpp")
 OcppServer = ocpp_ns.class_("OcppServer", cg.Component)
@@ -84,11 +95,61 @@ def _validate_chargers(value):
     return value
 
 
+def _validate_site(value):
+    phases = value[CONF_PHASES]
+    grid = value.get(CONF_GRID, {})
+    power = grid.get(CONF_POWER, {})
+    has_aggregate = CONF_AGGREGATE in power
+    phase_keys = (CONF_L1, CONF_L2, CONF_L3)
+    configured_phases = [phase for phase in phase_keys if phase in power]
+
+    if phases == 1:
+        if CONF_L2 in power or CONF_L3 in power:
+            raise cv.Invalid("single-phase sites may only configure grid.power.l1")
+        if has_aggregate:
+            raise cv.Invalid("single-phase sites should use grid.power.l1 instead of grid.power.aggregate")
+    elif configured_phases and len(configured_phases) != 3:
+        raise cv.Invalid("three-phase sites must configure all of grid.power.l1, l2 and l3 together")
+
+    if has_aggregate and configured_phases:
+        raise cv.Invalid("grid.power.aggregate must not be combined with per-phase grid.power sensors")
+    return value
+
+
 SERVER_SCHEMA = cv.Schema(
     {
         cv.Optional(CONF_PORT, default=9000): cv.port,
         cv.Optional(CONF_PATH, default="/ocpp"): _validate_path,
     }
+)
+
+GRID_POWER_SCHEMA = cv.Schema(
+    {
+        cv.Optional(CONF_L1): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_L2): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_L3): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_AGGREGATE): cv.use_id(sensor.Sensor),
+    }
+)
+
+GRID_SCHEMA = cv.Schema(
+    {
+        cv.Optional(CONF_MAX_POWER): cv.positive_float,
+        cv.Optional(CONF_MAX_PHASE_IMBALANCE): cv.positive_float,
+        cv.Optional(CONF_MAX_CURRENT_PER_PHASE): cv.positive_float,
+        cv.Optional(CONF_POWER): GRID_POWER_SCHEMA,
+    }
+)
+
+SITE_SCHEMA = cv.All(
+    cv.Schema(
+        {
+            cv.Required(CONF_PHASES): cv.one_of(1, 3, int=True),
+            cv.Required(CONF_VOLTAGE): cv.positive_float,
+            cv.Optional(CONF_GRID): GRID_SCHEMA,
+        }
+    ),
+    _validate_site,
 )
 
 CONNECTOR_SCHEMA = cv.Schema(
@@ -138,6 +199,7 @@ CONFIG_SCHEMA = cv.All(
         {
             cv.GenerateID(): cv.declare_id(OcppServer),
             cv.Optional(CONF_SERVER, default={}): SERVER_SCHEMA,
+            cv.Optional(CONF_SITE): SITE_SCHEMA,
             cv.Optional(CONF_CHARGERS, default=[]): cv.All(
                 cv.ensure_list(CHARGER_SCHEMA), cv.Length(max=1), _validate_chargers
             ),
@@ -154,6 +216,28 @@ async def to_code(config):
     server = config[CONF_SERVER]
     cg.add(var.set_port(server[CONF_PORT]))
     cg.add(var.set_path(server[CONF_PATH]))
+    if site := config.get(CONF_SITE):
+        cg.add(var.set_site(site[CONF_PHASES], site[CONF_VOLTAGE]))
+        if grid := site.get(CONF_GRID):
+            if CONF_MAX_POWER in grid:
+                cg.add(var.set_grid_max_power(grid[CONF_MAX_POWER]))
+            if CONF_MAX_PHASE_IMBALANCE in grid:
+                cg.add(var.set_grid_max_phase_imbalance(grid[CONF_MAX_PHASE_IMBALANCE]))
+            if CONF_MAX_CURRENT_PER_PHASE in grid:
+                cg.add(var.set_grid_max_current_per_phase(grid[CONF_MAX_CURRENT_PER_PHASE]))
+            if power := grid.get(CONF_POWER):
+                if CONF_L1 in power:
+                    sens = await cg.get_variable(power[CONF_L1])
+                    cg.add(var.set_grid_power_l1_sensor(sens))
+                if CONF_L2 in power:
+                    sens = await cg.get_variable(power[CONF_L2])
+                    cg.add(var.set_grid_power_l2_sensor(sens))
+                if CONF_L3 in power:
+                    sens = await cg.get_variable(power[CONF_L3])
+                    cg.add(var.set_grid_power_l3_sensor(sens))
+                if CONF_AGGREGATE in power:
+                    sens = await cg.get_variable(power[CONF_AGGREGATE])
+                    cg.add(var.set_grid_power_aggregate_sensor(sens))
     for charger in config[CONF_CHARGERS]:
         cg.add(var.add_charger(charger[CONF_CHARGE_POINT_ID]))
         for connector in charger[CONF_CONNECTORS]:

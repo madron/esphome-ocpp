@@ -1,5 +1,7 @@
 #pragma once
 
+#include "site_limits.h"
+
 #include "esphome/components/button/button.h"
 #include "esphome/components/json/json_util.h"
 #include "esphome/components/number/number.h"
@@ -88,6 +90,14 @@ class OcppServer : public Component {
  public:
   void set_port(uint16_t port) { this->port_ = port; }
   void set_path(std::string path);
+  void set_site(uint8_t phases, float voltage);
+  void set_grid_max_power(float max_power);
+  void set_grid_max_phase_imbalance(float max_phase_imbalance);
+  void set_grid_max_current_per_phase(float max_current_per_phase);
+  void set_grid_power_l1_sensor(sensor::Sensor *sensor) { this->grid_power_l1_sensor_ = sensor; }
+  void set_grid_power_l2_sensor(sensor::Sensor *sensor) { this->grid_power_l2_sensor_ = sensor; }
+  void set_grid_power_l3_sensor(sensor::Sensor *sensor) { this->grid_power_l3_sensor_ = sensor; }
+  void set_grid_power_aggregate_sensor(sensor::Sensor *sensor) { this->grid_power_aggregate_sensor_ = sensor; }
   void add_charger(std::string charge_point_id);
   void add_connector(std::string charge_point_id, uint8_t connector_id, float max_current, std::string id_tag);
   void set_connector_current_sensor(std::string charge_point_id, uint8_t connector_id, sensor::Sensor *current_sensor);
@@ -114,6 +124,7 @@ class OcppServer : public Component {
   bool has_latest_power_active_import(uint8_t connector_id) const;
   float get_latest_current_import(uint8_t connector_id) const;
   float get_latest_power_active_import(uint8_t connector_id) const;
+  std::vector<float> get_site_spare_current_per_phase() const;
 
  protected:
   void accept_client_();
@@ -157,9 +168,15 @@ class OcppServer : public Component {
   void clear_pending_call_(const std::string &unique_id);
   void clear_pending_calls_();
   std::string websocket_accept_key_(const std::string &client_key);
+  SitePowerMeasurements site_power_measurements_() const;
 
   uint16_t port_{9000};
   std::string path_{"/ocpp"};
+  SiteLimitConfig site_limits_;
+  sensor::Sensor *grid_power_l1_sensor_{nullptr};
+  sensor::Sensor *grid_power_l2_sensor_{nullptr};
+  sensor::Sensor *grid_power_l3_sensor_{nullptr};
+  sensor::Sensor *grid_power_aggregate_sensor_{nullptr};
   ConfiguredCharger charger_;
   bool has_charger_{false};
   std::unique_ptr<socket::ListenSocket> server_;

@@ -155,6 +155,23 @@ void OcppServer::set_path(std::string path) {
   this->path_ = std::move(path);
 }
 
+void OcppServer::set_site(uint8_t phases, float voltage) {
+  this->site_limits_.phases = phases == 3 ? 3 : 1;
+  this->site_limits_.voltage = voltage;
+}
+
+void OcppServer::set_grid_max_power(float max_power) {
+  this->site_limits_.grid_max_power = max_power;
+}
+
+void OcppServer::set_grid_max_phase_imbalance(float max_phase_imbalance) {
+  this->site_limits_.grid_max_phase_imbalance = max_phase_imbalance;
+}
+
+void OcppServer::set_grid_max_current_per_phase(float max_current_per_phase) {
+  this->site_limits_.grid_max_current_per_phase = max_current_per_phase;
+}
+
 void OcppServer::add_charger(std::string charge_point_id) {
   if (this->has_charger_ && this->charger_.charge_point_id == charge_point_id)
     return;
@@ -241,6 +258,28 @@ float OcppServer::get_latest_power_active_import(uint8_t connector_id) const {
   return connector != nullptr ? connector->latest_power_active_import : 0.0f;
 }
 
+std::vector<float> OcppServer::get_site_spare_current_per_phase() const {
+  return esphome::ocpp::get_site_spare_current_per_phase(this->site_limits_, this->site_power_measurements_());
+}
+
+SitePowerMeasurements OcppServer::site_power_measurements_() const {
+  SitePowerMeasurements measurements;
+  const bool has_per_phase = this->grid_power_l1_sensor_ != nullptr && this->grid_power_l2_sensor_ != nullptr &&
+                             this->grid_power_l3_sensor_ != nullptr;
+  if (this->site_limits_.phases == 3 && has_per_phase && this->grid_power_l1_sensor_->has_state() &&
+      this->grid_power_l2_sensor_->has_state() && this->grid_power_l3_sensor_->has_state()) {
+    measurements.grid_power_l1 = this->grid_power_l1_sensor_->state;
+    measurements.grid_power_l2 = this->grid_power_l2_sensor_->state;
+    measurements.grid_power_l3 = this->grid_power_l3_sensor_->state;
+  } else if (this->site_limits_.phases == 1 && this->grid_power_l1_sensor_ != nullptr &&
+             this->grid_power_l1_sensor_->has_state()) {
+    measurements.grid_power_l1 = this->grid_power_l1_sensor_->state;
+  } else if (this->grid_power_aggregate_sensor_ != nullptr && this->grid_power_aggregate_sensor_->has_state()) {
+    measurements.grid_power_aggregate = this->grid_power_aggregate_sensor_->state;
+  }
+  return measurements;
+}
+
 void OcppServer::setup() {
   this->server_ = socket::socket_ip_loop_monitored(SOCK_STREAM, 0);
   if (this->server_ == nullptr) {
@@ -275,6 +314,13 @@ void OcppServer::loop() {
 void OcppServer::dump_config() {
   ESP_LOGCONFIG(TAG, "OCPP server:");
   ESP_LOGCONFIG(TAG, "  Listen: 0.0.0.0:%u%s", this->port_, this->path_.c_str());
+  ESP_LOGCONFIG(TAG, "  Site: phases=%u voltage=%.1f V", this->site_limits_.phases, this->site_limits_.voltage);
+  if (this->site_limits_.grid_max_power.has_value())
+    ESP_LOGCONFIG(TAG, "    Grid max_power=%.0f W", this->site_limits_.grid_max_power.value());
+  if (this->site_limits_.grid_max_phase_imbalance.has_value())
+    ESP_LOGCONFIG(TAG, "    Grid max_phase_imbalance=%.0f W", this->site_limits_.grid_max_phase_imbalance.value());
+  if (this->site_limits_.grid_max_current_per_phase.has_value())
+    ESP_LOGCONFIG(TAG, "    Grid max_current_per_phase=%.1f A", this->site_limits_.grid_max_current_per_phase.value());
   ESP_LOGCONFIG(TAG, "  Configured charger: %s", this->has_charger_ ? this->charger_.charge_point_id.c_str() : "none");
   if (this->has_charger_ && this->charger_.has_connector) {
     ESP_LOGCONFIG(TAG, "    Connector %u max_current=%.1f A", this->charger_.connector.id,
