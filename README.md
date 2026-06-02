@@ -45,6 +45,10 @@ ocpp:
       max_power: 10000
       max_phase_imbalance: 6000
       max_current_per_phase: 32
+      power:
+        l1: grid_power_l1
+        l2: grid_power_l2
+        l3: grid_power_l3
 
   allocation:
     strategy: equal
@@ -250,8 +254,11 @@ ocpp:
     grid:
       max_power: 6000
       power:
-        total: grid_power_total
+        l1: grid_power_l1
 ```
+
+For a single-phase site, use `grid.power.l1` for the site/grid power sensor.
+`grid.power.aggregate` is not needed because `L1` is the only phase.
 
 Three-phase example with per-phase metering:
 
@@ -269,11 +276,12 @@ ocpp:
         l3: grid_power_l3
 ```
 
-The referenced sensors should represent the current grid/site power per phase.
-The OCPP component can then compute how much additional power is available for
-EV charging.
+For a three-phase site, per-phase metering is the recommended configuration.
+The referenced sensors should represent the current grid/site power on each
+phase. The OCPP component can then compute how much additional power is
+available for EV charging on `L1`, `L2`, and `L3`.
 
-Three-phase example with total-only metering:
+Three-phase example with aggregate-only metering:
 
 ```yaml
 ocpp:
@@ -284,36 +292,42 @@ ocpp:
       max_power: 10000
       max_phase_imbalance: 6000
       power:
-        total: grid_power_total
+        aggregate: grid_power_aggregate
 ```
 
-On a three-phase site, `grid.power.total` can be used when the meter only
-reports aggregate site power. In that mode, the component estimates per-phase
-site load by dividing the total measured power by `3`. Phase imbalance limits
-remain operational, but they are calculated from this estimate instead of real
-per-phase measurements.
+On a three-phase site, `grid.power.aggregate` can be used as an explicit fallback
+when the meter only reports aggregate site power. In that mode, the component
+estimates per-phase site load by dividing the total measured power by `3`.
+Phase imbalance limits remain operational, but they are calculated from this
+estimate instead of real per-phase measurements. Do not configure
+`grid.power.aggregate` together with `grid.power.l1`, `grid.power.l2`, or
+`grid.power.l3`.
 
 Per-phase metering is strongly recommended for three-phase installations. With
-total-only metering, per-phase current limits and phase imbalance limits cannot
-be guaranteed because the component cannot know how the non-EV site load is
-actually distributed across `L1`, `L2`, and `L3`. Installers must always protect
-all lines with correctly rated protective devices so that, in the worst case, a
-circuit breaker or fuse can interrupt an overload.
+aggregate-only metering, per-phase current limits and phase imbalance limits
+cannot be guaranteed because the component cannot know how the non-EV site load
+is actually distributed across `L1`, `L2`, and `L3`. Installers must always
+protect all lines with correctly rated protective devices so that, in the worst
+case, a circuit breaker or fuse can interrupt an overload.
 
 ### Grid Power Options
 
 | Option                        | Description |
 | ---                           | --- |
-| `power.total` (Optional)      | Sensor ID for total grid/site power. For `phases: 1`, this is the direct site load measurement. For `phases: 3`, this can be used as a fallback when only total metering is available; estimated per-phase load is calculated as `total / 3`.<br>Defaults to not configured. |
-| `power.l1` (Optional)         | Sensor ID for grid/site power on phase `L1`. Strongly recommended for `phases: 3`.<br>Defaults to none. |
-| `power.l2` (Optional)         | Sensor ID for grid/site power on phase `L2`. Strongly recommended for `phases: 3`.<br>Defaults to none. |
-| `power.l3` (Optional)         | Sensor ID for grid/site power on phase `L3`. Strongly recommended for `phases: 3`.<br>Defaults to none. |
+| `power.l1` (Optional)         | Sensor ID for grid/site power on phase `L1`. Use this for single-phase sites and configure it together with `power.l2` and `power.l3` for accurate three-phase metering.<br>Defaults to none. |
+| `power.l2` (Optional)         | Sensor ID for grid/site power on phase `L2`. Configure it together with `power.l1` and `power.l3` for accurate three-phase metering.<br>Defaults to none. |
+| `power.l3` (Optional)         | Sensor ID for grid/site power on phase `L3`. Configure it together with `power.l1` and `power.l2` for accurate three-phase metering.<br>Defaults to none. |
+| `power.aggregate` (Optional)  | Sensor ID for aggregate grid/site power. Use only as a fallback for three-phase sites when the meter reports aggregate power but not per-phase power; estimated per-phase load is calculated as `aggregate / 3`. Do not combine with `power.l1`, `power.l2`, or `power.l3`.<br>Defaults to not configured. |
 
 For accurate three-phase dynamic load balancing, configure all of
 `grid.power.l1`, `grid.power.l2`, and `grid.power.l3`. If only
-`grid.power.total` is configured on a three-phase site, the allocator uses the
-`total / 3` estimate described above. If no `grid.power` sensors are configured,
-the allocator can only use the static limits from `site.grid`.
+`grid.power.aggregate` is configured on a three-phase site, the allocator uses
+the `aggregate / 3` estimate described above and knows that phase-specific
+protection is approximate. Avoid creating external template sensors that divide
+an aggregate meter by `3` and expose the result as real per-phase measurements,
+because that hides the approximation from the component. If no `grid.power`
+sensors are configured, the allocator can only use the static limits from
+`site.grid`.
 
 ## Allocation
 
