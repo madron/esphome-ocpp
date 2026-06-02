@@ -41,9 +41,10 @@ ocpp:
   site:
     phases: 3
     voltage: 230
-    max_power: 10000
-    max_phase_imbalance: 6000
-    max_current_per_phase: 32
+    grid:
+      max_power: 10000
+      max_phase_imbalance: 6000
+      max_current_per_phase: 32
 
   allocation:
     strategy: equal
@@ -102,7 +103,7 @@ In the tables below, each option is marked as `(Required)`, `(Optional)`, or
 
 Electricity providers often describe contractual limits in kilowatts. Convert
 those values to Watts in the YAML configuration. For example, `10 kW` should be
-configured as `10000` because `max_power` is expressed in `W`.
+configured as `10000` because `site.grid.max_power` is expressed in `W`.
 
 ### Top-Level Options
 
@@ -111,7 +112,7 @@ configured as `10000` because `max_power` is expressed in `W`.
 | `id` (Optional)                     | ESPHome ID for this component. Configure it when referenced by automations. |
 | `server` (Optional)                 | Local OCPP WebSocket server configuration. Defaults are listed below. |
 | `authorization` (Optional)          | Authorization configuration. Defaults are listed below. |
-| `site` (Required)                   | Electrical site limits used for load sharing. |
+| `site` (Required)                   | Electrical site topology and optional power sources used for load sharing and protection. |
 | `allocation` (Optional)             | Strategy used to split available power. Defaults are listed below. |
 | `chargers` (Required)               | Configured chargers and their electrical parameters. |
 
@@ -171,11 +172,13 @@ ocpp:
 
 ## Site Power Model
 
-The `site` section describes the electrical limits that the allocator must
-respect.
+The required `site` section describes the local electrical installation.
+`phases` and `voltage` are site-specific and required, even for sites that are
+not connected to the grid. Optional power-source subsections, such as `grid`,
+describe supply limits that the allocator must respect.
 
 In many European countries, the electricity provider defines the contractual
-limit in kilowatts rather than amps. In that case, configure the site limit as
+limit in kilowatts rather than amps. In that case, configure the grid limit as
 power in `W` rather than as current in `A`.
 
 ### Single-Phase Site
@@ -185,13 +188,14 @@ ocpp:
   site:
     phases: 1
     voltage: 230
-    max_power: 6000
+    grid:
+      max_power: 6000
 ```
 
 The component can convert the available power to current internally:
 
 ```text
-available_current = max_power / voltage
+available_current = grid.max_power / voltage
 ```
 
 ### Three-Phase Site
@@ -201,25 +205,40 @@ ocpp:
   site:
     phases: 3
     voltage: 230
-    max_power: 10000
-    max_phase_imbalance: 6000
-    max_current_per_phase: 32
+    grid:
+      max_power: 10000
+      max_phase_imbalance: 6000
+      max_current_per_phase: 32
 ```
 
 ### Site Options
 
+| Option               | Description |
+| ---                  | --- |
+| `phases` (Required)  | Number of electrical phases at the site.<br>Available values: `1` or `3`. |
+| `voltage` (Required) | Phase-to-neutral voltage in `V`, for example `230`. |
+| `grid` (Optional)    | Grid connection limits and measurements. Defaults to not configured, for example on sites that are not connected to the grid. |
+
+### Grid Connection
+
+The optional `site.grid` section describes limits and measurements for the grid
+connection. Any configured grid limit is enforced for every allocation strategy,
+including manual allocation. Future power sources, such as an inverter or a
+generator, can be added as additional subsections under `site`.
+
+### Grid Options
+
 | Option                             | Description |
 | ---                                | --- |
-| `phases` (Required)                | Number of electrical phases at the site.<br>Available values: `1` or `3`. |
-| `voltage` (Optional)               | Phase-to-neutral voltage. Defaults to `230`. |
-| `max_power` (Required)             | Maximum total site power available for EV charging. |
-| `max_phase_imbalance` (Optional)   | Required for three-phase sites when the provider defines an imbalance limit.<br>Defaults to `0`. |
-| `max_current_per_phase` (Optional) | Physical current limit per phase, for example `32`.<br>Defaults to no current-specific limit. |
+| `max_power` (Optional)             | Maximum total grid power available for EV charging in `W`.<br>Defaults to no total grid power limit. |
+| `max_phase_imbalance` (Optional)   | Grid phase imbalance limit in `W`, when the provider defines one.<br>Defaults to no imbalance-specific limit. |
+| `max_current_per_phase` (Optional) | Physical grid current limit per phase in `A`, for example `32`.<br>Defaults to no current-specific limit. |
 
 ## Dynamic Grid Power Measurements
 
 For real load balancing, the component should be able to account for the current
-non-EV site load. This can be provided by existing ESPHome sensors.
+non-EV grid load. This can be provided by existing ESPHome sensors under
+`site.grid.power`.
 
 Single-phase example:
 
@@ -228,9 +247,10 @@ ocpp:
   site:
     phases: 1
     voltage: 230
-    max_power: 6000
-    grid_power:
-      total: grid_power_total
+    grid:
+      max_power: 6000
+      power:
+        total: grid_power_total
 ```
 
 Three-phase example with per-phase metering:
@@ -240,12 +260,13 @@ ocpp:
   site:
     phases: 3
     voltage: 230
-    max_power: 10000
-    max_phase_imbalance: 6000
-    grid_power:
-      l1: grid_power_l1
-      l2: grid_power_l2
-      l3: grid_power_l3
+    grid:
+      max_power: 10000
+      max_phase_imbalance: 6000
+      power:
+        l1: grid_power_l1
+        l2: grid_power_l2
+        l3: grid_power_l3
 ```
 
 The referenced sensors should represent the current grid/site power per phase.
@@ -259,13 +280,14 @@ ocpp:
   site:
     phases: 3
     voltage: 230
-    max_power: 10000
-    max_phase_imbalance: 6000
-    grid_power:
-      total: grid_power_total
+    grid:
+      max_power: 10000
+      max_phase_imbalance: 6000
+      power:
+        total: grid_power_total
 ```
 
-On a three-phase site, `grid_power.total` can be used when the meter only
+On a three-phase site, `grid.power.total` can be used when the meter only
 reports aggregate site power. In that mode, the component estimates per-phase
 site load by dividing the total measured power by `3`. Phase imbalance limits
 remain operational, but they are calculated from this estimate instead of real
@@ -282,21 +304,22 @@ circuit breaker or fuse can interrupt an overload.
 
 | Option                        | Description |
 | ---                           | --- |
-| `grid_power.total` (Optional) | Sensor ID for total grid/site power. For `phases: 1`, this is the direct site load measurement. For `phases: 3`, this can be used as a fallback when only total metering is available; estimated per-phase load is calculated as `total / 3`.<br>Defaults to not configured. |
-| `grid_power.l1` (Optional)    | Sensor ID for grid/site power on phase `L1`. Strongly recommended for `phases: 3`.<br>Defaults to none. |
-| `grid_power.l2` (Optional)    | Sensor ID for grid/site power on phase `L2`. Strongly recommended for `phases: 3`.<br>Defaults to none. |
-| `grid_power.l3` (Optional)    | Sensor ID for grid/site power on phase `L3`. Strongly recommended for `phases: 3`.<br>Defaults to none. |
+| `power.total` (Optional)      | Sensor ID for total grid/site power. For `phases: 1`, this is the direct site load measurement. For `phases: 3`, this can be used as a fallback when only total metering is available; estimated per-phase load is calculated as `total / 3`.<br>Defaults to not configured. |
+| `power.l1` (Optional)         | Sensor ID for grid/site power on phase `L1`. Strongly recommended for `phases: 3`.<br>Defaults to none. |
+| `power.l2` (Optional)         | Sensor ID for grid/site power on phase `L2`. Strongly recommended for `phases: 3`.<br>Defaults to none. |
+| `power.l3` (Optional)         | Sensor ID for grid/site power on phase `L3`. Strongly recommended for `phases: 3`.<br>Defaults to none. |
 
 For accurate three-phase dynamic load balancing, configure all of
-`grid_power.l1`, `grid_power.l2`, and `grid_power.l3`. If only
-`grid_power.total` is configured on a three-phase site, the allocator uses the
-`total / 3` estimate described above. If no `grid_power` sensors are configured,
-the allocator can only use the static limits from the `site` section.
+`grid.power.l1`, `grid.power.l2`, and `grid.power.l3`. If only
+`grid.power.total` is configured on a three-phase site, the allocator uses the
+`total / 3` estimate described above. If no `grid.power` sensors are configured,
+the allocator can only use the static limits from `site.grid`.
 
 ## Allocation
 
-The `allocation` section defines how available power is split between active
-charging sessions.
+The `allocation` section defines how charging current is assigned to active
+charging sessions. Configured power-source limits are always respected,
+regardless of the selected strategy.
 
 ```yaml
 ocpp:
@@ -306,6 +329,26 @@ ocpp:
     update_interval: 10s
     preference: least_charged
 ```
+
+Use `manual` when each connector should be controlled by its own
+`current_limit` number. The configured number value is treated as that
+connector's requested current in `A`. If the sum of requests would exceed the
+configured power-source limits, the allocator reduces or pauses connectors
+according to `preference`. If no power-source limits are configured, manual
+allocation is limited only by the connector's own `max_current` and number
+bounds.
+
+```yaml
+ocpp:
+  allocation:
+    strategy: manual
+    min_current: 6
+    update_interval: 10s
+    preference: first_connected
+```
+
+Use `equal` when the component should automatically split the available charging
+capacity evenly between active connectors.
 
 If there is not enough available current to keep every active connector at or
 above `min_current`, the allocator can keep only a subset of sessions active.
@@ -325,7 +368,7 @@ metered session energy, such as `first_connected`, `last_connected`, or
 
 | Option                       | Description |
 | ---                          | --- |
-| `strategy` (Optional)        | Power sharing strategy. Defaults to `equal`.<br>Available value for v1: `equal`. |
+| `strategy` (Optional)        | Power sharing strategy. Defaults to `equal`.<br>Available values for v1:<br>`manual` uses each connector's `current_limit` number as the requested current in `A` while still respecting configured power-source limits; <br>`equal` automatically splits available charging capacity evenly between active connectors. |
 | `min_current` (Optional)     | Minimum AC charging current per active connector. Defaults to `6`. |
 | `update_interval` (Optional) | How often current limits are recalculated and sent. Defaults to `10s`. |
 | `preference` (Optional)      | Which sessions are preferred when not all active sessions can receive at least `min_current`. Defaults to `first_connected`.<br>Available values:<br>`first_connected` prefers older sessions and leaves newer sessions waiting when capacity is full; <br>`last_connected` prefers newer sessions; <br>`least_charged` prefers sessions with the lowest delivered `kWh` and requires live OCPP `Energy.Active.Import.Register` meter values; <br>`round_robin` rotates active charging slots over time. |
@@ -400,10 +443,12 @@ connectors:
       name: Garage Left Stop
 ```
 
-If `max_value` is omitted, it defaults to the connector's `max_current`. Pressing
-the connector's `start` button uses the current value of `current_limit`. If
-`current_limit` is not configured, the start command is sent without a charging
-profile and the charger uses its own configured limit.
+If `max_value` is omitted, it defaults to the connector's `max_current`. With
+`allocation.strategy: manual`, the current value of `current_limit` is this
+connector's requested allocation. The effective limit may be lower when needed
+to respect configured power-source limits or when `preference` pauses the
+connector. If `current_limit` is not configured, the start command is sent
+without a charging profile and the charger uses its own configured limit.
 
 ### Phase Mapping
 
@@ -467,7 +512,7 @@ The first useful version should be able to:
 4. Authorize private charging for configured chargers according to the authorization policy.
 5. Track transactions using `StartTransaction` and `StopTransaction`.
 6. Read power in `W` and energy in `kWh` from `MeterValues`.
-7. Calculate current limits from the configured site constraints.
+7. Calculate current limits from the configured site and power-source constraints.
 8. Split available charging power between active connectors.
 9. Apply limits using OCPP smart charging profiles.
 
