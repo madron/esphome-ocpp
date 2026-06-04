@@ -124,7 +124,6 @@ class OcppServer : public Component {
   bool has_latest_power_active_import(uint8_t connector_id) const;
   float get_latest_current_import(uint8_t connector_id) const;
   float get_latest_power_active_import(uint8_t connector_id) const;
-  std::vector<float> get_site_spare_current_per_phase() const;
 
  protected:
   void accept_client_();
@@ -168,7 +167,6 @@ class OcppServer : public Component {
   void clear_pending_call_(const std::string &unique_id);
   void clear_pending_calls_();
   std::string websocket_accept_key_(const std::string &client_key);
-  SitePowerMeasurements site_power_measurements_() const;
 
   uint16_t port_{9000};
   std::string path_{"/ocpp"};

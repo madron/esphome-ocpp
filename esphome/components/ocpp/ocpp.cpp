@@ -258,28 +258,6 @@ float OcppServer::get_latest_power_active_import(uint8_t connector_id) const {
   return connector != nullptr ? connector->latest_power_active_import : 0.0f;
 }
 
-std::vector<float> OcppServer::get_site_spare_current_per_phase() const {
-  return esphome::ocpp::get_site_spare_current_per_phase(this->site_limits_, this->site_power_measurements_());
-}
-
-SitePowerMeasurements OcppServer::site_power_measurements_() const {
-  SitePowerMeasurements measurements;
-  const bool has_per_phase = this->grid_power_l1_sensor_ != nullptr && this->grid_power_l2_sensor_ != nullptr &&
-                             this->grid_power_l3_sensor_ != nullptr;
-  if (this->site_limits_.phases == 3 && has_per_phase && this->grid_power_l1_sensor_->has_state() &&
-      this->grid_power_l2_sensor_->has_state() && this->grid_power_l3_sensor_->has_state()) {
-    measurements.grid_power_l1 = this->grid_power_l1_sensor_->state;
-    measurements.grid_power_l2 = this->grid_power_l2_sensor_->state;
-    measurements.grid_power_l3 = this->grid_power_l3_sensor_->state;
-  } else if (this->site_limits_.phases == 1 && this->grid_power_l1_sensor_ != nullptr &&
-             this->grid_power_l1_sensor_->has_state()) {
-    measurements.grid_power_l1 = this->grid_power_l1_sensor_->state;
-  } else if (this->grid_power_aggregate_sensor_ != nullptr && this->grid_power_aggregate_sensor_->has_state()) {
-    measurements.grid_power_aggregate = this->grid_power_aggregate_sensor_->state;
-  }
-  return measurements;
-}
-
 void OcppServer::setup() {
   this->server_ = socket::socket_ip_loop_monitored(SOCK_STREAM, 0);
   if (this->server_ == nullptr) {

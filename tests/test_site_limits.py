@@ -6,8 +6,8 @@ except ImportError:
     from cpp_test_case import CppTestCase
 
 
-class SiteLimitTests(CppTestCase):
-    def test_site_limit(self):
+class SiteLimitExampleTests(CppTestCase):
+    def test_site_limit_example(self):
         self.assert_cpp_test_passes("test_site_limits.cpp")
 
 

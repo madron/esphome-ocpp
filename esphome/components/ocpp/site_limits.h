@@ -49,8 +49,11 @@ inline std::vector<float> site_phase_power(const SiteLimitConfig &config, const 
   return power;
 }
 
-inline std::vector<float> get_site_spare_current_per_phase(const SiteLimitConfig &config,
-                                                           const SitePowerMeasurements &measurements = {}) {
+// NOTE: This helper is only a small, testable example for automatic tests. Do not treat this specific spare-current
+// calculation as the project direction. The part worth preserving is the separation between static config
+// (`SiteLimitConfig`) and dynamic state (`SitePowerMeasurements`), plus the C++ test infrastructure around it.
+inline std::vector<float> example_site_spare_current_per_phase(const SiteLimitConfig &config,
+                                                               const SitePowerMeasurements &measurements = {}) {
   const uint8_t active_phases = site_active_phases(config);
   std::vector<float> spare_current(active_phases, std::numeric_limits<float>::infinity());
   if (config.voltage <= 0.0f)
