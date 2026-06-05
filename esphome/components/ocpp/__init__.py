@@ -29,7 +29,6 @@ CONF_L2 = "l2"
 CONF_L3 = "l3"
 CONF_AGGREGATE = "aggregate"
 CONF_MAX_CURRENT = "max_current"
-CONF_MAX_CURRENT_PER_PHASE = "max_current_per_phase"
 CONF_MAX_PHASE_IMBALANCE = "max_phase_imbalance"
 CONF_MAX_POWER = "max_power"
 CONF_PHASES = "phases"
@@ -82,11 +81,14 @@ def _validate_chargers(value):
                 raise cv.Invalid(f"Duplicate connector id '{connector_id}' for charger '{charger_id}'")
             connector_ids.add(connector_id)
 
+            connector.setdefault(CONF_MAX_CURRENT, charger[CONF_MAX_CURRENT])
+
             if limit := connector.get(CONF_CURRENT_LIMIT):
-                limit.setdefault(CONF_MAX_VALUE, connector[CONF_MAX_CURRENT])
-                if limit[CONF_MAX_VALUE] > connector[CONF_MAX_CURRENT]:
+                effective_max_current = min(charger[CONF_MAX_CURRENT], connector[CONF_MAX_CURRENT])
+                limit.setdefault(CONF_MAX_VALUE, effective_max_current)
+                if limit[CONF_MAX_VALUE] > effective_max_current:
                     raise cv.Invalid(
-                        f"current_limit max_value for connector '{connector_id}' must not exceed max_current"
+                        f"current_limit max_value for connector '{connector_id}' must not exceed the effective max_current"
                     )
                 if limit[CONF_MIN_VALUE] >= limit[CONF_MAX_VALUE]:
                     raise cv.Invalid(
@@ -136,7 +138,7 @@ GRID_SCHEMA = cv.Schema(
     {
         cv.Optional(CONF_MAX_POWER): cv.positive_float,
         cv.Optional(CONF_MAX_PHASE_IMBALANCE): cv.positive_float,
-        cv.Optional(CONF_MAX_CURRENT_PER_PHASE): cv.positive_float,
+        cv.Required(CONF_MAX_CURRENT): cv.positive_float,
         cv.Optional(CONF_POWER): GRID_POWER_SCHEMA,
     }
 )
@@ -155,7 +157,7 @@ SITE_SCHEMA = cv.All(
 CONNECTOR_SCHEMA = cv.Schema(
     {
         cv.Required(CONF_ID): cv.int_range(min=1, max=255),
-        cv.Required(CONF_MAX_CURRENT): cv.positive_float,
+        cv.Optional(CONF_MAX_CURRENT): cv.positive_float,
         cv.Optional(CONF_CURRENT): sensor.sensor_schema(
             unit_of_measurement=UNIT_AMPERE,
             accuracy_decimals=1,
@@ -188,6 +190,7 @@ CHARGER_SCHEMA = cv.Schema(
     {
         cv.Required(CONF_ID): cv.string_strict,
         cv.Required(CONF_CHARGE_POINT_ID): cv.string_strict,
+        cv.Required(CONF_MAX_CURRENT): cv.positive_float,
         cv.Required(CONF_CONNECTORS): cv.All(cv.ensure_list(CONNECTOR_SCHEMA), cv.Length(min=1, max=1)),
     }
 )
@@ -222,8 +225,7 @@ async def to_code(config):
                 cg.add(var.set_grid_max_power(grid[CONF_MAX_POWER]))
             if CONF_MAX_PHASE_IMBALANCE in grid:
                 cg.add(var.set_grid_max_phase_imbalance(grid[CONF_MAX_PHASE_IMBALANCE]))
-            if CONF_MAX_CURRENT_PER_PHASE in grid:
-                cg.add(var.set_grid_max_current_per_phase(grid[CONF_MAX_CURRENT_PER_PHASE]))
+            cg.add(var.set_grid_max_current(grid[CONF_MAX_CURRENT]))
             if power := grid.get(CONF_POWER):
                 if CONF_L1 in power:
                     sens = await cg.get_variable(power[CONF_L1])
@@ -238,7 +240,7 @@ async def to_code(config):
                     sens = await cg.get_variable(power[CONF_AGGREGATE])
                     cg.add(var.set_grid_power_aggregate_sensor(sens))
     for charger in config[CONF_CHARGERS]:
-        cg.add(var.add_charger(charger[CONF_CHARGE_POINT_ID]))
+        cg.add(var.add_charger(charger[CONF_CHARGE_POINT_ID], charger[CONF_MAX_CURRENT]))
         for connector in charger[CONF_CONNECTORS]:
             cg.add(
                 var.add_connector(

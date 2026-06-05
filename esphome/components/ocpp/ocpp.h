@@ -86,6 +86,7 @@ struct ConfiguredConnector {
 
 struct ConfiguredCharger {
   std::string charge_point_id;
+  float max_current{0.0f};
   ConfiguredConnector connector;
   bool has_connector{false};
 };
@@ -106,12 +107,12 @@ class OcppServer : public Component {
   void set_site(uint8_t phases, float voltage);
   void set_grid_max_power(float max_power);
   void set_grid_max_phase_imbalance(float max_phase_imbalance);
-  void set_grid_max_current_per_phase(float max_current_per_phase);
+  void set_grid_max_current(float max_current);
   void set_grid_power_l1_sensor(sensor::Sensor *sensor) { this->grid_power_l1_sensor_ = sensor; }
   void set_grid_power_l2_sensor(sensor::Sensor *sensor) { this->grid_power_l2_sensor_ = sensor; }
   void set_grid_power_l3_sensor(sensor::Sensor *sensor) { this->grid_power_l3_sensor_ = sensor; }
   void set_grid_power_aggregate_sensor(sensor::Sensor *sensor) { this->grid_power_aggregate_sensor_ = sensor; }
-  void add_charger(std::string charge_point_id);
+  void add_charger(std::string charge_point_id, float max_current);
   void add_connector(std::string charge_point_id, uint8_t connector_id, float max_current);
   void set_connector_current_sensor(std::string charge_point_id, uint8_t connector_id, sensor::Sensor *current_sensor);
   void set_connector_power_sensor(std::string charge_point_id, uint8_t connector_id, sensor::Sensor *power_sensor);

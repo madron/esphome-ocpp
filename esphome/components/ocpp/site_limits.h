@@ -13,7 +13,7 @@ struct SiteLimitConfig {
   float voltage{230.0f};
   std::optional<float> grid_max_power{};
   std::optional<float> grid_max_phase_imbalance{};
-  std::optional<float> grid_max_current_per_phase{};
+  std::optional<float> grid_max_current{};
 };
 
 struct SitePowerMeasurements {
@@ -71,10 +71,10 @@ inline std::vector<float> example_site_spare_current_per_phase(const SiteLimitCo
       phase_spare_current = std::min(phase_spare_current, balanced_spare_current);
   }
 
-  if (config.grid_max_current_per_phase.has_value()) {
+  if (config.grid_max_current.has_value()) {
     for (uint8_t i = 0; i < active_phases; i++) {
       const float used_current = power[i] / config.voltage;
-      const float phase_spare_current = clamp_non_negative(config.grid_max_current_per_phase.value() - used_current);
+      const float phase_spare_current = clamp_non_negative(config.grid_max_current.value() - used_current);
       spare_current[i] = std::min(spare_current[i], phase_spare_current);
     }
   }

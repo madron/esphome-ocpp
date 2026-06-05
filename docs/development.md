@@ -71,6 +71,18 @@ Messages sent from component to charger:
 
 `SetChargingProfile` is used for positive current limiting and load sharing.
 
+## Hard Current Limits
+
+The three configured `max_current` values are hard current limits and must be
+respected contemporarily: `site.grid.max_current`, `charger.max_current`, and
+`connector.max_current`. The component must not allocate or request a current that
+exceeds any configured limit that applies to the connector.
+
+All three `max_current` options describe the electrical installation, such as the
+size of cables and the capacity of breakers or fuses. They are not car capability
+limits and they are not an expression of currently available power; available
+power is calculated separately from grid power limits and measurements.
+
 ## Minimal v1 Goals
 
 The first useful version should be able to:

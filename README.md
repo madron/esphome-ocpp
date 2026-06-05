@@ -69,7 +69,7 @@ ocpp:
     grid:
       max_power: 10000
       max_phase_imbalance: 6000
-      max_current_per_phase: 32
+      max_current: 32
       power:
         l1: grid_power_l1
         l2: grid_power_l2
@@ -84,6 +84,7 @@ ocpp:
   chargers:
     - id: garage_left
       charge_point_id: GARAGE_LEFT
+      max_current: 32
       connectors:
         - id: 1
           phases: 3
@@ -101,10 +102,10 @@ ocpp:
 
     - id: garage_right
       charge_point_id: GARAGE_RIGHT
+      max_current: 32
       connectors:
         - id: 1
           phases: 1
-          max_current: 32
           current:
             name: Garage Right Current
           power:
@@ -218,6 +219,7 @@ ocpp:
     voltage: 230
     grid:
       max_power: 6000
+      max_current: 32
 ```
 
 The component can convert the available power to current internally:
@@ -236,7 +238,7 @@ ocpp:
     grid:
       max_power: 10000
       max_phase_imbalance: 6000
-      max_current_per_phase: 32
+      max_current: 32
 ```
 
 ### Site Options
@@ -256,11 +258,11 @@ generator, can be added as additional subsections under `site`.
 
 ### Grid Options
 
-| Option                             | Description |
-| ---                                | --- |
-| `max_power` (Optional)             | Maximum total grid power available for EV charging in `W`.<br>Defaults to no total grid power limit. |
-| `max_phase_imbalance` (Optional)   | Grid phase imbalance limit in `W`, when the provider defines one.<br>Defaults to no imbalance-specific limit. |
-| `max_current_per_phase` (Optional) | Physical grid current limit per phase in `A`, for example `32`.<br>Defaults to no current-specific limit. |
+| Option                           | Description |
+| ---                              | --- |
+| `max_current` (Required)         | Physical grid current limit per phase in `A`, for example `32`. |
+| `max_power` (Optional)           | Maximum total grid power available for EV charging in `W`.<br>Defaults to no total grid power limit. |
+| `max_phase_imbalance` (Optional) | Grid phase imbalance limit in `W`, when the provider defines one.<br>Defaults to no imbalance-specific limit. |
 
 ## Dynamic Grid Power Measurements
 
@@ -276,6 +278,7 @@ ocpp:
     voltage: 230
     grid:
       max_power: 6000
+      max_current: 32
       power:
         l1: grid_power_l1
 ```
@@ -293,6 +296,7 @@ ocpp:
     grid:
       max_power: 10000
       max_phase_imbalance: 6000
+      max_current: 32
       power:
         l1: grid_power_l1
         l2: grid_power_l2
@@ -314,6 +318,7 @@ ocpp:
     grid:
       max_power: 10000
       max_phase_imbalance: 6000
+      max_current: 32
       power:
         aggregate: grid_power_aggregate
 ```
@@ -372,8 +377,8 @@ Use `manual` when each connector should be controlled by its own
 connector's requested current in `A`. If the sum of requests would exceed the
 configured power-source limits, the allocator reduces or pauses connectors
 according to `preference`. If no power-source limits are configured, manual
-allocation is limited only by the connector's own `max_current` and number
-bounds.
+allocation is still limited by the charger and connector `max_current` values and
+the number bounds.
 
 ```yaml
 ocpp:
@@ -419,6 +424,7 @@ ocpp:
   chargers:
     - id: garage_left
       charge_point_id: GARAGE_LEFT
+      max_current: 32
       connectors:
         - id: 1
           phases: 3
@@ -441,7 +447,8 @@ ocpp:
 | ---                          | --- |
 | `id` (Required)              | Internal ID for this charger.<br>Example: `garage_left`. |
 | `charge_point_id` (Required) | OCPP identity expected in the WebSocket URL. |
-| `connectors` (Required)      | List of OCPP connectors. Each item must define at least `id`, `phases`, and `max_current`. |
+| `max_current` (Required)     | Physical charger current limit per phase in `A`, for example `16` or `32`. |
+| `connectors` (Required)      | List of OCPP connectors. Each item must define at least `id` and `phases`. |
 
 ### Connector Options
 
@@ -450,7 +457,7 @@ ocpp:
 | `id` (Required)                  | OCPP connector ID. Usually `1` for single-connector chargers. |
 | `phases` (Required)              | Number of phases used by this connector. Values: `1` or `3`. |
 | `phase_mapping` (Optional)       | Connector-to-site phase mapping. Defaults to `[L1]` for `phases: 1` and `[L1, L2, L3]` for `phases: 3`.<br>For single-phase connectors, configure one phase, for example `[L2]`. For three-phase connectors, configure all three phases in physical order, for example `[L2, L3, L1]`. |
-| `max_current` (Required)         | Physical maximum current in `A`, for example `16` or `32`. |
+| `max_current` (Optional)         | Physical connector current limit per phase in `A`, for example `16` or `32`.<br>Defaults to the charger's `max_current`. |
 | `current` (Optional)             | Sensor that receives this connector's latest OCPP `Current.Import` value from `MeterValues`, in `A`. Defaults to not configured. |
 | `power` (Optional)               | Sensor that receives this connector's latest OCPP `Power.Active.Import` value from `MeterValues`, in `W`. Defaults to not configured. |
 | `enabled` (Optional)             | Switch for enabling or disabling charging on this connector. Defaults to enabled when omitted. Turning the switch off stops the active charging session when one is known. Turning it on starts a new charging session when none is active. |
@@ -520,13 +527,13 @@ connectors:
       name: Garage Left Restart Session
 ```
 
-If `max_value` is omitted, it defaults to the connector's `max_current`. With
-`allocation.strategy: manual`, the current value of `current_limit` is this
-connector's requested allocation. The effective limit may be lower when needed
-to respect configured power-source limits or when `preference` pauses the
-connector. If `current_limit` is not configured, restarting the connector starts
-charging without an explicit current limit and the charger uses its own configured
-limit.
+If `max_value` is omitted, it defaults to the lower of the charger and connector
+`max_current` values. With `allocation.strategy: manual`, the current value of
+`current_limit` is this connector's requested allocation. The effective limit may
+be lower when needed to respect configured power-source limits or when
+`preference` pauses the connector. If `current_limit` is not configured,
+restarting the connector starts charging without an explicit current limit and the
+charger uses its own configured limit.
 
 ### Phase Mapping
 

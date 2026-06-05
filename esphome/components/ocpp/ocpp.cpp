@@ -169,14 +169,17 @@ void OcppServer::set_grid_max_phase_imbalance(float max_phase_imbalance) {
   this->site_limits_.grid_max_phase_imbalance = max_phase_imbalance;
 }
 
-void OcppServer::set_grid_max_current_per_phase(float max_current_per_phase) {
-  this->site_limits_.grid_max_current_per_phase = max_current_per_phase;
+void OcppServer::set_grid_max_current(float max_current) {
+  this->site_limits_.grid_max_current = max_current;
 }
 
-void OcppServer::add_charger(std::string charge_point_id) {
-  if (this->has_charger_ && this->charger_.charge_point_id == charge_point_id)
+void OcppServer::add_charger(std::string charge_point_id, float max_current) {
+  if (this->has_charger_ && this->charger_.charge_point_id == charge_point_id) {
+    this->charger_.max_current = max_current;
     return;
+  }
   this->charger_.charge_point_id = std::move(charge_point_id);
+  this->charger_.max_current = max_current;
   this->charger_.has_connector = false;
   this->has_charger_ = true;
 }
@@ -184,12 +187,12 @@ void OcppServer::add_charger(std::string charge_point_id) {
 void OcppServer::add_connector(std::string charge_point_id, uint8_t connector_id, float max_current) {
   auto *charger = this->find_charger_(charge_point_id);
   if (charger == nullptr) {
-    this->add_charger(charge_point_id);
+    this->add_charger(charge_point_id, max_current);
     charger = this->find_charger_(charge_point_id);
   }
   if (charger == nullptr)
     return;
-  charger->connector = ConfiguredConnector{connector_id, max_current};
+  charger->connector = ConfiguredConnector{connector_id, std::min(charger->max_current, max_current)};
   charger->has_connector = true;
 }
 
@@ -300,9 +303,11 @@ void OcppServer::dump_config() {
     ESP_LOGCONFIG(TAG, "    Grid max_power=%.0f W", this->site_limits_.grid_max_power.value());
   if (this->site_limits_.grid_max_phase_imbalance.has_value())
     ESP_LOGCONFIG(TAG, "    Grid max_phase_imbalance=%.0f W", this->site_limits_.grid_max_phase_imbalance.value());
-  if (this->site_limits_.grid_max_current_per_phase.has_value())
-    ESP_LOGCONFIG(TAG, "    Grid max_current_per_phase=%.1f A", this->site_limits_.grid_max_current_per_phase.value());
+  if (this->site_limits_.grid_max_current.has_value())
+    ESP_LOGCONFIG(TAG, "    Grid max_current=%.1f A per phase", this->site_limits_.grid_max_current.value());
   ESP_LOGCONFIG(TAG, "  Configured charger: %s", this->has_charger_ ? this->charger_.charge_point_id.c_str() : "none");
+  if (this->has_charger_)
+    ESP_LOGCONFIG(TAG, "    Charger max_current=%.1f A per phase", this->charger_.max_current);
   if (this->has_charger_ && this->charger_.has_connector) {
     ESP_LOGCONFIG(TAG, "    Connector %u max_current=%.1f A", this->charger_.connector.id,
                   this->charger_.connector.max_current);

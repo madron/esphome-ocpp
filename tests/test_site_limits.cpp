@@ -62,7 +62,7 @@ int main() {
   assert_equal("three_phase_total_power", result, std::vector<float>{30.0f, 30.0f, 30.0f});
 
   // tightest_static_limit
-  config.grid_max_current_per_phase = 32.0f;
+  config.grid_max_current = 32.0f;
   config.grid_max_phase_imbalance = 6000.0f;
   result = example_site_spare_current_per_phase(config);
   assert_equal("tightest_static_limit", result, std::vector<float>{30.0f, 30.0f, 30.0f});
@@ -71,7 +71,7 @@ int main() {
   config = SiteLimitConfig{};
   config.phases = 3;
   config.voltage = 100.0f;
-  config.grid_max_current_per_phase = 32.0f;
+  config.grid_max_current = 32.0f;
   measurements = SitePowerMeasurements{};
   measurements.grid_power_l1 = 2000.0f;
   measurements.grid_power_l2 = 1000.0f;
