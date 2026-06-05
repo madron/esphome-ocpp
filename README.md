@@ -18,8 +18,33 @@ The initial target protocol is **OCPP 1.6J**.
 The device acts as a local OCPP central system / CSMS. EV chargers connect to it
 using WebSocket and send standard OCPP messages.
 
-The component should keep policy decisions simple and expose enough state and
-controls for automations or Home Assistant to decide what should happen.
+The component should primarily be able to work standalone without external
+automation. It should still expose enough state and controls for optional
+external automations, such as Home Assistant, or external dynamic
+reconfiguration.
+
+## Core Concepts
+
+The configuration is organized around three electrical and OCPP concepts: the
+site, chargers, and connectors. Each level has a different responsibility.
+
+- The `site` describes the shared electrical installation. It defines the number
+  of available phases, the phase-to-neutral voltage in `V`, optional grid limits,
+  and optional grid power measurements. Site limits apply to all configured EV
+  charging and are used by the allocator to decide how much current is available.
+- A `charger` describes one OCPP charge point that connects to this component.
+  It is identified by its `charge_point_id`, which must match the identity used
+  by the charger in the WebSocket URL. Charger-level configuration is about
+  admission and grouping of the physical connectors belonging to that charge
+  point.
+- A `connector` describes one OCPP connector on a charger. It defines the OCPP
+  connector ID, the connector's physical maximum current in `A`, how many phases
+  it uses, and optionally its phase mapping, sensors, current-limit control, and
+  restart/enable controls. Allocation decisions ultimately assign current to
+  connectors.
+
+In short, the site owns shared electrical constraints, chargers represent OCPP
+devices, and connectors represent the individually controlled charging outlets.
 
 ## Example Configuration
 
