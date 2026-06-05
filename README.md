@@ -42,6 +42,8 @@ site, chargers, and connectors. Each level has a different responsibility.
   it uses, and optionally its phase mapping, sensors, current-limit control, and
   restart/enable controls. Allocation decisions ultimately assign current to
   connectors.
+  Connector current state can be exposed as `available_current`,
+  `allocated_current`, and per-phase `drawn_current` sensors.
 
 In short, the site owns shared electrical constraints, chargers represent OCPP
 devices, and connectors represent the individually controlled charging outlets.
@@ -89,8 +91,17 @@ ocpp:
         - id: 1
           phases: 3
           max_current: 16
-          current:
-            name: Garage Left Current
+          available_current:
+            name: Garage Left Available Current
+          allocated_current:
+            name: Garage Left Allocated Current
+          drawn_current:
+            l1:
+              name: Garage Left Drawn Current L1
+            l2:
+              name: Garage Left Drawn Current L2
+            l3:
+              name: Garage Left Drawn Current L3
           power:
             name: Garage Left Power
           enabled:
@@ -106,8 +117,13 @@ ocpp:
       connectors:
         - id: 1
           phases: 1
-          current:
-            name: Garage Right Current
+          available_current:
+            name: Garage Right Available Current
+          allocated_current:
+            name: Garage Right Allocated Current
+          drawn_current:
+            l1:
+              name: Garage Right Drawn Current L1
           power:
             name: Garage Right Power
           enabled:
@@ -397,6 +413,15 @@ ocpp:
 Use `equal` when the component should automatically split the available charging
 capacity evenly between active connectors.
 
+Each allocation cycle calculates two connector current states. `available_current`
+is the raw current in `A` that the allocator calculated for the connector.
+`allocated_current` is the effective current in `A` after charger-operational
+constraints have been applied. If the calculated value is below `min_current`,
+`allocated_current` is `0`, and the component stops the transaction with
+`RemoteStopTransaction` instead of sending a too-low `SetChargingProfile` value.
+Positive `allocated_current` values are sent to the charger using
+`SetChargingProfile`.
+
 If there is not enough available current to keep every active connector at or
 above `min_current`, the allocator can keep only a subset of sessions active.
 For example, with `16 A` available and `min_current: 6`, only two connectors can
@@ -434,8 +459,17 @@ ocpp:
         - id: 1
           phases: 3
           max_current: 16
-          current:
-            name: Garage Left Current
+          available_current:
+            name: Garage Left Available Current
+          allocated_current:
+            name: Garage Left Allocated Current
+          drawn_current:
+            l1:
+              name: Garage Left Drawn Current L1
+            l2:
+              name: Garage Left Drawn Current L2
+            l3:
+              name: Garage Left Drawn Current L3
           power:
             name: Garage Left Power
           enabled:
@@ -463,11 +497,56 @@ ocpp:
 | `phases` (Required)              | Number of phases used by this connector. Values: `1` or `3`. |
 | `phase_mapping` (Optional)       | Connector-to-site phase mapping. Defaults to `[L1]` for `phases: 1` and `[L1, L2, L3]` for `phases: 3`.<br>For single-phase connectors, configure one phase, for example `[L2]`. For three-phase connectors, configure all three phases in physical order, for example `[L2, L3, L1]`. |
 | `max_current` (Optional)         | Physical connector current limit per phase in `A`, for example `16` or `32`.<br>Defaults to the charger's `max_current`. |
-| `current` (Optional)             | Sensor that receives this connector's latest OCPP `Current.Import` value from `MeterValues`, in `A`. Defaults to not configured. |
+| `available_current` (Optional)   | Sensor that receives the raw current in `A` calculated as available for this connector before charger-operational constraints are applied. Defaults to not configured. |
+| `allocated_current` (Optional)   | Sensor that receives the effective current in `A` allocated to this connector after charger-operational constraints are applied. Values below `allocation.min_current` are published as `0`. Defaults to not configured. |
+| `drawn_current` (Optional)       | Per-phase sensor group that receives the actual current drawn by the vehicle/charger in `A`. Internally this is maintained as a three-value site-phase vector. Configure any of `drawn_current.l1`, `drawn_current.l2`, and `drawn_current.l3` that should be exposed. Defaults to not configured. |
+| `current` (Optional)             | Backward-compatible scalar sensor that receives this connector's latest non-phase-specific OCPP `Current.Import` value from `MeterValues`, in `A`. For phase-aware site calculations, prefer `drawn_current`. Defaults to not configured. |
 | `power` (Optional)               | Sensor that receives this connector's latest OCPP `Power.Active.Import` value from `MeterValues`, in `W`. Defaults to not configured. |
 | `enabled` (Optional)             | Switch for enabling or disabling charging on this connector. Defaults to enabled when omitted. Turning the switch off stops the active charging session when one is known. Turning it on starts a new charging session when none is active. |
 | `current_limit` (Optional)       | Number for this connector's requested charging current limit in `A`. Defaults: `min_value: 6`, `max_value: max_current`, `step: 1`. When changed during an active transaction, the component updates the charger's current limit; otherwise it stores the value. The stored value is also applied when a transaction starts or when the connector resumes `Charging` after being suspended. If omitted, a restart starts charging without an explicit current limit. |
 | `restart` (Optional)             | Button that restarts the charging session. |
+
+### Connector Current State Sensors
+
+The optional connector current state sensors separate calculation, charger command,
+and measured draw:
+
+- `available_current` is the raw calculated current available to the connector in
+  `A`.
+- `allocated_current` is the current in `A` that is effectively assigned to the
+  connector after applying charger constraints. If the available current is below
+  `allocation.min_current`, this state is `0`.
+- `drawn_current` is the current in `A` actually drawn by the vehicle/charger,
+  represented per site phase as `l1`, `l2`, and `l3`.
+
+Example for a three-phase connector:
+
+```yaml
+connectors:
+  - id: 1
+    phases: 3
+    available_current:
+      name: Garage Left Available Current
+    allocated_current:
+      name: Garage Left Allocated Current
+    drawn_current:
+      l1:
+        name: Garage Left Drawn Current L1
+      l2:
+        name: Garage Left Drawn Current L2
+      l3:
+        name: Garage Left Drawn Current L3
+```
+
+If the charger reports phase-specific OCPP `Current.Import` meter values, those
+values are mapped to the corresponding site phases using `phase_mapping`. If it
+reports one non-phase-specific `Current.Import` value, the component maps that
+value according to the configured connector phases. For a single-phase connector,
+the value is assigned to the configured phase and the other phases are treated as
+`0 A`. For a three-phase connector, the value is assumed to be a balanced per-phase
+current and assigned to all configured phases. Accurate detection of a single-phase
+car plugged into a three-phase connector requires phase-specific current reporting
+from the charger.
 
 ### Connector Enabled Switch
 

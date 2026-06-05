@@ -33,6 +33,69 @@ For that reason:
 This behavior avoids relying on charger-specific handling of `0 A` smart charging
 profiles.
 
+## Connector Current State Model
+
+Connector current state intentionally separates the allocator result, the charger
+command value, and the measured vehicle draw:
+
+- `available_current` is the raw current in `A` calculated as available for the
+  connector before charger-operational constraints are applied.
+- `allocated_current` is the effective current in `A` after charger constraints
+  are applied. If `available_current` is below the configured minimum charging
+  current, currently `allocation.min_current` with a default of `6`, it is clamped
+  to `0`.
+- `drawn_current` is the actual current in `A` drawn by the vehicle/charger. It is
+  represented internally as a three-value vector in site phase order: `L1`, `L2`,
+  and `L3`.
+
+`available_current` and `allocated_current` are both kept because they answer
+different operational questions. `available_current` explains what the allocator
+calculated, including sub-minimum values such as `4 A`. `allocated_current`
+explains what the component actually applies to the charger. Keeping both makes it
+possible to diagnose why a connector is paused without exposing additional names
+such as target or applied current.
+
+When `allocated_current` is `0`, the component should stop the transaction with
+`RemoteStopTransaction`. It should not send a `SetChargingProfile` below the
+charger minimum current, and it should not rely on a `0 A` charging profile as the
+primary stop mechanism. When `allocated_current` is positive, it should be at least
+the configured minimum current and may be sent using `SetChargingProfile`.
+
+OCPP 1.6 `SetChargingProfile` provides a scalar current or power value for a
+charging schedule period, optionally with `numberPhases`. It does not provide
+independent current values for `L1`, `L2`, and `L3`. For that reason,
+`available_current` and `allocated_current` remain scalar per-connector values.
+The per-phase representation is needed for `drawn_current`, because site-level
+accounting must know how much current EV charging contributes to each physical
+site phase.
+
+## OCPP Current Metering and Phase Mapping
+
+OCPP 1.6 `MeterValues` supports a `phase` field on each `sampledValue`, so chargers
+can report phase-specific current values such as `Current.Import` on `L1`, `L2`,
+and `L3`. Some chargers instead report one non-phase-specific `Current.Import`
+value with an empty `phase` field.
+
+The intended mapping rules for `drawn_current` are:
+
+1. Store `drawn_current` internally as a site-phase vector `[L1, L2, L3]` in `A`.
+2. If `MeterValues` includes phase-specific `Current.Import` values, map each OCPP
+   phase to the corresponding site phase using the connector `phase_mapping`.
+3. If a single-phase connector reports a non-phase-specific `Current.Import` value,
+   assign that value to the connector's mapped site phase and set the other phases
+   to `0 A`.
+4. If a three-phase connector reports a non-phase-specific `Current.Import` value,
+   assume it is a balanced per-phase current and assign the same value to all three
+   mapped site phases.
+
+Rule 4 is accurate for a three-phase car drawing balanced current from a
+three-phase charger. It is only an approximation for a single-phase car plugged
+into a three-phase charger when the charger does not expose phase-specific current
+metering. In that case the component cannot know which physical phase is carrying
+the current from OCPP alone. Accurate site-level phase accounting for that scenario
+requires phase-specific `Current.Import` values from the charger or another
+phase-aware measurement source.
+
 ## Transaction State After Restarts
 
 During development, ESPHome restarts can happen while a car is connected or while
