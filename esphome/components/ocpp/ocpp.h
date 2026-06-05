@@ -7,6 +7,7 @@
 #include "esphome/components/number/number.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/socket/socket.h"
+#include "esphome/components/switch/switch.h"
 #include "esphome/core/component.h"
 
 #ifdef USE_OCPP
@@ -19,12 +20,25 @@ namespace esphome::ocpp {
 
 class OcppServer;
 
-class OcppConnectorButton : public button::Button {
+class OcppConnectorEnabledSwitch : public switch_::Switch {
  public:
-  void set_parent(OcppServer *parent, uint8_t connector_id, bool start) {
+  void set_parent(OcppServer *parent, uint8_t connector_id) {
     this->parent_ = parent;
     this->connector_id_ = connector_id;
-    this->start_ = start;
+  }
+
+ protected:
+  void write_state(bool state) override;
+
+  OcppServer *parent_{nullptr};
+  uint8_t connector_id_{0};
+};
+
+class OcppConnectorButton : public button::Button {
+ public:
+  void set_parent(OcppServer *parent, uint8_t connector_id) {
+    this->parent_ = parent;
+    this->connector_id_ = connector_id;
   }
 
  protected:
@@ -32,7 +46,6 @@ class OcppConnectorButton : public button::Button {
 
   OcppServer *parent_{nullptr};
   uint8_t connector_id_{0};
-  bool start_{false};
 };
 
 class OcppCurrentLimitNumber : public number::Number {
@@ -52,12 +65,12 @@ class OcppCurrentLimitNumber : public number::Number {
 struct ConfiguredConnector {
   uint8_t id;
   float max_current;
-  std::string id_tag{"ESPHome"};
   sensor::Sensor *current_sensor{nullptr};
   sensor::Sensor *power_sensor{nullptr};
   OcppCurrentLimitNumber *current_limit_number{nullptr};
-  OcppConnectorButton *start_button{nullptr};
-  OcppConnectorButton *stop_button{nullptr};
+  OcppConnectorEnabledSwitch *enabled_switch{nullptr};
+  OcppConnectorButton *restart_button{nullptr};
+  bool enabled{true};
   bool has_preferred_current_limit{false};
   float preferred_current_limit{0.0f};
   bool has_active_transaction{false};
@@ -99,13 +112,15 @@ class OcppServer : public Component {
   void set_grid_power_l3_sensor(sensor::Sensor *sensor) { this->grid_power_l3_sensor_ = sensor; }
   void set_grid_power_aggregate_sensor(sensor::Sensor *sensor) { this->grid_power_aggregate_sensor_ = sensor; }
   void add_charger(std::string charge_point_id);
-  void add_connector(std::string charge_point_id, uint8_t connector_id, float max_current, std::string id_tag);
+  void add_connector(std::string charge_point_id, uint8_t connector_id, float max_current);
   void set_connector_current_sensor(std::string charge_point_id, uint8_t connector_id, sensor::Sensor *current_sensor);
   void set_connector_power_sensor(std::string charge_point_id, uint8_t connector_id, sensor::Sensor *power_sensor);
   void set_connector_current_limit_number(std::string charge_point_id, uint8_t connector_id,
                                           OcppCurrentLimitNumber *current_limit_number, float initial_limit);
-  void set_connector_start_button(std::string charge_point_id, uint8_t connector_id, OcppConnectorButton *start_button);
-  void set_connector_stop_button(std::string charge_point_id, uint8_t connector_id, OcppConnectorButton *stop_button);
+  void set_connector_enabled_switch(std::string charge_point_id, uint8_t connector_id,
+                                    OcppConnectorEnabledSwitch *enabled_switch);
+  void set_connector_restart_button(std::string charge_point_id, uint8_t connector_id,
+                                    OcppConnectorButton *restart_button);
 
   void setup() override;
   void loop() override;
@@ -114,12 +129,13 @@ class OcppServer : public Component {
 
   void disconnect();
   void remote_start(uint8_t connector_id);
-  void remote_start(uint8_t connector_id, std::string id_tag);
-  void remote_start(uint8_t connector_id, std::string id_tag, float current_limit);
   void remote_stop();
   void remote_stop_connector(uint8_t connector_id);
   void remote_stop(uint32_t transaction_id);
   void set_current_limit(uint8_t connector_id, float current_limit);
+  void set_connector_enabled(uint8_t connector_id, bool enabled);
+  bool is_connector_enabled(uint8_t connector_id) const;
+  void restart_connector_session(uint8_t connector_id);
   bool has_latest_current_import(uint8_t connector_id) const;
   bool has_latest_power_active_import(uint8_t connector_id) const;
   float get_latest_current_import(uint8_t connector_id) const;
@@ -183,6 +199,7 @@ class OcppServer : public Component {
   std::string charge_point_id_;
   bool handshake_done_{false};
   uint8_t pending_profile_connector_id_{0};
+  uint8_t pending_session_restart_connector_id_{0};
   float pending_profile_current_limit_{0.0f};
   std::array<PendingOcppCall, 4> pending_calls_{};
   uint32_t next_message_id_{1};

@@ -14,6 +14,14 @@
 
 ## Markdown Documentation
 
+### User vs Developer Documentation
+
+- The root `README.md` should contain only user-facing documentation: features, configuration reference, YAML examples,
+  and operational hints useful to someone installing or using the component.
+- Developer-facing implementation notes, design rationale, charger quirks observed during development, and future
+  engineering ideas should go under `docs/`, starting with `docs/development.md`.
+- If developer documentation grows too large, split `docs/development.md` into focused files under `docs/`.
+
 ### Tables
 
 - Keep Markdown tables fixed-width/aligned with padded columns for readability.

@@ -1,9 +1,9 @@
 # ESPHome OCPP Component
 
-ESPHome component for controlling OCPP EV chargers from a local ESPHome node.
+Component for controlling OCPP EV chargers from a local node.
 
 The first goal of this project is not to implement a full charging management
-system, but to provide enough OCPP support to let ESPHome:
+system, but to provide enough OCPP support to:
 
 - accept EV chargers as OCPP charge points,
 - authorize charging in private installations,
@@ -15,11 +15,11 @@ The initial target protocol is **OCPP 1.6J**.
 
 ## Intended Architecture
 
-The ESPHome device acts as a local OCPP central system / CSMS. EV chargers
-connect to the ESPHome node using WebSocket and send standard OCPP messages.
+The device acts as a local OCPP central system / CSMS. EV chargers connect to it
+using WebSocket and send standard OCPP messages.
 
 The component should keep policy decisions simple and expose enough state and
-controls for ESPHome automations or Home Assistant to decide what should happen.
+controls for automations or Home Assistant to decide what should happen.
 
 ## Example Configuration
 
@@ -67,12 +67,12 @@ ocpp:
             name: Garage Left Current
           power:
             name: Garage Left Power
+          enabled:
+            name: Garage Left Enabled
           current_limit:
             name: Garage Left Current Limit
-          start:
-            name: Garage Left Start
-          stop:
-            name: Garage Left Stop
+          restart:
+            name: Garage Left Restart Session
 
     - id: garage_right
       charge_point_id: GARAGE_RIGHT
@@ -85,12 +85,12 @@ ocpp:
             name: Garage Right Current
           power:
             name: Garage Right Power
+          enabled:
+            name: Garage Right Enabled
           current_limit:
             name: Garage Right Current Limit
-          start:
-            name: Garage Right Start
-          stop:
-            name: Garage Right Stop
+          restart:
+            name: Garage Right Restart Session
 ```
 
 ## Configuration Reference
@@ -113,7 +113,7 @@ configured as `10000` because `site.grid.max_power` is expressed in `W`.
 
 | Option                              | Description |
 | ---                                 | --- |
-| `id` (Optional)                     | ESPHome ID for this component. Configure it when referenced by automations. |
+| `id` (Optional)                     | Component ID. Configure it when referenced by automations. |
 | `server` (Optional)                 | Local OCPP WebSocket server configuration. Defaults are listed below. |
 | `authorization` (Optional)          | Authorization configuration. Defaults are listed below. |
 | `site` (Required)                   | Electrical site topology and optional power sources used for load sharing and protection. |
@@ -241,8 +241,7 @@ generator, can be added as additional subsections under `site`.
 ## Dynamic Grid Power Measurements
 
 For real load balancing, the component should be able to account for the current
-non-EV grid load. This can be provided by existing ESPHome sensors under
-`site.grid.power`.
+non-EV grid load. This can be provided by existing sensors under `site.grid.power`.
 
 Single-phase example:
 
@@ -372,10 +371,9 @@ remaining sessions are paused or left waiting. `first_connected` keeps existing
 sessions ahead of newer ones, so it behaves like denying new sessions when the
 available current is already fully allocated.
 
-`least_charged` requires live OCPP `MeterValues` containing
-`Energy.Active.Import.Register` during the transaction. If a charger does not
-provide live energy meter values, use a preference that does not depend on
-metered session energy, such as `first_connected`, `last_connected`, or
+`least_charged` requires live delivered-energy readings during the transaction.
+If a charger does not provide live energy values, use a preference that does not
+depend on metered session energy, such as `first_connected`, `last_connected`, or
 `round_robin`.
 
 ### Allocation Options
@@ -405,19 +403,19 @@ ocpp:
             name: Garage Left Current
           power:
             name: Garage Left Power
+          enabled:
+            name: Garage Left Enabled
           current_limit:
             name: Garage Left Current Limit
-          start:
-            name: Garage Left Start
-          stop:
-            name: Garage Left Stop
+          restart:
+            name: Garage Left Restart Session
 ```
 
 ### Charger Options
 
 | Option                       | Description |
 | ---                          | --- |
-| `id` (Required)              | ESPHome internal ID for this charger.<br>Example: `garage_left`. |
+| `id` (Required)              | Internal ID for this charger.<br>Example: `garage_left`. |
 | `charge_point_id` (Required) | OCPP identity expected in the WebSocket URL. |
 | `connectors` (Required)      | List of OCPP connectors. Each item must define at least `id`, `phases`, and `max_current`. |
 
@@ -430,12 +428,56 @@ ocpp:
 | `phase` (Conditionally required) | Required for single-phase connectors on three-phase sites.<br>Values: `L1`, `L2`, or `L3`. |
 | `phase_mapping` (Optional)       | Three-phase mapping. Defaults to `[L1, L2, L3]`.<br>Example: `[L2, L3, L1]`. |
 | `max_current` (Required)         | Physical maximum current in `A`, for example `16` or `32`. |
-| `id_tag` (Optional)              | OCPP idTag used by this connector's `start` button. Defaults to `ESPHome`. |
-| `current` (Optional)             | ESPHome sensor that receives this connector's latest OCPP `Current.Import` value from `MeterValues`, in `A`. Defaults to not configured. |
-| `power` (Optional)               | ESPHome sensor that receives this connector's latest OCPP `Power.Active.Import` value from `MeterValues`, in `W`. Defaults to not configured. |
-| `current_limit` (Optional)       | ESPHome number entity for this connector's requested charging current limit in `A`. Defaults: `min_value: 6`, `max_value: max_current`, `step: 1`. When changed during an active transaction, the component sends `SetChargingProfile`; otherwise it stores the value. The stored value is also applied when a transaction starts or when the connector resumes `Charging` after being suspended. If omitted, the `start` button sends `RemoteStartTransaction` without a charging profile. |
-| `start` (Optional)               | ESPHome button entity that sends `RemoteStartTransaction` for this connector. If `current_limit` is configured, the start command uses the number's current value and a transaction-scoped `SetChargingProfile` is sent after `StartTransaction`; otherwise no current limit is requested. |
-| `stop` (Optional)                | ESPHome button entity that sends `RemoteStopTransaction` for this connector's active transaction. |
+| `current` (Optional)             | Sensor that receives this connector's latest OCPP `Current.Import` value from `MeterValues`, in `A`. Defaults to not configured. |
+| `power` (Optional)               | Sensor that receives this connector's latest OCPP `Power.Active.Import` value from `MeterValues`, in `W`. Defaults to not configured. |
+| `enabled` (Optional)             | Switch for enabling or disabling charging on this connector. Defaults to enabled when omitted. Turning the switch off stops the active charging session when one is known. Turning it on starts a new charging session when none is active. |
+| `current_limit` (Optional)       | Number for this connector's requested charging current limit in `A`. Defaults: `min_value: 6`, `max_value: max_current`, `step: 1`. When changed during an active transaction, the component updates the charger's current limit; otherwise it stores the value. The stored value is also applied when a transaction starts or when the connector resumes `Charging` after being suspended. If omitted, a restart starts charging without an explicit current limit. |
+| `restart` (Optional)             | Button that restarts the charging session. |
+
+### Connector Enabled Switch
+
+The optional `enabled` switch is intended for automations or Home Assistant
+controls that should stop and start charging on a connector.
+
+```yaml
+connectors:
+  - id: 1
+    max_current: 16
+    enabled:
+      name: Garage Left Enabled
+```
+
+If `enabled` is omitted, the connector is treated as enabled. When the switch is
+turned off and an active transaction is known, the current charging session is
+stopped. When the switch is turned on again and no active transaction is known, a
+new charging session is started.
+
+When charging should resume, a new transaction is started and the normal current
+allocation logic applies.
+
+If there is not enough available current when the connector is enabled, the
+transaction can stay effectively paused or waiting until enough current is
+available, depending on the charger and the allocation strategy.
+
+### Connector Restart Button
+
+The optional `restart` button is a manual recovery control for restarting a
+connector session.
+
+```yaml
+connectors:
+  - id: 1
+    max_current: 16
+    restart:
+      name: Garage Left Restart Session
+```
+
+This is useful when the charger is connected but the component does not know the
+current transaction ID.
+
+When the connector is disabled, `restart` will not start a new transaction. If an
+active transaction is known, it may still stop that transaction, but automatic
+restart is suppressed until the connector is enabled.
 
 ### Connector Current Limit Number
 
@@ -451,18 +493,17 @@ connectors:
       min_value: 6
       max_value: 16
       step: 1
-    start:
-      name: Garage Left Start
-    stop:
-      name: Garage Left Stop
+    restart:
+      name: Garage Left Restart Session
 ```
 
 If `max_value` is omitted, it defaults to the connector's `max_current`. With
 `allocation.strategy: manual`, the current value of `current_limit` is this
 connector's requested allocation. The effective limit may be lower when needed
 to respect configured power-source limits or when `preference` pauses the
-connector. If `current_limit` is not configured, the start command is sent
-without a charging profile and the charger uses its own configured limit.
+connector. If `current_limit` is not configured, restarting the connector starts
+charging without an explicit current limit and the charger uses its own configured
+limit.
 
 ### Phase Mapping
 
@@ -488,58 +529,3 @@ connectors:
 
 Explicit phase mapping is useful when installers rotate phases between chargers
 to improve load balancing.
-
-## OCPP Messages for the First Version
-
-The first implementation should focus on the minimal OCPP 1.6J messages
-needed for local power management.
-
-Charger to ESPHome:
-
-- `BootNotification`
-- `Heartbeat`
-- `StatusNotification`
-- `Authorize`
-- `StartTransaction`
-- `StopTransaction`
-- `MeterValues`
-
-ESPHome to charger:
-
-- `SetChargingProfile`
-- `ClearChargingProfile`
-- `RemoteStartTransaction`
-- `RemoteStopTransaction`
-- `ChangeAvailability`
-- `Reset`
-
-`SetChargingProfile` is important because current limiting and load sharing are
-the primary goals of this component.
-
-## Minimal v1 Goals
-
-The first useful version should be able to:
-
-1. Accept charger WebSocket connections.
-2. Accept `BootNotification` and `Heartbeat`.
-3. Track connector state from `StatusNotification`.
-4. Authorize private charging for configured chargers according to the authorization policy.
-5. Track transactions using `StartTransaction` and `StopTransaction`.
-6. Read power in `W` and energy in `kWh` from `MeterValues`.
-7. Calculate current limits from the configured site and power-source constraints.
-8. Split available charging power between active connectors.
-9. Apply limits using OCPP smart charging profiles.
-
-## Out of Scope for v1
-
-The following features are intentionally not part of the first version:
-
-- RFID/user management
-- billing or session cost calculation
-- reservations
-- firmware updates
-- diagnostics upload
-- public charging workflows
-- OCPP 2.0.1
-- TLS/client certificate management
-- complex solar surplus optimization
