@@ -136,7 +136,7 @@ GRID_POWER_SCHEMA = cv.Schema(
 
 GRID_SCHEMA = cv.Schema(
     {
-        cv.Optional(CONF_MAX_POWER): cv.positive_float,
+        cv.Required(CONF_MAX_POWER): cv.positive_float,
         cv.Optional(CONF_MAX_PHASE_IMBALANCE): cv.positive_float,
         cv.Required(CONF_MAX_CURRENT): cv.positive_float,
         cv.Optional(CONF_POWER): GRID_POWER_SCHEMA,
@@ -221,8 +221,7 @@ async def to_code(config):
     if site := config.get(CONF_SITE):
         cg.add(var.set_site(site[CONF_PHASES], site[CONF_VOLTAGE]))
         if grid := site.get(CONF_GRID):
-            if CONF_MAX_POWER in grid:
-                cg.add(var.set_grid_max_power(grid[CONF_MAX_POWER]))
+            cg.add(var.set_grid_max_power(grid[CONF_MAX_POWER]))
             if CONF_MAX_PHASE_IMBALANCE in grid:
                 cg.add(var.set_grid_max_phase_imbalance(grid[CONF_MAX_PHASE_IMBALANCE]))
             cg.add(var.set_grid_max_current(grid[CONF_MAX_CURRENT]))

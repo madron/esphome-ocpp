@@ -81,7 +81,9 @@ exceeds any configured limit that applies to the connector.
 All three `max_current` options describe the electrical installation, such as the
 size of cables and the capacity of breakers or fuses. They are not car capability
 limits and they are not an expression of currently available power; available
-power is calculated separately from grid power limits and measurements.
+charging power is calculated separately from the grid draw limits and live site
+power measurements. Likewise, `site.grid.max_power` is the maximum total power
+that may be drawn from the grid, not the power reserved for EV charging.
 
 ## Minimal v1 Goals
 

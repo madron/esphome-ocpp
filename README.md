@@ -222,10 +222,13 @@ ocpp:
       max_current: 32
 ```
 
-The component can convert the available power to current internally:
+`grid.max_power` is the maximum total power that may be drawn from the grid, not
+the power reserved for EV charging. If no dynamic grid power measurement is
+configured, the component can only calculate static current headroom from that
+grid limit:
 
 ```text
-available_current = grid.max_power / voltage
+static_current_headroom = grid.max_power / voltage
 ```
 
 ### Three-Phase Site
@@ -261,7 +264,7 @@ generator, can be added as additional subsections under `site`.
 | Option                           | Description |
 | ---                              | --- |
 | `max_current` (Required)         | Physical grid current limit per phase in `A`, for example `32`. |
-| `max_power` (Optional)           | Maximum total grid power available for EV charging in `W`.<br>Defaults to no total grid power limit. |
+| `max_power` (Required)           | Maximum total power that may be drawn from the grid in `W`, for example `10000` for a 10 kW elecrical supply. This is the grid draw limit, not the power reserved for EV charging; available charging power depends on other site loads. |
 | `max_phase_imbalance` (Optional) | Grid phase imbalance limit in `W`, when the provider defines one.<br>Defaults to no imbalance-specific limit. |
 
 ## Dynamic Grid Power Measurements
@@ -306,7 +309,8 @@ ocpp:
 For a three-phase site, per-phase metering is the recommended configuration.
 The referenced sensors should represent the current grid/site power on each
 phase. The OCPP component can then compute how much additional power is
-available for EV charging on `L1`, `L2`, and `L3`.
+available for EV charging on `L1`, `L2`, and `L3` by subtracting the measured
+site load from the configured grid limits.
 
 Three-phase example with aggregate-only metering:
 
