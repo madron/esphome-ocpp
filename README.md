@@ -264,8 +264,9 @@ generator, can be added as additional subsections under `site`.
 | Option                           | Description |
 | ---                              | --- |
 | `max_current` (Required)         | Physical grid current limit per phase in `A`, for example `32`. |
-| `max_power` (Required)           | Maximum total power that may be drawn from the grid in `W`, for example `10000` for a 10 kW elecrical supply. This is the grid draw limit, not the power reserved for EV charging; available charging power depends on other site loads. |
+| `max_power` (Required)           | Maximum total power that may be drawn from the grid in `W`, for example `10000` for a 10 kW electrical supply. This is the grid draw limit, not the power reserved for EV charging; available charging power depends on other site loads. |
 | `max_phase_imbalance` (Optional) | Grid phase imbalance limit in `W`, when the provider defines one.<br>Defaults to no imbalance-specific limit. |
+| `power` (Optional)               | Grid power sensor configuration under `site.grid.power`. If omitted, the component assumes all of `grid.max_power` is available for charging. If other loads draw power from the grid and no power sensor is configured, configure a lower `max_power` to account for those loads. |
 
 ## Dynamic Grid Power Measurements
 
