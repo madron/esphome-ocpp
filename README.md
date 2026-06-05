@@ -79,7 +79,6 @@ ocpp:
       connectors:
         - id: 1
           phases: 1
-          phase: L1
           max_current: 32
           current:
             name: Garage Right Current
@@ -425,8 +424,7 @@ ocpp:
 | ---                              | --- |
 | `id` (Required)                  | OCPP connector ID. Usually `1` for single-connector chargers. |
 | `phases` (Required)              | Number of phases used by this connector. Values: `1` or `3`. |
-| `phase` (Conditionally required) | Required for single-phase connectors on three-phase sites.<br>Values: `L1`, `L2`, or `L3`. |
-| `phase_mapping` (Optional)       | Three-phase mapping. Defaults to `[L1, L2, L3]`.<br>Example: `[L2, L3, L1]`. |
+| `phase_mapping` (Optional)       | Connector-to-site phase mapping. Defaults to `[L1]` for `phases: 1` and `[L1, L2, L3]` for `phases: 3`.<br>For single-phase connectors, configure one phase, for example `[L2]`. For three-phase connectors, configure all three phases in physical order, for example `[L2, L3, L1]`. |
 | `max_current` (Required)         | Physical maximum current in `A`, for example `16` or `32`. |
 | `current` (Optional)             | Sensor that receives this connector's latest OCPP `Current.Import` value from `MeterValues`, in `A`. Defaults to not configured. |
 | `power` (Optional)               | Sensor that receives this connector's latest OCPP `Power.Active.Import` value from `MeterValues`, in `W`. Defaults to not configured. |
@@ -513,7 +511,7 @@ For a single-phase connector on a three-phase site:
 connectors:
   - id: 1
     phases: 1
-    phase: L2
+    phase_mapping: [L2]
     max_current: 32
 ```
 
