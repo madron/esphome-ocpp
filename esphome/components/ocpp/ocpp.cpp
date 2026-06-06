@@ -151,6 +151,21 @@ bool parse_float(const char *value, float *out) {
 
 bool valid_current_import(float value) { return std::isfinite(value) && value >= 0.0f; }
 
+bool current_sensor_value(sensor::Sensor *sensor, float *out) {
+  if (sensor == nullptr || out == nullptr || !std::isfinite(sensor->state))
+    return false;
+  *out = std::max(sensor->state, 0.0f);
+  return true;
+}
+
+bool drawn_current_changed(const std::array<float, 3> &a, const std::array<float, 3> &b) {
+  for (uint8_t i = 0; i < a.size(); i++) {
+    if (a[i] != b[i])
+      return true;
+  }
+  return false;
+}
+
 int phase_index(const char *phase) {
   if (phase == nullptr || phase[0] == '\0')
     return -1;
@@ -197,6 +212,29 @@ void OcppServer::add_charger(std::string charge_point_id, float max_current) {
   }
   configure_charger(&this->charger_, std::move(charge_point_id), max_current);
   this->has_charger_ = true;
+}
+
+void OcppServer::set_charger_drawn_current_sensor(std::string charge_point_id, sensor::Sensor *drawn_current_sensor) {
+  auto *charger = this->find_charger_(charge_point_id);
+  if (charger == nullptr)
+    return;
+  charger->drawn_current_sensor = drawn_current_sensor;
+}
+
+void OcppServer::set_charger_drawn_current_source_sensor(std::string charge_point_id,
+                                                         sensor::Sensor *drawn_current_source_sensor) {
+  auto *charger = this->find_charger_(charge_point_id);
+  if (charger == nullptr)
+    return;
+  charger->drawn_current_source_sensor = drawn_current_source_sensor;
+}
+
+void OcppServer::set_charger_drawn_current_source_phase_sensor(std::string charge_point_id, uint8_t phase,
+                                                               sensor::Sensor *drawn_current_source_sensor) {
+  auto *charger = this->find_charger_(charge_point_id);
+  if (charger == nullptr || phase >= 3)
+    return;
+  charger->drawn_current_source_sensors[phase] = drawn_current_source_sensor;
 }
 
 void OcppServer::add_connector(std::string charge_point_id, uint8_t connector_id, float max_current) {
@@ -353,6 +391,10 @@ void OcppServer::setup() {
     if (connector->enabled_switch != nullptr)
       connector->enabled_switch->publish_state(connector->enabled);
   }
+  if (this->has_charger_) {
+    this->update_charger_drawn_current_(&this->charger_);
+    this->publish_charger_drawn_current_if_configured_(&this->charger_);
+  }
 }
 
 void OcppServer::loop() {
@@ -360,6 +402,8 @@ void OcppServer::loop() {
     this->accept_client_();
   if (this->client_ != nullptr && this->client_->ready())
     this->read_client_();
+  if (this->has_charger_)
+    this->update_and_publish_charger_drawn_current_if_configured_(&this->charger_);
 }
 
 void OcppServer::dump_config() {
@@ -760,6 +804,40 @@ void OcppServer::publish_allocated_current_if_configured_(ConfiguredConnector *c
     connector->allocated_current_sensor->publish_state(connector->allocated_current);
 }
 
+bool OcppServer::update_charger_drawn_current_(ConfiguredCharger *charger) {
+  if (charger == nullptr)
+    return false;
+
+  std::array<float, 3> drawn_current{};
+  float source_current = 0.0f;
+  if (current_sensor_value(charger->drawn_current_source_sensor, &source_current)) {
+    drawn_current = charger_drawn_current_from_source(source_current);
+  } else if (charger->drawn_current_source_sensors[0] != nullptr || charger->drawn_current_source_sensors[1] != nullptr ||
+             charger->drawn_current_source_sensors[2] != nullptr) {
+    bool source_ready = true;
+    for (uint8_t i = 0; i < drawn_current.size(); i++)
+      source_ready = current_sensor_value(charger->drawn_current_source_sensors[i], &drawn_current[i]) && source_ready;
+    if (!source_ready)
+      drawn_current = charger_drawn_current_from_connectors(*charger);
+  } else {
+    drawn_current = charger_drawn_current_from_connectors(*charger);
+  }
+
+  const bool changed = drawn_current_changed(charger->latest_drawn_current, drawn_current);
+  charger->latest_drawn_current = drawn_current;
+  return changed;
+}
+
+void OcppServer::update_and_publish_charger_drawn_current_if_configured_(ConfiguredCharger *charger) {
+  if (this->update_charger_drawn_current_(charger))
+    this->publish_charger_drawn_current_if_configured_(charger);
+}
+
+void OcppServer::publish_charger_drawn_current_if_configured_(ConfiguredCharger *charger) {
+  if (charger != nullptr && charger->drawn_current_sensor != nullptr)
+    charger->drawn_current_sensor->publish_state(this->drawn_current_max_(*charger));
+}
+
 void OcppServer::reset_session_current_(ConfiguredConnector *connector) {
   reset_connector_session_current(connector);
 }
@@ -778,6 +856,12 @@ void OcppServer::publish_drawn_current_if_configured_(ConfiguredConnector *conne
     if (connector->drawn_current_sensors[i] != nullptr)
       connector->drawn_current_sensors[i]->publish_state(connector->latest_drawn_current[i]);
   }
+  if (this->has_charger_ && connector == &this->charger_.connector)
+    this->update_and_publish_charger_drawn_current_if_configured_(&this->charger_);
+}
+
+float OcppServer::drawn_current_max_(const ConfiguredCharger &charger) const {
+  return charger_drawn_current_max(charger);
 }
 
 float OcppServer::drawn_current_max_(const ConfiguredConnector &connector) const {

@@ -26,6 +26,7 @@ CONF_AVAILABLE_CURRENT = "available_current"
 CONF_ALLOCATED_CURRENT = "allocated_current"
 CONF_CURRENT_LIMIT = "current_limit"
 CONF_DRAWN_CURRENT = "drawn_current"
+CONF_DRAWN_CURRENT_SOURCE = "drawn_current_source"
 CONF_GRID = "grid"
 CONF_L1 = "l1"
 CONF_L2 = "l2"
@@ -65,6 +66,18 @@ DRAWN_CURRENT_PHASE_SCHEMA = cv.Schema(
 )
 
 DRAWN_CURRENT_SCHEMA = cv.Any(CURRENT_SENSOR_SCHEMA, DRAWN_CURRENT_PHASE_SCHEMA)
+
+DRAWN_CURRENT_SOURCE_PHASE_SCHEMA = cv.Schema(
+    {
+        cv.Required(CONF_L1): cv.use_id(sensor.Sensor),
+        cv.Required(CONF_L2): cv.use_id(sensor.Sensor),
+        cv.Required(CONF_L3): cv.use_id(sensor.Sensor),
+    }
+)
+
+DRAWN_CURRENT_SOURCE_SCHEMA = cv.Any(
+    cv.use_id(sensor.Sensor), DRAWN_CURRENT_SOURCE_PHASE_SCHEMA
+)
 
 
 def _validate_path(value):
@@ -210,6 +223,8 @@ CHARGER_SCHEMA = cv.Schema(
         cv.Required(CONF_ID): cv.string_strict,
         cv.Required(CONF_CHARGE_POINT_ID): cv.string_strict,
         cv.Required(CONF_MAX_CURRENT): cv.positive_float,
+        cv.Optional(CONF_DRAWN_CURRENT_SOURCE): DRAWN_CURRENT_SOURCE_SCHEMA,
+        cv.Optional(CONF_DRAWN_CURRENT): CURRENT_SENSOR_SCHEMA,
         cv.Required(CONF_CONNECTORS): cv.All(cv.ensure_list(CONNECTOR_SCHEMA), cv.Length(min=1, max=1)),
     }
 )
@@ -259,6 +274,29 @@ async def to_code(config):
                     cg.add(var.set_grid_power_aggregate_sensor(sens))
     for charger in config[CONF_CHARGERS]:
         cg.add(var.add_charger(charger[CONF_CHARGE_POINT_ID], charger[CONF_MAX_CURRENT]))
+        if drawn_current_source_config := charger.get(CONF_DRAWN_CURRENT_SOURCE):
+            if isinstance(drawn_current_source_config, dict):
+                for index, phase in enumerate((CONF_L1, CONF_L2, CONF_L3)):
+                    sens = await cg.get_variable(drawn_current_source_config[phase])
+                    cg.add(
+                        var.set_charger_drawn_current_source_phase_sensor(
+                            charger[CONF_CHARGE_POINT_ID], index, sens
+                        )
+                    )
+            else:
+                sens = await cg.get_variable(drawn_current_source_config)
+                cg.add(
+                    var.set_charger_drawn_current_source_sensor(
+                        charger[CONF_CHARGE_POINT_ID], sens
+                    )
+                )
+        if drawn_current_config := charger.get(CONF_DRAWN_CURRENT):
+            sens = await sensor.new_sensor(drawn_current_config)
+            cg.add(
+                var.set_charger_drawn_current_sensor(
+                    charger[CONF_CHARGE_POINT_ID], sens
+                )
+            )
         for connector in charger[CONF_CONNECTORS]:
             cg.add(
                 var.add_connector(

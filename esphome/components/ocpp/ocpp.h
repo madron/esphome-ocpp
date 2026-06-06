@@ -40,6 +40,10 @@ class OcppServer : public Component {
   void set_grid_power_l3_sensor(sensor::Sensor *sensor) { this->grid_power_l3_sensor_ = sensor; }
   void set_grid_power_aggregate_sensor(sensor::Sensor *sensor) { this->grid_power_aggregate_sensor_ = sensor; }
   void add_charger(std::string charge_point_id, float max_current);
+  void set_charger_drawn_current_sensor(std::string charge_point_id, sensor::Sensor *drawn_current_sensor);
+  void set_charger_drawn_current_source_sensor(std::string charge_point_id, sensor::Sensor *drawn_current_source_sensor);
+  void set_charger_drawn_current_source_phase_sensor(std::string charge_point_id, uint8_t phase,
+                                                     sensor::Sensor *drawn_current_source_sensor);
   void add_connector(std::string charge_point_id, uint8_t connector_id, float max_current);
   void set_connector_available_current_sensor(std::string charge_point_id, uint8_t connector_id,
                                               sensor::Sensor *available_current_sensor);
@@ -114,9 +118,13 @@ class OcppServer : public Component {
   void publish_connector_allocation_if_configured_(ConfiguredConnector *connector);
   void publish_available_current_if_configured_(ConfiguredConnector *connector);
   void publish_allocated_current_if_configured_(ConfiguredConnector *connector);
+  bool update_charger_drawn_current_(ConfiguredCharger *charger);
+  void update_and_publish_charger_drawn_current_if_configured_(ConfiguredCharger *charger);
+  void publish_charger_drawn_current_if_configured_(ConfiguredCharger *charger);
   void reset_session_current_(ConfiguredConnector *connector);
   void publish_current_if_configured_(ConfiguredConnector *connector);
   void publish_drawn_current_if_configured_(ConfiguredConnector *connector);
+  float drawn_current_max_(const ConfiguredCharger &charger) const;
   float drawn_current_max_(const ConfiguredConnector &connector) const;
   float effective_drawn_current_(const ConfiguredConnector &connector) const;
   void mark_transaction_started_(uint8_t connector_id, uint32_t transaction_id, const char *id_tag);

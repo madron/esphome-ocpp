@@ -46,8 +46,8 @@ command value, and the measured vehicle draw:
   to `0`. It must also respect the connector enabled state, connector
   `max_current`, and the requested `current_limit`.
 - `drawn_current` is the actual current in `A` drawn by the vehicle/charger. It is
-  represented internally as a three-value vector in site phase order: `L1`, `L2`,
-  and `L3`.
+  represented internally as a three-value vector in charger-local phase order:
+  `L1`, `L2`, and `L3`.
 
 `available_current` and `allocated_current` are both kept because they answer
 different operational questions. `available_current` explains what the allocator
@@ -73,8 +73,9 @@ site phase.
 ## Charger Drawn Current State Model
 
 Charger drawn current follows the same internal shape as connector drawn current:
-three current values in site phase order, `L1`, `L2`, and `L3`, expressed in `A`.
-This vector is internal state used for site-level accounting and diagnostics.
+three current values in charger-local phase order, `L1`, `L2`, and `L3`, expressed
+in `A`. This vector is internal state used for charger-level diagnostics and as an
+input to site-level accounting.
 
 The charger-level source and exposed sensor have intentionally different roles:
 
@@ -88,13 +89,13 @@ The charger-level source and exposed sensor have intentionally different roles:
 `drawn_current_source` should support both forms:
 
 1. A per-phase mapping with `l1`, `l2`, and `l3` sensor IDs. These values are read
-   as the charger current on each corresponding phase.
+   as the charger current on each corresponding charger-local phase.
 2. A single sensor ID. In this fallback form, the measured value is applied to all
    three charger phases. This is useful when the meter reports one balanced or
    aggregate current value and no phase-specific measurements are available.
 
 When no `drawn_current_source` is configured, charger drawn current is derived from
-connectors by summing connector `drawn_current` by site phase:
+connectors by summing connector `drawn_current` by charger-local phase:
 
 ```text
 charger_drawn_current[Lx] = sum(connector_drawn_current[Lx])
@@ -110,6 +111,12 @@ sensors for installations where connector OCPP metering is sufficient. It also
 keeps `drawn_current` as a read-only `sensor`: it describes observed or calculated
 state, while writable controls such as current limits remain `number` entities.
 
+Do not apply charger `phase_mapping` when reading `drawn_current_source` or when
+maintaining the charger internal `drawn_current` vector. Both are charger-local.
+Apply `phase_mapping` only at the boundary where charger-level current is passed to
+site-level calculations, so the site model receives currents in physical site phase
+order.
+
 ## OCPP Current Metering and Phase Mapping
 
 OCPP 1.6 `MeterValues` is connector-scoped: the message contains a `connectorId`,
@@ -123,18 +130,18 @@ The intended responsibility split is:
 1. The connector metering code converts OCPP `MeterValues` into a charger-phase
    current vector. It interprets the OCPP `phase` field and the configured charger
    phase count, but it does not apply charger-to-site phase rotation.
-2. The charger owns `phase_mapping`. After connector metering has produced values
-   in charger phase order, the charger maps those values to site phases using its
-   configured `phase_mapping`.
-3. Store `drawn_current` internally as a site-phase vector `[L1, L2, L3]` in `A`.
+2. The charger stores connector and charger `drawn_current` internally in
+   charger-local phase order `[L1, L2, L3]` in `A`.
+3. The charger owns `phase_mapping`. It maps charger-local drawn current to site
+   phases only when passing current data to site-level calculations.
 
 The model assumes all connectors on a charger use the same phase count as the
 charger. Mixed single-phase and three-phase connectors on the same charger are not
 modeled.
 
-For phase-specific `Current.Import` samples, the connector first records the values
-against the corresponding charger-local phases. The charger then translates those
-charger-local phases to site phases using its `phase_mapping`.
+For phase-specific `Current.Import` samples, the connector records the values
+against the corresponding charger-local phases. No phase mapping is applied while
+updating connector or charger internal `drawn_current` state.
 
 For a non-phase-specific `Current.Import` sample, the connector builds the
 charger-phase vector from the configured charger phase count. For a connector on a
@@ -142,7 +149,7 @@ single-phase charger, assign the value to the first charger-local phase and trea
 the other phases as `0 A`. For a connector on a three-phase charger, assume the
 value is a balanced per-phase current and assign it to all three charger-local
 phases. The charger then maps the resulting charger-phase vector to the site-phase
-vector.
+vector only when site-level calculations need physical site phase values.
 
 The balanced three-phase assumption is accurate for a three-phase car drawing
 balanced current from a three-phase charger. It is only an approximation for a
