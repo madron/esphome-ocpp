@@ -191,7 +191,8 @@ class OcppServer : public Component {
   ConfiguredConnector *find_active_transaction_connector_();
   ConfiguredConnector *find_transaction_connector_(uint32_t transaction_id);
   void note_transaction_id_(uint32_t transaction_id);
-  void update_connector_allocation_defaults_(ConfiguredConnector *connector);
+  void update_connector_allocation_(ConfiguredConnector *connector);
+  void publish_connector_allocation_if_configured_(ConfiguredConnector *connector);
   void publish_available_current_if_configured_(ConfiguredConnector *connector);
   void publish_allocated_current_if_configured_(ConfiguredConnector *connector);
   void reset_session_current_(ConfiguredConnector *connector);

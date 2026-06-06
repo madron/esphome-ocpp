@@ -209,7 +209,7 @@ void OcppServer::add_connector(std::string charge_point_id, uint8_t connector_id
   if (charger == nullptr)
     return;
   charger->connector = ConfiguredConnector{connector_id, std::min(charger->max_current, max_current)};
-  this->update_connector_allocation_defaults_(&charger->connector);
+  this->update_connector_allocation_(&charger->connector);
   charger->has_connector = true;
 }
 
@@ -270,6 +270,8 @@ void OcppServer::set_connector_current_limit_number(std::string charge_point_id,
   charger->connector.current_limit_number = current_limit_number;
   charger->connector.preferred_current_limit = initial_limit;
   charger->connector.has_preferred_current_limit = true;
+  this->update_connector_allocation_(&charger->connector);
+  this->publish_connector_allocation_if_configured_(&charger->connector);
   current_limit_number->set_parent(this, connector_id);
 }
 
@@ -345,9 +347,8 @@ void OcppServer::setup() {
   }
   if (this->has_charger_ && this->charger_.has_connector) {
     auto *connector = &this->charger_.connector;
-    this->update_connector_allocation_defaults_(connector);
-    this->publish_available_current_if_configured_(connector);
-    this->publish_allocated_current_if_configured_(connector);
+    this->update_connector_allocation_(connector);
+    this->publish_connector_allocation_if_configured_(connector);
     this->publish_drawn_current_if_configured_(connector);
     if (connector->enabled_switch != nullptr)
       connector->enabled_switch->publish_state(connector->enabled);
@@ -395,10 +396,15 @@ void OcppServer::disconnect() {
 }
 
 void OcppServer::remote_start(uint8_t connector_id) {
-  const auto *connector = this->find_connector_(connector_id);
-  if (connector != nullptr && connector->current_limit_number != nullptr) {
-    float current_limit = connector->has_preferred_current_limit ? connector->preferred_current_limit : connector->max_current;
-    this->remote_start_(connector_id, REMOTE_START_ID_TAG, true, current_limit);
+  auto *connector = this->find_connector_(connector_id);
+  if (connector != nullptr) {
+    this->update_connector_allocation_(connector);
+    this->publish_connector_allocation_if_configured_(connector);
+    if (connector->allocated_current <= 0.0f) {
+      ESP_LOGI(TAG, "Not starting connector session: connectorId=%u allocated_current=0.0 A", connector_id);
+      return;
+    }
+    this->remote_start_(connector_id, REMOTE_START_ID_TAG, true, connector->allocated_current);
     return;
   }
   this->remote_start_(connector_id, REMOTE_START_ID_TAG, false, 0.0f);
@@ -429,16 +435,6 @@ void OcppServer::remote_start_(uint8_t connector_id, std::string id_tag, bool us
     ESP_LOGW(TAG, "Clamping RemoteStartTransaction current limit %.1f A to configured connector maximum %.1f A",
              limit, connector->max_current);
     limit = connector->max_current;
-  }
-
-  if (use_current_limit && connector != nullptr) {
-    auto *mutable_connector = this->find_connector_(connector_id);
-    if (mutable_connector != nullptr) {
-      mutable_connector->preferred_current_limit = limit;
-      mutable_connector->has_preferred_current_limit = true;
-      if (mutable_connector->current_limit_number != nullptr)
-        mutable_connector->current_limit_number->publish_state(limit);
-    }
   }
 
   std::string payload = "{";
@@ -524,6 +520,9 @@ void OcppServer::set_current_limit(uint8_t connector_id, float current_limit) {
   if (connector != nullptr) {
     connector->preferred_current_limit = limit;
     connector->has_preferred_current_limit = true;
+    connector->charging_profile_applied = false;
+    this->update_connector_allocation_(connector);
+    this->publish_connector_allocation_if_configured_(connector);
     if (connector->current_limit_number != nullptr)
       connector->current_limit_number->publish_state(limit);
   }
@@ -543,7 +542,13 @@ void OcppServer::set_current_limit(uint8_t connector_id, float current_limit) {
     return;
   }
 
-  this->send_set_charging_profile_(connector_id, connector->active_transaction_id, limit);
+  if (connector->allocated_current <= 0.0f) {
+    ESP_LOGI(TAG, "Stopping connector %u because allocated_current=0.0 A", connector_id);
+    this->remote_stop(connector->active_transaction_id);
+    return;
+  }
+
+  this->send_set_charging_profile_(connector_id, connector->active_transaction_id, connector->allocated_current);
 }
 
 void OcppServer::set_connector_enabled(uint8_t connector_id, bool enabled) {
@@ -558,6 +563,8 @@ void OcppServer::set_connector_enabled(uint8_t connector_id, bool enabled) {
 
   connector->enabled = enabled;
   connector->charging_profile_applied = false;
+  this->update_connector_allocation_(connector);
+  this->publish_connector_allocation_if_configured_(connector);
   if (connector->enabled_switch != nullptr)
     connector->enabled_switch->publish_state(enabled);
 
@@ -577,7 +584,17 @@ void OcppServer::set_connector_enabled(uint8_t connector_id, bool enabled) {
   }
 
   if (connector->has_active_transaction) {
+    if (connector->allocated_current <= 0.0f) {
+      ESP_LOGI(TAG, "Stopping connector %u because allocated_current=0.0 A", connector_id);
+      this->remote_stop(connector->active_transaction_id);
+      return;
+    }
     ESP_LOGI(TAG, "Stored connector %u as enabled; transaction already active", connector_id);
+    this->send_set_charging_profile_(connector_id, connector->active_transaction_id, connector->allocated_current);
+    return;
+  }
+  if (connector->allocated_current <= 0.0f) {
+    ESP_LOGI(TAG, "Not starting connector session: connectorId=%u allocated_current=0.0 A", connector_id);
     return;
   }
   this->remote_start(connector_id);
@@ -755,13 +772,21 @@ void OcppServer::note_transaction_id_(uint32_t transaction_id) {
     this->next_transaction_id_ = transaction_id + 1;
 }
 
-void OcppServer::update_connector_allocation_defaults_(ConfiguredConnector *connector) {
+void OcppServer::update_connector_allocation_(ConfiguredConnector *connector) {
   if (connector == nullptr)
     return;
   // TODO: available_current currently uses the connector maximum as a placeholder. It should become dependent on
   // site availability, other active sessions, and the configured allocation policy.
   connector->available_current = connector->max_current;
-  connector->allocated_current = effective_allocated_current(connector->available_current, DEFAULT_ALLOCATION_MIN_CURRENT);
+  const float requested_current = connector->has_preferred_current_limit ? connector->preferred_current_limit : connector->max_current;
+  connector->allocated_current = effective_allocated_current(connector->available_current, connector->max_current,
+                                                            requested_current, DEFAULT_ALLOCATION_MIN_CURRENT,
+                                                            connector->enabled);
+}
+
+void OcppServer::publish_connector_allocation_if_configured_(ConfiguredConnector *connector) {
+  this->publish_available_current_if_configured_(connector);
+  this->publish_allocated_current_if_configured_(connector);
 }
 
 void OcppServer::publish_available_current_if_configured_(ConfiguredConnector *connector) {
@@ -878,15 +903,20 @@ void OcppServer::send_preferred_current_limit_if_needed_(uint8_t connector_id) {
   auto *connector = this->find_connector_(connector_id);
   if (connector == nullptr || connector->charging_profile_applied)
     return;
+  this->update_connector_allocation_(connector);
+  this->publish_connector_allocation_if_configured_(connector);
   if (!connector->enabled)
-    return;
-  if (!connector->has_preferred_current_limit)
     return;
   if (!connector->has_active_transaction) {
     ESP_LOGD(TAG, "Deferring SetChargingProfile for connectorId=%u; no active transaction ID is known yet", connector_id);
     return;
   }
-  this->send_set_charging_profile_(connector_id, connector->active_transaction_id, connector->preferred_current_limit);
+  if (connector->allocated_current <= 0.0f) {
+    ESP_LOGI(TAG, "Stopping connector %u because allocated_current=0.0 A", connector_id);
+    this->remote_stop(connector->active_transaction_id);
+    return;
+  }
+  this->send_set_charging_profile_(connector_id, connector->active_transaction_id, connector->allocated_current);
 }
 
 std::string OcppServer::next_unique_id_(const char *prefix) {
@@ -1192,18 +1222,31 @@ void OcppServer::handle_start_transaction_(const std::string &unique_id, JsonObj
                          ",\"idTagInfo\":{\"status\":\"Accepted\"}}]";
   this->send_ws_text_(response);
 
-  const auto *started_connector = this->find_connector_(connector_id);
-  if (started_connector != nullptr && !started_connector->enabled) {
-    ESP_LOGI(TAG, "Stopping transaction %u because connector %d is disabled", transaction_id, connector_id);
-    this->remote_stop(transaction_id);
-    this->pending_profile_connector_id_ = 0;
-    this->pending_profile_current_limit_ = 0.0f;
-    return;
+  auto *started_connector = this->find_connector_(connector_id);
+  if (started_connector != nullptr) {
+    this->update_connector_allocation_(started_connector);
+    this->publish_connector_allocation_if_configured_(started_connector);
+    if (!started_connector->enabled) {
+      ESP_LOGI(TAG, "Stopping transaction %u because connector %d is disabled", transaction_id, connector_id);
+      this->remote_stop(transaction_id);
+      this->pending_profile_connector_id_ = 0;
+      this->pending_profile_current_limit_ = 0.0f;
+      return;
+    }
+    if (started_connector->allocated_current <= 0.0f) {
+      ESP_LOGI(TAG, "Stopping transaction %u because connector %d allocated_current=0.0 A", transaction_id,
+               connector_id);
+      this->remote_stop(transaction_id);
+      this->pending_profile_connector_id_ = 0;
+      this->pending_profile_current_limit_ = 0.0f;
+      return;
+    }
   }
 
   if (this->pending_profile_current_limit_ > 0.0f && this->pending_profile_connector_id_ == connector_id) {
-    this->send_set_charging_profile_(static_cast<uint8_t>(connector_id), transaction_id,
-                                     this->pending_profile_current_limit_);
+    float allocated_current = started_connector != nullptr ? started_connector->allocated_current
+                                                           : this->pending_profile_current_limit_;
+    this->send_set_charging_profile_(static_cast<uint8_t>(connector_id), transaction_id, allocated_current);
     this->pending_profile_connector_id_ = 0;
     this->pending_profile_current_limit_ = 0.0f;
   }

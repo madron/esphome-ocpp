@@ -120,6 +120,22 @@ int main() {
   assert_equal("allocated_current_rejects_infinite_values",
                effective_allocated_current(std::numeric_limits<float>::infinity(), 6.0f), 0.0f);
 
+  // allocated_current_respects_connector_maximum
+  assert_equal("allocated_current_respects_connector_maximum",
+               effective_allocated_current(32.0f, 16.0f, 32.0f, 6.0f, true), 16.0f);
+
+  // allocated_current_respects_requested_current_limit
+  assert_equal("allocated_current_respects_requested_current_limit",
+               effective_allocated_current(16.0f, 16.0f, 10.0f, 6.0f, true), 10.0f);
+
+  // allocated_current_is_zero_when_requested_limit_below_minimum
+  assert_equal("allocated_current_is_zero_when_requested_limit_below_minimum",
+               effective_allocated_current(16.0f, 16.0f, 4.0f, 6.0f, true), 0.0f);
+
+  // allocated_current_respects_enabled_state
+  assert_equal("allocated_current_respects_enabled_state",
+               effective_allocated_current(16.0f, 16.0f, 16.0f, 6.0f, false), 0.0f);
+
   // effective_drawn_current_inactive_is_zero
   ConnectorCurrentState current_state;
   current_state.is_charging = false;

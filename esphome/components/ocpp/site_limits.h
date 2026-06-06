@@ -43,11 +43,20 @@ inline float divide_or_zero(float numerator, float denominator) {
 
 inline uint8_t site_active_phases(const SiteLimitConfig &config) { return config.phases == 3 ? 3 : 1; }
 
-inline float effective_allocated_current(float available_current, float min_current) {
-  const float clamped_available = clamp_finite_non_negative(available_current);
-  if (min_current > 0.0f && clamped_available < min_current)
+inline float effective_allocated_current(float available_current, float max_current, float requested_current,
+                                        float min_current, bool enabled) {
+  if (!enabled)
     return 0.0f;
-  return clamped_available;
+  const float effective_current = std::min({clamp_finite_non_negative(available_current),
+                                           clamp_finite_non_negative(max_current),
+                                           clamp_finite_non_negative(requested_current)});
+  if (min_current > 0.0f && effective_current < min_current)
+    return 0.0f;
+  return effective_current;
+}
+
+inline float effective_allocated_current(float available_current, float min_current) {
+  return effective_allocated_current(available_current, available_current, available_current, min_current, true);
 }
 
 inline float effective_connector_drawn_current(const ConnectorCurrentState &state) {

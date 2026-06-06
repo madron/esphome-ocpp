@@ -43,7 +43,8 @@ command value, and the measured vehicle draw:
 - `allocated_current` is the effective current in `A` after charger constraints
   are applied. If `available_current` is below the configured minimum charging
   current, currently `allocation.min_current` with a default of `6`, it is clamped
-  to `0`.
+  to `0`. It must also respect the connector enabled state, connector
+  `max_current`, and the requested `current_limit`.
 - `drawn_current` is the actual current in `A` drawn by the vehicle/charger. It is
   represented internally as a three-value vector in site phase order: `L1`, `L2`,
   and `L3`.
