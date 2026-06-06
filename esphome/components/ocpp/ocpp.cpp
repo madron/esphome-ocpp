@@ -189,29 +189,42 @@ void OcppServer::set_path(std::string path) {
 }
 
 void OcppServer::set_site(uint8_t phases, float voltage) {
-  this->site_limits_.phases = phases == 3 ? 3 : 1;
-  this->site_limits_.voltage = voltage;
+  configure_site(&this->site_, phases, voltage);
 }
 
 void OcppServer::set_grid_max_power(float max_power) {
-  this->site_limits_.grid_max_power = max_power;
+  this->site_.limits.grid_max_power = max_power;
 }
 
 void OcppServer::set_grid_max_phase_imbalance(float max_phase_imbalance) {
-  this->site_limits_.grid_max_phase_imbalance = max_phase_imbalance;
+  this->site_.limits.grid_max_phase_imbalance = max_phase_imbalance;
 }
 
 void OcppServer::set_grid_max_current(float max_current) {
-  this->site_limits_.grid_max_current = max_current;
+  this->site_.limits.grid_max_current = max_current;
 }
 
-void OcppServer::add_charger(std::string charge_point_id, float max_current) {
+void OcppServer::set_site_drawn_current_sensor(uint8_t phase, sensor::Sensor *drawn_current_sensor) {
+  if (phase >= this->site_.drawn_current_sensors.size())
+    return;
+  this->site_.drawn_current_sensors[phase] = drawn_current_sensor;
+}
+
+void OcppServer::add_charger(std::string charge_point_id, float max_current, uint8_t phases) {
   if (this->has_charger_ && charger_has_charge_point_id(this->charger_, charge_point_id)) {
     this->charger_.max_current = max_current;
+    this->charger_.phases = phases == 3 ? 3 : 1;
     return;
   }
-  configure_charger(&this->charger_, std::move(charge_point_id), max_current);
+  configure_charger(&this->charger_, std::move(charge_point_id), max_current, phases);
   this->has_charger_ = true;
+}
+
+void OcppServer::set_charger_phase_mapping(std::string charge_point_id, uint8_t charger_phase, uint8_t site_phase) {
+  auto *charger = this->find_charger_(charge_point_id);
+  if (charger == nullptr || charger_phase >= 3 || site_phase >= 3)
+    return;
+  charger->phase_mapping[charger_phase] = site_phase;
 }
 
 void OcppServer::set_charger_drawn_current_sensor(std::string charge_point_id, sensor::Sensor *drawn_current_sensor) {
@@ -395,6 +408,8 @@ void OcppServer::setup() {
     this->update_charger_drawn_current_(&this->charger_);
     this->publish_charger_drawn_current_if_configured_(&this->charger_);
   }
+  this->update_site_drawn_current_();
+  this->publish_site_drawn_current_if_configured_();
 }
 
 void OcppServer::loop() {
@@ -404,18 +419,19 @@ void OcppServer::loop() {
     this->read_client_();
   if (this->has_charger_)
     this->update_and_publish_charger_drawn_current_if_configured_(&this->charger_);
+  this->update_and_publish_site_drawn_current_if_configured_();
 }
 
 void OcppServer::dump_config() {
   ESP_LOGCONFIG(TAG, "OCPP server:");
   ESP_LOGCONFIG(TAG, "  Listen: 0.0.0.0:%u%s", this->port_, this->path_.c_str());
-  ESP_LOGCONFIG(TAG, "  Site: phases=%u voltage=%.1f V", this->site_limits_.phases, this->site_limits_.voltage);
-  if (this->site_limits_.grid_max_power.has_value())
-    ESP_LOGCONFIG(TAG, "    Grid max_power=%.0f W", this->site_limits_.grid_max_power.value());
-  if (this->site_limits_.grid_max_phase_imbalance.has_value())
-    ESP_LOGCONFIG(TAG, "    Grid max_phase_imbalance=%.0f W", this->site_limits_.grid_max_phase_imbalance.value());
-  if (this->site_limits_.grid_max_current.has_value())
-    ESP_LOGCONFIG(TAG, "    Grid max_current=%.1f A per phase", this->site_limits_.grid_max_current.value());
+  ESP_LOGCONFIG(TAG, "  Site: phases=%u voltage=%.1f V", this->site_.limits.phases, this->site_.limits.voltage);
+  if (this->site_.limits.grid_max_power.has_value())
+    ESP_LOGCONFIG(TAG, "    Grid max_power=%.0f W", this->site_.limits.grid_max_power.value());
+  if (this->site_.limits.grid_max_phase_imbalance.has_value())
+    ESP_LOGCONFIG(TAG, "    Grid max_phase_imbalance=%.0f W", this->site_.limits.grid_max_phase_imbalance.value());
+  if (this->site_.limits.grid_max_current.has_value())
+    ESP_LOGCONFIG(TAG, "    Grid max_current=%.1f A per phase", this->site_.limits.grid_max_current.value());
   ESP_LOGCONFIG(TAG, "  Configured charger: %s", this->has_charger_ ? this->charger_.charge_point_id.c_str() : "none");
   if (this->has_charger_)
     ESP_LOGCONFIG(TAG, "    Charger max_current=%.1f A per phase", this->charger_.max_current);
@@ -838,6 +854,19 @@ void OcppServer::publish_charger_drawn_current_if_configured_(ConfiguredCharger 
     charger->drawn_current_sensor->publish_state(this->drawn_current_max_(*charger));
 }
 
+bool OcppServer::update_site_drawn_current_() {
+  return update_site_drawn_current(&this->site_, this->has_charger_ ? &this->charger_ : nullptr);
+}
+
+void OcppServer::update_and_publish_site_drawn_current_if_configured_() {
+  if (this->update_site_drawn_current_())
+    this->publish_site_drawn_current_if_configured_();
+}
+
+void OcppServer::publish_site_drawn_current_if_configured_() {
+  publish_site_drawn_current_if_configured(&this->site_);
+}
+
 void OcppServer::reset_session_current_(ConfiguredConnector *connector) {
   reset_connector_session_current(connector);
 }
@@ -856,8 +885,10 @@ void OcppServer::publish_drawn_current_if_configured_(ConfiguredConnector *conne
     if (connector->drawn_current_sensors[i] != nullptr)
       connector->drawn_current_sensors[i]->publish_state(connector->latest_drawn_current[i]);
   }
-  if (this->has_charger_ && connector == &this->charger_.connector)
+  if (this->has_charger_ && connector == &this->charger_.connector) {
     this->update_and_publish_charger_drawn_current_if_configured_(&this->charger_);
+    this->update_and_publish_site_drawn_current_if_configured_();
+  }
 }
 
 float OcppServer::drawn_current_max_(const ConfiguredCharger &charger) const {
@@ -1330,6 +1361,9 @@ void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject p
   int connector_id = payload["connectorId"] | -1;
   int transaction_id = payload["transactionId"] | -1;
   auto *connector = this->find_connector_(connector_id);
+  uint8_t connector_phases = 3;
+  if (this->has_charger_ && connector == &this->charger_.connector)
+    connector_phases = this->charger_.phases;
   bool current_updated = false;
   bool power_updated = false;
   if (transaction_id >= 0) {
@@ -1369,11 +1403,11 @@ void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject p
               connector->has_session_current_import = connector->is_charging;
               if (connector->is_charging) {
                 int current_phase = phase_index(phase);
-                if (current_phase >= 0) {
+                if (current_phase >= 0 && current_phase < connector_phases) {
                   connector->latest_drawn_current[current_phase] = parsed_value;
                 } else if (phase[0] == '\0') {
-                  for (auto &phase_current : connector->latest_drawn_current)
-                    phase_current = parsed_value;
+                  for (uint8_t i = 0; i < connector->latest_drawn_current.size(); i++)
+                    connector->latest_drawn_current[i] = i < connector_phases ? parsed_value : 0.0f;
                 } else {
                   ESP_LOGD(TAG, "Ignoring Current.Import phase '%s' for drawn_current sensors", phase);
                 }

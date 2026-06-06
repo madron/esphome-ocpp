@@ -1,7 +1,7 @@
 #pragma once
 
 #include "charger.h"
-#include "site_limits.h"
+#include "site.h"
 
 #include "esphome/components/json/json_util.h"
 #include "esphome/components/sensor/sensor.h"
@@ -35,11 +35,16 @@ class OcppServer : public Component {
   void set_grid_max_power(float max_power);
   void set_grid_max_phase_imbalance(float max_phase_imbalance);
   void set_grid_max_current(float max_current);
-  void set_grid_power_l1_sensor(sensor::Sensor *sensor) { this->grid_power_l1_sensor_ = sensor; }
-  void set_grid_power_l2_sensor(sensor::Sensor *sensor) { this->grid_power_l2_sensor_ = sensor; }
-  void set_grid_power_l3_sensor(sensor::Sensor *sensor) { this->grid_power_l3_sensor_ = sensor; }
-  void set_grid_power_aggregate_sensor(sensor::Sensor *sensor) { this->grid_power_aggregate_sensor_ = sensor; }
-  void add_charger(std::string charge_point_id, float max_current);
+  void set_grid_power_l1_sensor(sensor::Sensor *sensor) { this->site_.grid_power_l1_sensor = sensor; }
+  void set_grid_power_l2_sensor(sensor::Sensor *sensor) { this->site_.grid_power_l2_sensor = sensor; }
+  void set_grid_power_l3_sensor(sensor::Sensor *sensor) { this->site_.grid_power_l3_sensor = sensor; }
+  void set_grid_power_aggregate_sensor(sensor::Sensor *sensor) { this->site_.grid_power_aggregate_sensor = sensor; }
+  void set_site_drawn_current_max_sensor(sensor::Sensor *drawn_current_sensor) {
+    this->site_.drawn_current_sensor = drawn_current_sensor;
+  }
+  void set_site_drawn_current_sensor(uint8_t phase, sensor::Sensor *drawn_current_sensor);
+  void add_charger(std::string charge_point_id, float max_current, uint8_t phases = 3);
+  void set_charger_phase_mapping(std::string charge_point_id, uint8_t charger_phase, uint8_t site_phase);
   void set_charger_drawn_current_sensor(std::string charge_point_id, sensor::Sensor *drawn_current_sensor);
   void set_charger_drawn_current_source_sensor(std::string charge_point_id, sensor::Sensor *drawn_current_source_sensor);
   void set_charger_drawn_current_source_phase_sensor(std::string charge_point_id, uint8_t phase,
@@ -121,6 +126,9 @@ class OcppServer : public Component {
   bool update_charger_drawn_current_(ConfiguredCharger *charger);
   void update_and_publish_charger_drawn_current_if_configured_(ConfiguredCharger *charger);
   void publish_charger_drawn_current_if_configured_(ConfiguredCharger *charger);
+  bool update_site_drawn_current_();
+  void update_and_publish_site_drawn_current_if_configured_();
+  void publish_site_drawn_current_if_configured_();
   void reset_session_current_(ConfiguredConnector *connector);
   void publish_current_if_configured_(ConfiguredConnector *connector);
   void publish_drawn_current_if_configured_(ConfiguredConnector *connector);
@@ -141,11 +149,7 @@ class OcppServer : public Component {
 
   uint16_t port_{9000};
   std::string path_{"/ocpp"};
-  SiteLimitConfig site_limits_;
-  sensor::Sensor *grid_power_l1_sensor_{nullptr};
-  sensor::Sensor *grid_power_l2_sensor_{nullptr};
-  sensor::Sensor *grid_power_l3_sensor_{nullptr};
-  sensor::Sensor *grid_power_aggregate_sensor_{nullptr};
+  ConfiguredSite site_;
   ConfiguredCharger charger_;
   bool has_charger_{false};
   std::unique_ptr<socket::ListenSocket> server_;

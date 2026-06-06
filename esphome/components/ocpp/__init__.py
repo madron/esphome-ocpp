@@ -35,6 +35,7 @@ CONF_AGGREGATE = "aggregate"
 CONF_MAX_CURRENT = "max_current"
 CONF_MAX_PHASE_IMBALANCE = "max_phase_imbalance"
 CONF_MAX_POWER = "max_power"
+CONF_PHASE_MAPPING = "phase_mapping"
 CONF_PHASES = "phases"
 CONF_ENABLED = "enabled"
 CONF_RESTART = "restart"
@@ -48,6 +49,8 @@ OcppServer = ocpp_ns.class_("OcppServer", cg.Component)
 OcppConnectorButton = ocpp_ns.class_("OcppConnectorButton", button.Button)
 OcppConnectorEnabledSwitch = ocpp_ns.class_("OcppConnectorEnabledSwitch", switch.Switch)
 OcppCurrentLimitNumber = ocpp_ns.class_("OcppCurrentLimitNumber", number.Number)
+
+PHASE_TO_INDEX = {CONF_L1.upper(): 0, CONF_L2.upper(): 1, CONF_L3.upper(): 2}
 
 
 CURRENT_SENSOR_SCHEMA = sensor.sensor_schema(
@@ -94,6 +97,13 @@ def _consume_ocpp_sockets(config):
     return config
 
 
+def _phase_name(value):
+    value = cv.string_strict(value).upper()
+    if value not in PHASE_TO_INDEX:
+        raise cv.Invalid("phase must be one of L1, L2 or L3")
+    return value
+
+
 def _validate_chargers(value):
     charge_point_ids = set()
     charger_ids = set()
@@ -107,6 +117,20 @@ def _validate_chargers(value):
         if charge_point_id in charge_point_ids:
             raise cv.Invalid(f"Duplicate charge_point_id '{charge_point_id}'")
         charge_point_ids.add(charge_point_id)
+
+        phases = charger[CONF_PHASES]
+        phase_mapping = charger.setdefault(
+            CONF_PHASE_MAPPING,
+            ["L1"] if phases == 1 else ["L1", "L2", "L3"],
+        )
+        if len(phase_mapping) != phases:
+            raise cv.Invalid(
+                f"phase_mapping for charger '{charger_id}' must contain exactly {phases} phase(s)"
+            )
+        if phases == 3 and set(phase_mapping) != set(PHASE_TO_INDEX):
+            raise cv.Invalid(
+                f"three-phase charger '{charger_id}' must map all of L1, L2 and L3 exactly once"
+            )
 
         connector_ids = set()
         for connector in charger[CONF_CONNECTORS]:
@@ -135,6 +159,7 @@ def _validate_site(value):
     phases = value[CONF_PHASES]
     grid = value.get(CONF_GRID, {})
     power = grid.get(CONF_POWER, {})
+    drawn_current = value.get(CONF_DRAWN_CURRENT, {})
     has_aggregate = CONF_AGGREGATE in power
     phase_keys = (CONF_L1, CONF_L2, CONF_L3)
     configured_phases = [phase for phase in phase_keys if phase in power]
@@ -142,6 +167,8 @@ def _validate_site(value):
     if phases == 1:
         if CONF_L2 in power or CONF_L3 in power:
             raise cv.Invalid("single-phase sites may only configure grid.power.l1")
+        if CONF_L2 in drawn_current or CONF_L3 in drawn_current:
+            raise cv.Invalid("single-phase sites may only configure drawn_current.l1")
         if has_aggregate:
             raise cv.Invalid("single-phase sites should use grid.power.l1 instead of grid.power.aggregate")
     elif configured_phases and len(configured_phases) != 3:
@@ -182,6 +209,7 @@ SITE_SCHEMA = cv.All(
         {
             cv.Required(CONF_PHASES): cv.one_of(1, 3, int=True),
             cv.Required(CONF_VOLTAGE): cv.positive_float,
+            cv.Optional(CONF_DRAWN_CURRENT): DRAWN_CURRENT_SCHEMA,
             cv.Optional(CONF_GRID): GRID_SCHEMA,
         }
     ),
@@ -223,6 +251,10 @@ CHARGER_SCHEMA = cv.Schema(
         cv.Required(CONF_ID): cv.string_strict,
         cv.Required(CONF_CHARGE_POINT_ID): cv.string_strict,
         cv.Required(CONF_MAX_CURRENT): cv.positive_float,
+            cv.Required(CONF_PHASES): cv.one_of(1, 3, int=True),
+            cv.Optional(CONF_PHASE_MAPPING): cv.All(
+                cv.ensure_list(_phase_name), cv.Length(min=1, max=3)
+            ),
         cv.Optional(CONF_DRAWN_CURRENT_SOURCE): DRAWN_CURRENT_SOURCE_SCHEMA,
         cv.Optional(CONF_DRAWN_CURRENT): CURRENT_SENSOR_SCHEMA,
         cv.Required(CONF_CONNECTORS): cv.All(cv.ensure_list(CONNECTOR_SCHEMA), cv.Length(min=1, max=1)),
@@ -254,6 +286,15 @@ async def to_code(config):
     cg.add(var.set_path(server[CONF_PATH]))
     if site := config.get(CONF_SITE):
         cg.add(var.set_site(site[CONF_PHASES], site[CONF_VOLTAGE]))
+        if drawn_current_config := site.get(CONF_DRAWN_CURRENT):
+            if any(phase in drawn_current_config for phase in (CONF_L1, CONF_L2, CONF_L3)):
+                for index, phase in enumerate((CONF_L1, CONF_L2, CONF_L3)):
+                    if phase in drawn_current_config:
+                        sens = await sensor.new_sensor(drawn_current_config[phase])
+                        cg.add(var.set_site_drawn_current_sensor(index, sens))
+            else:
+                sens = await sensor.new_sensor(drawn_current_config)
+                cg.add(var.set_site_drawn_current_max_sensor(sens))
         if grid := site.get(CONF_GRID):
             cg.add(var.set_grid_max_power(grid[CONF_MAX_POWER]))
             if CONF_MAX_PHASE_IMBALANCE in grid:
@@ -273,7 +314,17 @@ async def to_code(config):
                     sens = await cg.get_variable(power[CONF_AGGREGATE])
                     cg.add(var.set_grid_power_aggregate_sensor(sens))
     for charger in config[CONF_CHARGERS]:
-        cg.add(var.add_charger(charger[CONF_CHARGE_POINT_ID], charger[CONF_MAX_CURRENT]))
+        cg.add(
+            var.add_charger(
+                charger[CONF_CHARGE_POINT_ID], charger[CONF_MAX_CURRENT], charger[CONF_PHASES]
+            )
+        )
+        for index, site_phase in enumerate(charger[CONF_PHASE_MAPPING]):
+            cg.add(
+                var.set_charger_phase_mapping(
+                    charger[CONF_CHARGE_POINT_ID], index, PHASE_TO_INDEX[site_phase]
+                )
+            )
         if drawn_current_source_config := charger.get(CONF_DRAWN_CURRENT_SOURCE):
             if isinstance(drawn_current_source_config, dict):
                 for index, phase in enumerate((CONF_L1, CONF_L2, CONF_L3)):

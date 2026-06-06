@@ -38,6 +38,7 @@ int main() {
   assert_true("configure_charger_sets_charge_point_id", charger_has_charge_point_id(charger, "wallbox"));
   assert_false("configure_charger_resets_connector", charger.has_connector);
   assert_equal("configure_charger_sets_max_current", charger.max_current, 32.0f);
+  assert_equal("configure_charger_defaults_to_three_phases", charger.phases, static_cast<uint8_t>(3));
   assert_equal("configure_charger_resets_drawn_current", charger_drawn_current_max(charger), 0.0f);
 
   assert_equal("effective_connector_max_current_uses_charger_limit", effective_connector_max_current(16.0f, 32.0f),
@@ -61,6 +62,9 @@ int main() {
   assert_equal("charger_drawn_current_sums_l3", connector_drawn_current[2], 4.0f);
   update_charger_drawn_current_from_connectors(&charger);
   assert_equal("charger_drawn_current_max_uses_highest_phase", charger_drawn_current_max(charger), 8.0f);
+
+  charger.connector = ConfiguredConnector{2, 16.0f};
+  charger.has_connector = true;
 
   assert_true("find_configured_connector_matches_id", find_configured_connector(&charger, 2) == &charger.connector);
   assert_true("find_configured_connector_rejects_other_id", find_configured_connector(&charger, 3) == nullptr);

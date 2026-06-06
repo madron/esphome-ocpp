@@ -11,6 +11,8 @@ namespace esphome::ocpp {
 struct ConfiguredCharger {
   std::string charge_point_id;
   float max_current{0.0f};
+  uint8_t phases{3};
+  std::array<uint8_t, 3> phase_mapping{0, 1, 2};
   sensor::Sensor *drawn_current_sensor{nullptr};
   sensor::Sensor *drawn_current_source_sensor{nullptr};
   std::array<sensor::Sensor *, 3> drawn_current_source_sensors{};
@@ -19,7 +21,7 @@ struct ConfiguredCharger {
   bool has_connector{false};
 };
 
-void configure_charger(ConfiguredCharger *charger, std::string charge_point_id, float max_current);
+void configure_charger(ConfiguredCharger *charger, std::string charge_point_id, float max_current, uint8_t phases = 3);
 bool charger_has_charge_point_id(const ConfiguredCharger &charger, const std::string &charge_point_id);
 float effective_connector_max_current(float charger_max_current, float connector_max_current);
 float charger_drawn_current_max(const ConfiguredCharger &charger);

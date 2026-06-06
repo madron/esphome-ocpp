@@ -32,6 +32,8 @@ site, chargers, and connectors. Each level has a different responsibility.
   of available phases, the phase-to-neutral voltage in `V`, optional grid limits,
   and optional grid power measurements. Site limits apply to all configured EV
   charging and are used by the allocator to decide how much current is available.
+  Site EV current draw can be exposed as scalar or per-phase `drawn_current`
+  sensors.
 - A `charger` describes one OCPP charge point that connects to this component.
   It is identified by its `charge_point_id`, which must match the identity used
   by the charger in the WebSocket URL. Charger-level configuration is about
@@ -69,6 +71,13 @@ ocpp:
   site:
     phases: 3
     voltage: 230
+    drawn_current:
+      l1:
+        name: Site EV Drawn Current L1
+      l2:
+        name: Site EV Drawn Current L2
+      l3:
+        name: Site EV Drawn Current L3
     grid:
       max_power: 10000
       max_phase_imbalance: 6000
@@ -273,11 +282,54 @@ ocpp:
 
 ### Site Options
 
-| Option               | Description |
-| ---                  | --- |
-| `phases` (Required)  | Number of electrical phases at the site.<br>Available values: `1` or `3`. |
-| `voltage` (Required) | Phase-to-neutral voltage in `V`, for example `230`. |
-| `grid` (Optional)    | Grid connection limits and measurements. Defaults to not configured, for example on sites that are not connected to the grid. |
+| Option                      | Description |
+| ---                         | --- |
+| `phases` (Required)         | Number of electrical phases at the site.<br>Available values: `1` or `3`. |
+| `voltage` (Required)        | Phase-to-neutral voltage in `V`, for example `230`. |
+| `drawn_current` (Optional)  | Sensor that receives the total EV current drawn at the site in `A`. When configured as `drawn_current: { name: ... }`, it publishes the maximum of the site phase currents. It can also be configured as a per-phase sensor group using `drawn_current.l1`, `drawn_current.l2`, and `drawn_current.l3`. Defaults to not configured. |
+| `grid` (Optional)           | Grid connection limits and measurements. Defaults to not configured, for example on sites that are not connected to the grid. |
+
+### Site Drawn Current
+
+The optional site `drawn_current` sensors expose the total EV charging current in
+`A` for the whole site. The value is calculated by summing all charger
+`drawn_current` values and applying each charger's `phase_mapping`, so the
+per-phase values are reported in physical site phase order.
+
+There is no `drawn_current_source` at the site level. Configure charger-level
+`drawn_current_source` sensors when real measurements are available, or rely on
+connector `drawn_current` values when the charger reports current through OCPP.
+
+Example for a scalar site drawn-current sensor:
+
+```yaml
+ocpp:
+  site:
+    phases: 3
+    voltage: 230
+    drawn_current:
+      name: Site EV Drawn Current
+```
+
+Example for per-phase site drawn-current sensors:
+
+```yaml
+ocpp:
+  site:
+    phases: 3
+    voltage: 230
+    drawn_current:
+      l1:
+        name: Site EV Drawn Current L1
+      l2:
+        name: Site EV Drawn Current L2
+      l3:
+        name: Site EV Drawn Current L3
+```
+
+For a single-phase site, configure the scalar form or only `drawn_current.l1`.
+The scalar form publishes the highest site phase current; with a single-phase
+site this is the same as `L1`.
 
 ### Grid Connection
 

@@ -5,11 +5,13 @@
 
 namespace esphome::ocpp {
 
-void configure_charger(ConfiguredCharger *charger, std::string charge_point_id, float max_current) {
+void configure_charger(ConfiguredCharger *charger, std::string charge_point_id, float max_current, uint8_t phases) {
   if (charger == nullptr)
     return;
   charger->charge_point_id = std::move(charge_point_id);
   charger->max_current = max_current;
+  charger->phases = phases == 3 ? 3 : 1;
+  charger->phase_mapping = {0, 1, 2};
   charger->drawn_current_sensor = nullptr;
   charger->drawn_current_source_sensor = nullptr;
   charger->drawn_current_source_sensors = {};

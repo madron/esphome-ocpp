@@ -117,6 +117,33 @@ Apply `phase_mapping` only at the boundary where charger-level current is passed
 site-level calculations, so the site model receives currents in physical site phase
 order.
 
+## Site Drawn Current State Model
+
+Site drawn current is an aggregate EV charging current vector in physical site
+phase order, `L1`, `L2`, and `L3`, expressed in `A`. It is derived state, not a
+measurement input, and therefore there is intentionally no site-level
+`drawn_current_source` option.
+
+Each charger keeps `latest_drawn_current` in charger-local phase order. When the
+site aggregate is updated, each active charger phase is rotated through the
+charger's `phase_mapping` before being added to the site vector:
+
+```text
+site_drawn_current[charger.phase_mapping[charger_phase]] +=
+  charger.latest_drawn_current[charger_phase]
+```
+
+For a three-phase charger, all three charger-local phases are mapped. For a
+single-phase charger, only charger-local `L1` is mapped to the configured physical
+site phase, such as `phase_mapping: [L2]`; unused charger-local `L2` and `L3`
+values do not contribute to site current.
+
+The user-facing site `drawn_current` sensor follows the connector-level pattern:
+the scalar form publishes the maximum of the internal site phase currents, while
+the per-phase form publishes individual site `L1`, `L2`, and `L3` values. These
+site values should always be in physical site phase order after phase mapping has
+been applied.
+
 ## OCPP Current Metering and Phase Mapping
 
 OCPP 1.6 `MeterValues` is connector-scoped: the message contains a `connectorId`,
