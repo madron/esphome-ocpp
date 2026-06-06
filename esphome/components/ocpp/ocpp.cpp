@@ -2,11 +2,6 @@
 
 #ifdef USE_OCPP
 
-#define OCPP_SPLIT_IMPLEMENTATION_INLINE inline
-#include "charger.cpp"
-#include "connector.cpp"
-#undef OCPP_SPLIT_IMPLEMENTATION_INLINE
-
 #include "esphome/core/alloc_helpers.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
