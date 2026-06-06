@@ -140,9 +140,10 @@ values do not contribute to site current.
 
 The user-facing site `drawn_current` sensor follows the connector-level pattern:
 the scalar form publishes the maximum of the internal site phase currents, while
-the per-phase form publishes individual site `L1`, `L2`, and `L3` values. These
-site values should always be in physical site phase order after phase mapping has
-been applied.
+the per-phase form publishes individual site `L1`, `L2`, and `L3` values. Scalar
+and per-phase sensors may be configured together from the same `drawn_current`
+block. These site values should always be in physical site phase order after phase
+mapping has been applied.
 
 ## OCPP Current Metering and Phase Mapping
 

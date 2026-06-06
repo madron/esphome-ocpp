@@ -72,6 +72,7 @@ ocpp:
     phases: 3
     voltage: 230
     drawn_current:
+      name: Site EV Drawn Current
       l1:
         name: Site EV Drawn Current L1
       l2:
@@ -286,7 +287,7 @@ ocpp:
 | ---                         | --- |
 | `phases` (Required)         | Number of electrical phases at the site.<br>Available values: `1` or `3`. |
 | `voltage` (Required)        | Phase-to-neutral voltage in `V`, for example `230`. |
-| `drawn_current` (Optional)  | Sensor that receives the total EV current drawn at the site in `A`. When configured as `drawn_current: { name: ... }`, it publishes the maximum of the site phase currents. It can also be configured as a per-phase sensor group using `drawn_current.l1`, `drawn_current.l2`, and `drawn_current.l3`. Defaults to not configured. |
+| `drawn_current` (Optional)  | Sensor or sensor group that receives the total EV current drawn at the site in `A`. Configure `drawn_current.name` for the scalar maximum phase current, any of `drawn_current.l1`, `drawn_current.l2`, and `drawn_current.l3` for per-phase sensors, or both scalar and per-phase sensors in the same block. Defaults to not configured. |
 | `grid` (Optional)           | Grid connection limits and measurements. Defaults to not configured, for example on sites that are not connected to the grid. |
 
 ### Site Drawn Current
@@ -330,6 +331,37 @@ ocpp:
 For a single-phase site, configure the scalar form or only `drawn_current.l1`.
 The scalar form publishes the highest site phase current; with a single-phase
 site this is the same as `L1`.
+
+The scalar and per-phase sensors can also be configured together:
+
+```yaml
+ocpp:
+  site:
+    phases: 3
+    voltage: 230
+    drawn_current:
+      name: Site EV Drawn Current
+      l1:
+        name: Site EV Drawn Current L1
+      l2:
+        name: Site EV Drawn Current L2
+      l3:
+        name: Site EV Drawn Current L3
+```
+
+For simple names, the phase entries may also use the string shorthand:
+
+```yaml
+ocpp:
+  site:
+    phases: 3
+    voltage: 230
+    drawn_current:
+      name: site_drawn_current
+      l1: site_drawn_current_l1
+      l2: site_drawn_current_l2
+      l3: site_drawn_current_l3
+```
 
 ### Grid Connection
 
@@ -603,7 +635,7 @@ internal phase values.
 | `max_current` (Optional)         | Physical connector current limit per phase in `A`, for example `16` or `32`.<br>Defaults to the charger's `max_current`. |
 | `available_current` (Optional)   | Sensor that receives the raw current in `A` calculated as available for this connector before charger-operational constraints are applied. Defaults to not configured. |
 | `allocated_current` (Optional)   | Sensor that receives the effective current in `A` allocated to this connector after charger-operational constraints are applied. Defaults to not configured. |
-| `drawn_current` (Optional)       | Sensor that receives the actual current drawn by the vehicle/charger in `A`. When configured as `drawn_current: { name: ... }`, it publishes the maximum of the internally tracked phase currents. It can also be configured as a per-phase sensor group using any of `drawn_current.l1`, `drawn_current.l2`, and `drawn_current.l3`. Defaults to not configured. |
+| `drawn_current` (Optional)       | Sensor or sensor group that receives the actual current drawn by the vehicle/charger in `A`. Configure `drawn_current.name` for the scalar maximum phase current, any of `drawn_current.l1`, `drawn_current.l2`, and `drawn_current.l3` for per-phase sensors, or both scalar and per-phase sensors in the same block. Defaults to not configured. |
 | `current` (Optional)             | Backward-compatible scalar sensor that receives this connector's latest non-phase-specific OCPP `Current.Import` value from `MeterValues`, in `A`. For phase-aware site calculations, prefer `drawn_current`. Defaults to not configured. |
 | `power` (Optional)               | Sensor that receives this connector's latest OCPP `Power.Active.Import` value from `MeterValues`, in `W`. Defaults to not configured. |
 | `enabled` (Optional)             | Switch for enabling or disabling charging on this connector. Defaults to enabled when omitted. Turning the switch off stops the active charging session when one is known. Turning it on starts a new charging session when none is active. |
@@ -646,6 +678,22 @@ connectors:
     allocated_current:
       name: Garage Left Allocated Current
     drawn_current:
+      l1:
+        name: Garage Left Drawn Current L1
+      l2:
+        name: Garage Left Drawn Current L2
+      l3:
+        name: Garage Left Drawn Current L3
+```
+
+The scalar and per-phase connector sensors can be configured together in the same
+way:
+
+```yaml
+connectors:
+  - id: 1
+    drawn_current:
+      name: Garage Left Drawn Current
       l1:
         name: Garage Left Drawn Current L1
       l2:
