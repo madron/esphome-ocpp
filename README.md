@@ -36,7 +36,9 @@ site, chargers, and connectors. Each level has a different responsibility.
   It is identified by its `charge_point_id`, which must match the identity used
   by the charger in the WebSocket URL. Charger-level configuration is about
   admission, the number of phases, charger-to-site phase mapping, and grouping of
-  the physical connectors belonging to that charge point.
+  the physical connectors belonging to that charge point. Charger current draw
+  can optionally be measured with `drawn_current_source` and exposed with a
+  scalar `drawn_current` sensor.
 - A `connector` describes one OCPP connector on a charger. It defines the OCPP
   connector ID, the connector's physical maximum current in `A`, and optionally
   its sensors, current-limit control, and restart/enable controls. Allocation
@@ -88,6 +90,12 @@ ocpp:
       max_current: 32
       phases: 3
       phase_mapping: [L1, L2, L3]
+      drawn_current_source:
+        l1: garage_left_current_l1
+        l2: garage_left_current_l2
+        l3: garage_left_current_l3
+      drawn_current:
+        name: Garage Left Charger Drawn Current
       connectors:
         - id: 1
           max_current: 16
@@ -116,6 +124,9 @@ ocpp:
       max_current: 32
       phases: 1
       phase_mapping: [L2]
+      drawn_current_source: garage_right_current
+      drawn_current:
+        name: Garage Right Charger Drawn Current
       connectors:
         - id: 1
           available_current:
@@ -457,6 +468,12 @@ ocpp:
       max_current: 32
       phases: 3
       phase_mapping: [L1, L2, L3]
+      drawn_current_source:
+        l1: garage_left_current_l1
+        l2: garage_left_current_l2
+        l3: garage_left_current_l3
+      drawn_current:
+        name: Garage Left Charger Drawn Current
       connectors:
         - id: 1
           max_current: 16
@@ -483,14 +500,48 @@ ocpp:
 
 ### Charger Options
 
-| Option                         | Description |
-| ---                            | --- |
-| `id` (Required)                | Internal ID for this charger.<br>Example: `garage_left`. |
-| `charge_point_id` (Required)   | OCPP identity expected in the WebSocket URL. |
-| `max_current` (Required)       | Physical charger current limit per phase in `A`, for example `16` or `32`. |
-| `phases` (Required)            | Number of phases used by this charger. Values: `1` or `3`. |
-| `phase_mapping` (Optional)     | Charger-to-site phase mapping. Defaults to `[L1]` for `phases: 1` and `[L1, L2, L3]` for `phases: 3`.<br>For single-phase chargers, configure one phase, for example `[L2]`. For three-phase chargers, configure all three phases in physical order, for example `[L2, L3, L1]`. |
-| `connectors` (Required)        | List of OCPP connectors. Each item must define at least `id`. |
+| Option                            | Description |
+| ---                               | --- |
+| `id` (Required)                   | Internal ID for this charger.<br>Example: `garage_left`. |
+| `charge_point_id` (Required)      | OCPP identity expected in the WebSocket URL. |
+| `max_current` (Required)          | Physical charger current limit per phase in `A`, for example `16` or `32`. |
+| `phases` (Required)               | Number of phases used by this charger. Values: `1` or `3`. |
+| `phase_mapping` (Optional)        | Charger-to-site phase mapping. Defaults to `[L1]` for `phases: 1` and `[L1, L2, L3]` for `phases: 3`.<br>For single-phase chargers, configure one phase, for example `[L2]`. For three-phase chargers, configure all three phases in physical order, for example `[L2, L3, L1]`. |
+| `drawn_current_source` (Optional) | Existing sensor ID, or per-phase sensor IDs, used as the preferred source for charger drawn current in `A`. When one source sensor is configured, its value is applied to all charger phases. When omitted, charger drawn current is calculated by summing connector `drawn_current` values by phase. Defaults to not configured. |
+| `drawn_current` (Optional)        | Sensor that receives this charger's drawn current in `A`. The component tracks charger drawn current internally as `L1`, `L2`, and `L3`, and publishes the maximum phase value to this scalar sensor. Defaults to not configured. |
+| `connectors` (Required)           | List of OCPP connectors. Each item must define at least `id`. |
+
+### Charger Drawn Current
+
+`drawn_current_source` is the preferred measurement input for charger current draw.
+Use it when the charger or an external meter exposes real per-phase current sensors:
+
+```yaml
+chargers:
+  - id: garage_left
+    drawn_current_source:
+      l1: garage_left_current_l1
+      l2: garage_left_current_l2
+      l3: garage_left_current_l3
+    drawn_current:
+      name: Garage Left Charger Drawn Current
+```
+
+If only one current sensor is available, configure it directly. The same value is
+then applied to all charger phases:
+
+```yaml
+chargers:
+  - id: garage_right
+    drawn_current_source: garage_right_current
+    drawn_current:
+      name: Garage Right Charger Drawn Current
+```
+
+When `drawn_current_source` is omitted, charger drawn current is calculated by
+summing the configured connector `drawn_current` values by phase. The published
+charger `drawn_current` sensor is scalar and reports the maximum of the three
+internal phase values.
 
 ### Connector Options
 

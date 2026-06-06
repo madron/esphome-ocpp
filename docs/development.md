@@ -70,6 +70,46 @@ The per-phase representation is needed for `drawn_current`, because site-level
 accounting must know how much current EV charging contributes to each physical
 site phase.
 
+## Charger Drawn Current State Model
+
+Charger drawn current follows the same internal shape as connector drawn current:
+three current values in site phase order, `L1`, `L2`, and `L3`, expressed in `A`.
+This vector is internal state used for site-level accounting and diagnostics.
+
+The charger-level source and exposed sensor have intentionally different roles:
+
+- `drawn_current_source` is an optional measurement input. It references existing
+  ESPHome current sensors and is the preferred source when real charger-level or
+  meter-level current measurements are available.
+- `drawn_current` is an optional user-facing ESPHome sensor published by this
+  component. Because ESPHome sensors expose a single scalar value, it publishes the
+  maximum of the three internal phase currents.
+
+`drawn_current_source` should support both forms:
+
+1. A per-phase mapping with `l1`, `l2`, and `l3` sensor IDs. These values are read
+   as the charger current on each corresponding phase.
+2. A single sensor ID. In this fallback form, the measured value is applied to all
+   three charger phases. This is useful when the meter reports one balanced or
+   aggregate current value and no phase-specific measurements are available.
+
+When no `drawn_current_source` is configured, charger drawn current is derived from
+connectors by summing connector `drawn_current` by site phase:
+
+```text
+charger_drawn_current[Lx] = sum(connector_drawn_current[Lx])
+```
+
+The source-priority rule is therefore:
+
+1. Use real `drawn_current_source` measurements when configured.
+2. Otherwise, use the calculated connector sum by phase.
+
+This keeps real measurements authoritative without requiring charger-level current
+sensors for installations where connector OCPP metering is sufficient. It also
+keeps `drawn_current` as a read-only `sensor`: it describes observed or calculated
+state, while writable controls such as current limits remain `number` entities.
+
 ## OCPP Current Metering and Phase Mapping
 
 OCPP 1.6 `MeterValues` is connector-scoped: the message contains a `connectorId`,
