@@ -9,15 +9,28 @@ CPP_TEST_DIR = Path(__file__).resolve().parent
 
 
 class CppTestCase(unittest.TestCase):
-    def assert_cpp_test_passes(self, cpp_filename):
+    def assert_cpp_test_passes(self, cpp_filename, extra_sources=()):
         source = CPP_TEST_DIR / cpp_filename
         if not source.is_file():
             self.fail(f"Missing C++ test file: {source}")
+        extra_source_paths = [REPO_ROOT / extra_source for extra_source in extra_sources]
+        for extra_source_path in extra_source_paths:
+            if not extra_source_path.is_file():
+                self.fail(f"Missing C++ source file: {extra_source_path}")
 
         with tempfile.TemporaryDirectory() as tmpdir:
             binary = Path(tmpdir) / source.stem
             compile_result = subprocess.run(
-                ["c++", "-std=c++17", "-I", str(REPO_ROOT), str(source), "-o", str(binary)],
+                [
+                    "c++",
+                    "-std=c++17",
+                    "-I",
+                    str(REPO_ROOT),
+                    str(source),
+                    *(str(extra_source_path) for extra_source_path in extra_source_paths),
+                    "-o",
+                    str(binary),
+                ],
                 cwd=REPO_ROOT,
                 text=True,
                 capture_output=True,

@@ -1,0 +1,118 @@
+#pragma once
+
+#include <array>
+#include <cstdint>
+#include <string>
+
+#if __has_include("esphome/core/defines.h")
+#include "esphome/core/defines.h"
+#endif
+
+#ifdef USE_OCPP
+#include "esphome/components/button/button.h"
+#include "esphome/components/number/number.h"
+#include "esphome/components/switch/switch.h"
+#endif
+
+namespace esphome::sensor {
+class Sensor;
+}  // namespace esphome::sensor
+
+namespace esphome::ocpp {
+
+class OcppServer;
+class OcppCurrentLimitNumber;
+class OcppConnectorEnabledSwitch;
+class OcppConnectorButton;
+
+#ifdef USE_OCPP
+class OcppConnectorEnabledSwitch : public switch_::Switch {
+ public:
+  void set_parent(OcppServer *parent, uint8_t connector_id) {
+    this->parent_ = parent;
+    this->connector_id_ = connector_id;
+  }
+
+ protected:
+  void write_state(bool state) override;
+
+  OcppServer *parent_{nullptr};
+  uint8_t connector_id_{0};
+};
+
+class OcppConnectorButton : public button::Button {
+ public:
+  void set_parent(OcppServer *parent, uint8_t connector_id) {
+    this->parent_ = parent;
+    this->connector_id_ = connector_id;
+  }
+
+ protected:
+  void press_action() override;
+
+  OcppServer *parent_{nullptr};
+  uint8_t connector_id_{0};
+};
+
+class OcppCurrentLimitNumber : public number::Number {
+ public:
+  void set_parent(OcppServer *parent, uint8_t connector_id) {
+    this->parent_ = parent;
+    this->connector_id_ = connector_id;
+  }
+
+ protected:
+  void control(float value) override;
+
+  OcppServer *parent_{nullptr};
+  uint8_t connector_id_{0};
+};
+#endif
+
+struct ConnectorCurrentState {
+  bool is_charging{false};
+  bool has_measured_drawn_current{false};
+  float measured_drawn_current{0.0f};
+  float allocated_current{0.0f};
+};
+
+struct ConfiguredConnector {
+  uint8_t id;
+  float max_current;
+  sensor::Sensor *available_current_sensor{nullptr};
+  sensor::Sensor *allocated_current_sensor{nullptr};
+  sensor::Sensor *drawn_current_sensor{nullptr};
+  std::array<sensor::Sensor *, 3> drawn_current_sensors{};
+  sensor::Sensor *current_sensor{nullptr};
+  sensor::Sensor *power_sensor{nullptr};
+  OcppCurrentLimitNumber *current_limit_number{nullptr};
+  OcppConnectorEnabledSwitch *enabled_switch{nullptr};
+  OcppConnectorButton *restart_button{nullptr};
+  bool enabled{true};
+  bool has_preferred_current_limit{false};
+  float preferred_current_limit{0.0f};
+  bool has_active_transaction{false};
+  uint32_t active_transaction_id{0};
+  std::string active_id_tag;
+  bool is_charging{false};
+  bool charging_profile_applied{false};
+  bool has_latest_current_import{false};
+  bool has_latest_power_active_import{false};
+  bool has_session_current_import{false};
+  float available_current{0.0f};
+  float allocated_current{0.0f};
+  float latest_current_import{0.0f};
+  std::array<float, 3> latest_drawn_current{};
+  float latest_power_active_import{0.0f};
+};
+
+float effective_allocated_current(float available_current, float max_current, float requested_current, float min_current,
+                                  bool enabled);
+float effective_allocated_current(float available_current, float min_current);
+float effective_connector_drawn_current(const ConnectorCurrentState &state);
+float effective_connector_drawn_current(const ConfiguredConnector &connector);
+float connector_drawn_current_max(const ConfiguredConnector &connector);
+void reset_connector_session_current(ConfiguredConnector *connector);
+void update_connector_allocation(ConfiguredConnector *connector, float min_current);
+
+}  // namespace esphome::ocpp

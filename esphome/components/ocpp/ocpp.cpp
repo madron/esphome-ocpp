@@ -2,10 +2,16 @@
 
 #ifdef USE_OCPP
 
+#define OCPP_SPLIT_IMPLEMENTATION_INLINE inline
+#include "charger.cpp"
+#include "connector.cpp"
+#undef OCPP_SPLIT_IMPLEMENTATION_INLINE
+
 #include "esphome/core/alloc_helpers.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <cctype>
@@ -190,13 +196,11 @@ void OcppServer::set_grid_max_current(float max_current) {
 }
 
 void OcppServer::add_charger(std::string charge_point_id, float max_current) {
-  if (this->has_charger_ && this->charger_.charge_point_id == charge_point_id) {
+  if (this->has_charger_ && charger_has_charge_point_id(this->charger_, charge_point_id)) {
     this->charger_.max_current = max_current;
     return;
   }
-  this->charger_.charge_point_id = std::move(charge_point_id);
-  this->charger_.max_current = max_current;
-  this->charger_.has_connector = false;
+  configure_charger(&this->charger_, std::move(charge_point_id), max_current);
   this->has_charger_ = true;
 }
 
@@ -208,7 +212,8 @@ void OcppServer::add_connector(std::string charge_point_id, uint8_t connector_id
   }
   if (charger == nullptr)
     return;
-  charger->connector = ConfiguredConnector{connector_id, std::min(charger->max_current, max_current)};
+  charger->connector = ConfiguredConnector{connector_id,
+                                           effective_connector_max_current(charger->max_current, max_current)};
   this->update_connector_allocation_(&charger->connector);
   charger->has_connector = true;
 }
@@ -627,24 +632,6 @@ void OcppServer::restart_connector_session(uint8_t connector_id) {
   this->remote_start(connector_id);
 }
 
-void OcppCurrentLimitNumber::control(float value) {
-  if (this->parent_ == nullptr)
-    return;
-  this->parent_->set_current_limit(this->connector_id_, value);
-}
-
-void OcppConnectorEnabledSwitch::write_state(bool state) {
-  if (this->parent_ == nullptr)
-    return;
-  this->parent_->set_connector_enabled(this->connector_id_, state);
-}
-
-void OcppConnectorButton::press_action() {
-  if (this->parent_ == nullptr)
-    return;
-  this->parent_->restart_connector_session(this->connector_id_);
-}
-
 void OcppServer::accept_client_() {
   sockaddr_storage addr{};
   socklen_t addr_len = sizeof(addr);
@@ -721,13 +708,13 @@ bool OcppServer::request_matches_path_(const std::string &uri) {
 }
 
 ConfiguredCharger *OcppServer::find_charger_(const std::string &charge_point_id) {
-  if (this->has_charger_ && this->charger_.charge_point_id == charge_point_id)
+  if (this->has_charger_ && charger_has_charge_point_id(this->charger_, charge_point_id))
     return &this->charger_;
   return nullptr;
 }
 
 const ConfiguredCharger *OcppServer::find_charger_(const std::string &charge_point_id) const {
-  if (this->has_charger_ && this->charger_.charge_point_id == charge_point_id)
+  if (this->has_charger_ && charger_has_charge_point_id(this->charger_, charge_point_id))
     return &this->charger_;
   return nullptr;
 }
@@ -736,35 +723,22 @@ ConfiguredConnector *OcppServer::find_connector_(int connector_id) {
   auto *charger = this->find_charger_(this->charge_point_id_);
   if (charger == nullptr && this->has_charger_ && this->charge_point_id_.empty())
     charger = &this->charger_;
-  if (charger == nullptr)
-    return nullptr;
-  if (charger->has_connector && charger->connector.id == connector_id)
-    return &charger->connector;
-  return nullptr;
+  return find_configured_connector(charger, connector_id);
 }
 
 const ConfiguredConnector *OcppServer::find_connector_(int connector_id) const {
   const auto *charger = this->find_charger_(this->charge_point_id_);
   if (charger == nullptr && this->has_charger_ && this->charge_point_id_.empty())
     charger = &this->charger_;
-  if (charger == nullptr)
-    return nullptr;
-  if (charger->has_connector && charger->connector.id == connector_id)
-    return &charger->connector;
-  return nullptr;
+  return find_configured_connector(charger, connector_id);
 }
 
 ConfiguredConnector *OcppServer::find_active_transaction_connector_() {
-  if (this->has_charger_ && this->charger_.has_connector && this->charger_.connector.has_active_transaction)
-    return &this->charger_.connector;
-  return nullptr;
+  return this->has_charger_ ? find_active_transaction_connector(&this->charger_) : nullptr;
 }
 
 ConfiguredConnector *OcppServer::find_transaction_connector_(uint32_t transaction_id) {
-  if (this->has_charger_ && this->charger_.has_connector && this->charger_.connector.has_active_transaction &&
-      this->charger_.connector.active_transaction_id == transaction_id)
-    return &this->charger_.connector;
-  return nullptr;
+  return this->has_charger_ ? find_transaction_connector(&this->charger_, transaction_id) : nullptr;
 }
 
 void OcppServer::note_transaction_id_(uint32_t transaction_id) {
@@ -773,15 +747,7 @@ void OcppServer::note_transaction_id_(uint32_t transaction_id) {
 }
 
 void OcppServer::update_connector_allocation_(ConfiguredConnector *connector) {
-  if (connector == nullptr)
-    return;
-  // TODO: available_current currently uses the connector maximum as a placeholder. It should become dependent on
-  // site availability, other active sessions, and the configured allocation policy.
-  connector->available_current = connector->max_current;
-  const float requested_current = connector->has_preferred_current_limit ? connector->preferred_current_limit : connector->max_current;
-  connector->allocated_current = effective_allocated_current(connector->available_current, connector->max_current,
-                                                            requested_current, DEFAULT_ALLOCATION_MIN_CURRENT,
-                                                            connector->enabled);
+  update_connector_allocation(connector, DEFAULT_ALLOCATION_MIN_CURRENT);
 }
 
 void OcppServer::publish_connector_allocation_if_configured_(ConfiguredConnector *connector) {
@@ -800,12 +766,7 @@ void OcppServer::publish_allocated_current_if_configured_(ConfiguredConnector *c
 }
 
 void OcppServer::reset_session_current_(ConfiguredConnector *connector) {
-  if (connector == nullptr)
-    return;
-  connector->has_session_current_import = false;
-  connector->has_latest_current_import = false;
-  connector->latest_current_import = 0.0f;
-  connector->latest_drawn_current = {};
+  reset_connector_session_current(connector);
 }
 
 void OcppServer::publish_current_if_configured_(ConfiguredConnector *connector) {
@@ -825,14 +786,11 @@ void OcppServer::publish_drawn_current_if_configured_(ConfiguredConnector *conne
 }
 
 float OcppServer::drawn_current_max_(const ConfiguredConnector &connector) const {
-  return std::max(connector.latest_drawn_current[0],
-                  std::max(connector.latest_drawn_current[1], connector.latest_drawn_current[2]));
+  return connector_drawn_current_max(connector);
 }
 
 float OcppServer::effective_drawn_current_(const ConfiguredConnector &connector) const {
-  return effective_connector_drawn_current(ConnectorCurrentState{connector.is_charging, connector.has_session_current_import,
-                                                                this->drawn_current_max_(connector),
-                                                                connector.allocated_current});
+  return effective_connector_drawn_current(connector);
 }
 
 void OcppServer::mark_transaction_started_(uint8_t connector_id, uint32_t transaction_id, const char *id_tag) {
