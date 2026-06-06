@@ -1,4 +1,5 @@
 log.txt
+*.yaml
 
 # Python bytecode
 **/__pycache__

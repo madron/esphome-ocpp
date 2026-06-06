@@ -1,5 +1,9 @@
 # Project Rules
 
+## Privacy
+
+- Never read, write or execute command to access files outside this repository
+
 ## Repository Scope
 
 - Consider only the esphome-ocpp repository and not any other repositories unless explicitly mentioned.
