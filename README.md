@@ -35,13 +35,12 @@ site, chargers, and connectors. Each level has a different responsibility.
 - A `charger` describes one OCPP charge point that connects to this component.
   It is identified by its `charge_point_id`, which must match the identity used
   by the charger in the WebSocket URL. Charger-level configuration is about
-  admission and grouping of the physical connectors belonging to that charge
-  point.
+  admission, the number of phases, charger-to-site phase mapping, and grouping of
+  the physical connectors belonging to that charge point.
 - A `connector` describes one OCPP connector on a charger. It defines the OCPP
-  connector ID, the connector's physical maximum current in `A`, how many phases
-  it uses, and optionally its phase mapping, sensors, current-limit control, and
-  restart/enable controls. Allocation decisions ultimately assign current to
-  connectors.
+  connector ID, the connector's physical maximum current in `A`, and optionally
+  its sensors, current-limit control, and restart/enable controls. Allocation
+  decisions ultimately assign current to connectors.
   Connector current state can be exposed as `available_current`,
   `allocated_current`, and per-phase `drawn_current` sensors.
 
@@ -87,9 +86,10 @@ ocpp:
     - id: garage_left
       charge_point_id: GARAGE_LEFT
       max_current: 32
+      phases: 3
+      phase_mapping: [L1, L2, L3]
       connectors:
         - id: 1
-          phases: 3
           max_current: 16
           available_current:
             name: Garage Left Available Current
@@ -114,9 +114,10 @@ ocpp:
     - id: garage_right
       charge_point_id: GARAGE_RIGHT
       max_current: 32
+      phases: 1
+      phase_mapping: [L2]
       connectors:
         - id: 1
-          phases: 1
           available_current:
             name: Garage Right Available Current
           allocated_current:
@@ -455,9 +456,10 @@ ocpp:
     - id: garage_left
       charge_point_id: GARAGE_LEFT
       max_current: 32
+      phases: 3
+      phase_mapping: [L1, L2, L3]
       connectors:
         - id: 1
-          phases: 3
           max_current: 16
           available_current:
             name: Garage Left Available Current
@@ -482,20 +484,20 @@ ocpp:
 
 ### Charger Options
 
-| Option                       | Description |
-| ---                          | --- |
-| `id` (Required)              | Internal ID for this charger.<br>Example: `garage_left`. |
-| `charge_point_id` (Required) | OCPP identity expected in the WebSocket URL. |
-| `max_current` (Required)     | Physical charger current limit per phase in `A`, for example `16` or `32`. |
-| `connectors` (Required)      | List of OCPP connectors. Each item must define at least `id` and `phases`. |
+| Option                         | Description |
+| ---                            | --- |
+| `id` (Required)                | Internal ID for this charger.<br>Example: `garage_left`. |
+| `charge_point_id` (Required)   | OCPP identity expected in the WebSocket URL. |
+| `max_current` (Required)       | Physical charger current limit per phase in `A`, for example `16` or `32`. |
+| `phases` (Required)            | Number of phases used by this charger. Values: `1` or `3`. |
+| `phase_mapping` (Optional)     | Charger-to-site phase mapping. Defaults to `[L1]` for `phases: 1` and `[L1, L2, L3]` for `phases: 3`.<br>For single-phase chargers, configure one phase, for example `[L2]`. For three-phase chargers, configure all three phases in physical order, for example `[L2, L3, L1]`. |
+| `connectors` (Required)        | List of OCPP connectors. Each item must define at least `id`. |
 
 ### Connector Options
 
 | Option                           | Description |
 | ---                              | --- |
 | `id` (Required)                  | OCPP connector ID. Usually `1` for single-connector chargers. |
-| `phases` (Required)              | Number of phases used by this connector. Values: `1` or `3`. |
-| `phase_mapping` (Optional)       | Connector-to-site phase mapping. Defaults to `[L1]` for `phases: 1` and `[L1, L2, L3]` for `phases: 3`.<br>For single-phase connectors, configure one phase, for example `[L2]`. For three-phase connectors, configure all three phases in physical order, for example `[L2, L3, L1]`. |
 | `max_current` (Optional)         | Physical connector current limit per phase in `A`, for example `16` or `32`.<br>Defaults to the charger's `max_current`. |
 | `available_current` (Optional)   | Sensor that receives the raw current in `A` calculated as available for this connector before charger-operational constraints are applied. Defaults to not configured. |
 | `allocated_current` (Optional)   | Sensor that receives the effective current in `A` allocated to this connector after charger-operational constraints are applied. Values below `allocation.min_current` are published as `0`. Defaults to not configured. |
@@ -519,12 +521,11 @@ and measured draw:
 - `drawn_current` is the current in `A` actually drawn by the vehicle/charger,
   represented per site phase as `l1`, `l2`, and `l3`.
 
-Example for a three-phase connector:
+Example for a connector on a three-phase charger:
 
 ```yaml
 connectors:
   - id: 1
-    phases: 3
     available_current:
       name: Garage Left Available Current
     allocated_current:
@@ -537,16 +538,6 @@ connectors:
       l3:
         name: Garage Left Drawn Current L3
 ```
-
-If the charger reports phase-specific OCPP `Current.Import` meter values, those
-values are mapped to the corresponding site phases using `phase_mapping`. If it
-reports one non-phase-specific `Current.Import` value, the component maps that
-value according to the configured connector phases. For a single-phase connector,
-the value is assigned to the configured phase and the other phases are treated as
-`0 A`. For a three-phase connector, the value is assumed to be a balanced per-phase
-current and assigned to all configured phases. Accurate detection of a single-phase
-car plugged into a three-phase connector requires phase-specific current reporting
-from the charger.
 
 ### Connector Enabled Switch
 
@@ -621,25 +612,32 @@ charger uses its own configured limit.
 
 ### Phase Mapping
 
-For a single-phase connector on a three-phase site:
+For a single-phase charger on a three-phase site:
 
 ```yaml
-connectors:
-  - id: 1
+chargers:
+  - id: garage_right
+    charge_point_id: GARAGE_RIGHT
+    max_current: 32
     phases: 1
     phase_mapping: [L2]
-    max_current: 32
+    connectors:
+      - id: 1
 ```
 
-For a three-phase connector with explicit phase order:
+For a three-phase charger with explicit phase order:
 
 ```yaml
-connectors:
-  - id: 1
+chargers:
+  - id: garage_left
+    charge_point_id: GARAGE_LEFT
+    max_current: 32
     phases: 3
     phase_mapping: [L1, L2, L3]
-    max_current: 16
+    connectors:
+      - id: 1
+        max_current: 16
 ```
 
-Explicit phase mapping is useful when installers rotate phases between chargers
-to improve load balancing.
+Explicit charger-level phase mapping is useful when installers rotate phases
+between chargers to improve load balancing.

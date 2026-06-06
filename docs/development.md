@@ -71,30 +71,45 @@ site phase.
 
 ## OCPP Current Metering and Phase Mapping
 
-OCPP 1.6 `MeterValues` supports a `phase` field on each `sampledValue`, so chargers
-can report phase-specific current values such as `Current.Import` on `L1`, `L2`,
-and `L3`. Some chargers instead report one non-phase-specific `Current.Import`
-value with an empty `phase` field.
+OCPP 1.6 `MeterValues` is connector-scoped: the message contains a `connectorId`,
+and each `sampledValue` can include a `phase` field. A connector can therefore
+report phase-specific current values such as `Current.Import` on `L1`, `L2`, and
+`L3`. Some connectors instead report one non-phase-specific `Current.Import` value
+with an empty `phase` field.
 
-The intended mapping rules for `drawn_current` are:
+The intended responsibility split is:
 
-1. Store `drawn_current` internally as a site-phase vector `[L1, L2, L3]` in `A`.
-2. If `MeterValues` includes phase-specific `Current.Import` values, map each OCPP
-   phase to the corresponding site phase using the connector `phase_mapping`.
-3. If a single-phase connector reports a non-phase-specific `Current.Import` value,
-   assign that value to the connector's mapped site phase and set the other phases
-   to `0 A`.
-4. If a three-phase connector reports a non-phase-specific `Current.Import` value,
-   assume it is a balanced per-phase current and assign the same value to all three
-   mapped site phases.
+1. The connector metering code converts OCPP `MeterValues` into a charger-phase
+   current vector. It interprets the OCPP `phase` field and the configured charger
+   phase count, but it does not apply charger-to-site phase rotation.
+2. The charger owns `phase_mapping`. After connector metering has produced values
+   in charger phase order, the charger maps those values to site phases using its
+   configured `phase_mapping`.
+3. Store `drawn_current` internally as a site-phase vector `[L1, L2, L3]` in `A`.
 
-Rule 4 is accurate for a three-phase car drawing balanced current from a
-three-phase charger. It is only an approximation for a single-phase car plugged
-into a three-phase charger when the charger does not expose phase-specific current
-metering. In that case the component cannot know which physical phase is carrying
-the current from OCPP alone. Accurate site-level phase accounting for that scenario
-requires phase-specific `Current.Import` values from the charger or another
-phase-aware measurement source.
+The model assumes all connectors on a charger use the same phase count as the
+charger. Mixed single-phase and three-phase connectors on the same charger are not
+modeled.
+
+For phase-specific `Current.Import` samples, the connector first records the values
+against the corresponding charger-local phases. The charger then translates those
+charger-local phases to site phases using its `phase_mapping`.
+
+For a non-phase-specific `Current.Import` sample, the connector builds the
+charger-phase vector from the configured charger phase count. For a connector on a
+single-phase charger, assign the value to the first charger-local phase and treat
+the other phases as `0 A`. For a connector on a three-phase charger, assume the
+value is a balanced per-phase current and assign it to all three charger-local
+phases. The charger then maps the resulting charger-phase vector to the site-phase
+vector.
+
+The balanced three-phase assumption is accurate for a three-phase car drawing
+balanced current from a three-phase charger. It is only an approximation for a
+single-phase car plugged into a three-phase connector when the connector does not
+expose phase-specific current metering. In that case the component cannot know
+which physical phase is carrying the current from OCPP alone. Accurate site-level
+phase accounting for that scenario requires phase-specific `Current.Import` values
+from the connector or another phase-aware measurement source.
 
 ## Transaction State After Restarts
 
