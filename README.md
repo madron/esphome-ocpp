@@ -42,7 +42,7 @@ site, chargers, and connectors. Each level has a different responsibility.
   its sensors, current-limit control, and restart/enable controls. Allocation
   decisions ultimately assign current to connectors.
   Connector current state can be exposed as `available_current`,
-  `allocated_current`, and per-phase `drawn_current` sensors.
+  `allocated_current`, and scalar or per-phase `drawn_current` sensors.
 
 In short, the site owns shared electrical constraints, chargers represent OCPP
 devices, and connectors represent the individually controlled charging outlets.
@@ -123,8 +123,7 @@ ocpp:
           allocated_current:
             name: Garage Right Allocated Current
           drawn_current:
-            l1:
-              name: Garage Right Drawn Current L1
+            name: Garage Right Drawn Current
           power:
             name: Garage Right Power
           enabled:
@@ -501,7 +500,7 @@ ocpp:
 | `max_current` (Optional)         | Physical connector current limit per phase in `A`, for example `16` or `32`.<br>Defaults to the charger's `max_current`. |
 | `available_current` (Optional)   | Sensor that receives the raw current in `A` calculated as available for this connector before charger-operational constraints are applied. Defaults to not configured. |
 | `allocated_current` (Optional)   | Sensor that receives the effective current in `A` allocated to this connector after charger-operational constraints are applied. Values below `allocation.min_current` are published as `0`. Defaults to not configured. |
-| `drawn_current` (Optional)       | Per-phase sensor group that receives the actual current drawn by the vehicle/charger in `A`. Internally this is maintained as a three-value site-phase vector. Configure any of `drawn_current.l1`, `drawn_current.l2`, and `drawn_current.l3` that should be exposed. Defaults to not configured. |
+| `drawn_current` (Optional)       | Sensor that receives the actual current drawn by the vehicle/charger in `A`. When configured as `drawn_current: { name: ... }`, it publishes the maximum of the internally tracked phase currents. It can also be configured as a per-phase sensor group using any of `drawn_current.l1`, `drawn_current.l2`, and `drawn_current.l3`. Defaults to not configured. |
 | `current` (Optional)             | Backward-compatible scalar sensor that receives this connector's latest non-phase-specific OCPP `Current.Import` value from `MeterValues`, in `A`. For phase-aware site calculations, prefer `drawn_current`. Defaults to not configured. |
 | `power` (Optional)               | Sensor that receives this connector's latest OCPP `Power.Active.Import` value from `MeterValues`, in `W`. Defaults to not configured. |
 | `enabled` (Optional)             | Switch for enabling or disabling charging on this connector. Defaults to enabled when omitted. Turning the switch off stops the active charging session when one is known. Turning it on starts a new charging session when none is active. |
@@ -518,8 +517,22 @@ and measured draw:
 - `allocated_current` is the current in `A` that is effectively assigned to the
   connector after applying charger constraints. If the available current is below
   `allocation.min_current`, this state is `0`.
-- `drawn_current` is the current in `A` actually drawn by the vehicle/charger,
-  represented per site phase as `l1`, `l2`, and `l3`.
+- `drawn_current` is the current in `A` actually drawn by the vehicle/charger.
+  The scalar sensor publishes the maximum of the internally tracked phase
+  currents. Per-phase sensors can also expose `l1`, `l2`, and `l3` separately.
+
+Example for a scalar drawn-current sensor:
+
+```yaml
+connectors:
+  - id: 1
+    available_current:
+      name: Garage Right Available Current
+    allocated_current:
+      name: Garage Right Allocated Current
+    drawn_current:
+      name: Garage Right Drawn Current
+```
 
 Example for a connector on a three-phase charger:
 

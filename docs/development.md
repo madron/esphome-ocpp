@@ -111,6 +111,27 @@ which physical phase is carrying the current from OCPP alone. Accurate site-leve
 phase accounting for that scenario requires phase-specific `Current.Import` values
 from the connector or another phase-aware measurement source.
 
+During an active charging session, measured `drawn_current` should only become
+authoritative after a valid session-local `Current.Import` value has been
+received. Before the first current sample arrives, user-facing drawn-current
+sensors may show `0 A`, but internal hard-limit calculations should assume the
+connector is drawing its `allocated_current`. This is intentionally conservative:
+it avoids briefly over-allocating site capacity while the charger is still waiting
+to send its first current meter value. When no charging session is active,
+`drawn_current` is always treated as `0 A` and session-local current availability
+is reset so stale current samples from a previous transaction are not reused.
+
+Future OCPP capability discovery should use `GetConfiguration` to read and log
+metering-related keys such as `MeterValuesSampledData`,
+`MeterValueSampleInterval`, `MeterValuesAlignedData`, and
+`ClockAlignedDataInterval`. The log should make it clear whether the charger
+appears to report `Current.Import`, which interval it uses, and whether periodic
+meter values are disabled. If the charger allows it, the component may use
+`ChangeConfiguration` to request `Current.Import` in sampled meter values and a
+reasonable non-zero `MeterValueSampleInterval`. That would both document charger
+capabilities for users and reduce the time spent in the conservative
+allocated-current fallback after a session starts.
+
 ## Transaction State After Restarts
 
 During development, ESPHome restarts can happen while a car is connected or while

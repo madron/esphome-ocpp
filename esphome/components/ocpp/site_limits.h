@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -23,13 +24,39 @@ struct SitePowerMeasurements {
   std::optional<float> grid_power_aggregate{};
 };
 
+struct ConnectorCurrentState {
+  bool is_charging{false};
+  bool has_measured_drawn_current{false};
+  float measured_drawn_current{0.0f};
+  float allocated_current{0.0f};
+};
+
 inline float clamp_non_negative(float value) { return value > 0.0f ? value : 0.0f; }
+
+inline float clamp_finite_non_negative(float value) {
+  return std::isfinite(value) && value > 0.0f ? value : 0.0f;
+}
 
 inline float divide_or_zero(float numerator, float denominator) {
   return denominator > 0.0f ? numerator / denominator : 0.0f;
 }
 
 inline uint8_t site_active_phases(const SiteLimitConfig &config) { return config.phases == 3 ? 3 : 1; }
+
+inline float effective_allocated_current(float available_current, float min_current) {
+  const float clamped_available = clamp_finite_non_negative(available_current);
+  if (min_current > 0.0f && clamped_available < min_current)
+    return 0.0f;
+  return clamped_available;
+}
+
+inline float effective_connector_drawn_current(const ConnectorCurrentState &state) {
+  if (!state.is_charging)
+    return 0.0f;
+  if (state.has_measured_drawn_current)
+    return clamp_finite_non_negative(state.measured_drawn_current);
+  return clamp_finite_non_negative(state.allocated_current);
+}
 
 inline std::vector<float> site_phase_power(const SiteLimitConfig &config, const SitePowerMeasurements &measurements) {
   const uint8_t active_phases = site_active_phases(config);

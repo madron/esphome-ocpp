@@ -65,6 +65,10 @@ class OcppCurrentLimitNumber : public number::Number {
 struct ConfiguredConnector {
   uint8_t id;
   float max_current;
+  sensor::Sensor *available_current_sensor{nullptr};
+  sensor::Sensor *allocated_current_sensor{nullptr};
+  sensor::Sensor *drawn_current_sensor{nullptr};
+  std::array<sensor::Sensor *, 3> drawn_current_sensors{};
   sensor::Sensor *current_sensor{nullptr};
   sensor::Sensor *power_sensor{nullptr};
   OcppCurrentLimitNumber *current_limit_number{nullptr};
@@ -80,7 +84,11 @@ struct ConfiguredConnector {
   bool charging_profile_applied{false};
   bool has_latest_current_import{false};
   bool has_latest_power_active_import{false};
+  bool has_session_current_import{false};
+  float available_current{0.0f};
+  float allocated_current{0.0f};
   float latest_current_import{0.0f};
+  std::array<float, 3> latest_drawn_current{};
   float latest_power_active_import{0.0f};
 };
 
@@ -114,6 +122,14 @@ class OcppServer : public Component {
   void set_grid_power_aggregate_sensor(sensor::Sensor *sensor) { this->grid_power_aggregate_sensor_ = sensor; }
   void add_charger(std::string charge_point_id, float max_current);
   void add_connector(std::string charge_point_id, uint8_t connector_id, float max_current);
+  void set_connector_available_current_sensor(std::string charge_point_id, uint8_t connector_id,
+                                              sensor::Sensor *available_current_sensor);
+  void set_connector_allocated_current_sensor(std::string charge_point_id, uint8_t connector_id,
+                                              sensor::Sensor *allocated_current_sensor);
+  void set_connector_drawn_current_max_sensor(std::string charge_point_id, uint8_t connector_id,
+                                              sensor::Sensor *drawn_current_sensor);
+  void set_connector_drawn_current_sensor(std::string charge_point_id, uint8_t connector_id, uint8_t phase,
+                                          sensor::Sensor *drawn_current_sensor);
   void set_connector_current_sensor(std::string charge_point_id, uint8_t connector_id, sensor::Sensor *current_sensor);
   void set_connector_power_sensor(std::string charge_point_id, uint8_t connector_id, sensor::Sensor *power_sensor);
   void set_connector_current_limit_number(std::string charge_point_id, uint8_t connector_id,
@@ -138,8 +154,10 @@ class OcppServer : public Component {
   bool is_connector_enabled(uint8_t connector_id) const;
   void restart_connector_session(uint8_t connector_id);
   bool has_latest_current_import(uint8_t connector_id) const;
+  bool has_session_current_import(uint8_t connector_id) const;
   bool has_latest_power_active_import(uint8_t connector_id) const;
   float get_latest_current_import(uint8_t connector_id) const;
+  float get_effective_drawn_current(uint8_t connector_id) const;
   float get_latest_power_active_import(uint8_t connector_id) const;
 
  protected:
@@ -173,6 +191,14 @@ class OcppServer : public Component {
   ConfiguredConnector *find_active_transaction_connector_();
   ConfiguredConnector *find_transaction_connector_(uint32_t transaction_id);
   void note_transaction_id_(uint32_t transaction_id);
+  void update_connector_allocation_defaults_(ConfiguredConnector *connector);
+  void publish_available_current_if_configured_(ConfiguredConnector *connector);
+  void publish_allocated_current_if_configured_(ConfiguredConnector *connector);
+  void reset_session_current_(ConfiguredConnector *connector);
+  void publish_current_if_configured_(ConfiguredConnector *connector);
+  void publish_drawn_current_if_configured_(ConfiguredConnector *connector);
+  float drawn_current_max_(const ConfiguredConnector &connector) const;
+  float effective_drawn_current_(const ConfiguredConnector &connector) const;
   void mark_transaction_started_(uint8_t connector_id, uint32_t transaction_id, const char *id_tag);
   void recover_transaction_from_meter_values_(uint8_t connector_id, uint32_t transaction_id);
   void clear_transaction_(uint32_t transaction_id);

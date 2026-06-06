@@ -22,7 +22,10 @@ AUTO_LOAD = ["json", "socket", "sensor", "number", "button", "switch"]
 CONF_CHARGE_POINT_ID = "charge_point_id"
 CONF_CHARGERS = "chargers"
 CONF_CONNECTORS = "connectors"
+CONF_AVAILABLE_CURRENT = "available_current"
+CONF_ALLOCATED_CURRENT = "allocated_current"
 CONF_CURRENT_LIMIT = "current_limit"
+CONF_DRAWN_CURRENT = "drawn_current"
 CONF_GRID = "grid"
 CONF_L1 = "l1"
 CONF_L2 = "l2"
@@ -44,6 +47,24 @@ OcppServer = ocpp_ns.class_("OcppServer", cg.Component)
 OcppConnectorButton = ocpp_ns.class_("OcppConnectorButton", button.Button)
 OcppConnectorEnabledSwitch = ocpp_ns.class_("OcppConnectorEnabledSwitch", switch.Switch)
 OcppCurrentLimitNumber = ocpp_ns.class_("OcppCurrentLimitNumber", number.Number)
+
+
+CURRENT_SENSOR_SCHEMA = sensor.sensor_schema(
+    unit_of_measurement=UNIT_AMPERE,
+    accuracy_decimals=1,
+    device_class=DEVICE_CLASS_CURRENT,
+    state_class=STATE_CLASS_MEASUREMENT,
+)
+
+DRAWN_CURRENT_PHASE_SCHEMA = cv.Schema(
+    {
+        cv.Optional(CONF_L1): CURRENT_SENSOR_SCHEMA,
+        cv.Optional(CONF_L2): CURRENT_SENSOR_SCHEMA,
+        cv.Optional(CONF_L3): CURRENT_SENSOR_SCHEMA,
+    }
+)
+
+DRAWN_CURRENT_SCHEMA = cv.Any(CURRENT_SENSOR_SCHEMA, DRAWN_CURRENT_PHASE_SCHEMA)
 
 
 def _validate_path(value):
@@ -158,12 +179,10 @@ CONNECTOR_SCHEMA = cv.Schema(
     {
         cv.Required(CONF_ID): cv.int_range(min=1, max=255),
         cv.Optional(CONF_MAX_CURRENT): cv.positive_float,
-        cv.Optional(CONF_CURRENT): sensor.sensor_schema(
-            unit_of_measurement=UNIT_AMPERE,
-            accuracy_decimals=1,
-            device_class=DEVICE_CLASS_CURRENT,
-            state_class=STATE_CLASS_MEASUREMENT,
-        ),
+        cv.Optional(CONF_AVAILABLE_CURRENT): CURRENT_SENSOR_SCHEMA,
+        cv.Optional(CONF_ALLOCATED_CURRENT): CURRENT_SENSOR_SCHEMA,
+        cv.Optional(CONF_DRAWN_CURRENT): DRAWN_CURRENT_SCHEMA,
+        cv.Optional(CONF_CURRENT): CURRENT_SENSOR_SCHEMA,
         cv.Optional(CONF_POWER): sensor.sensor_schema(
             unit_of_measurement=UNIT_WATT,
             accuracy_decimals=0,
@@ -255,6 +274,37 @@ async def to_code(config):
                         charger[CONF_CHARGE_POINT_ID], connector[CONF_ID], sens
                     )
                 )
+            if available_current_config := connector.get(CONF_AVAILABLE_CURRENT):
+                sens = await sensor.new_sensor(available_current_config)
+                cg.add(
+                    var.set_connector_available_current_sensor(
+                        charger[CONF_CHARGE_POINT_ID], connector[CONF_ID], sens
+                    )
+                )
+            if allocated_current_config := connector.get(CONF_ALLOCATED_CURRENT):
+                sens = await sensor.new_sensor(allocated_current_config)
+                cg.add(
+                    var.set_connector_allocated_current_sensor(
+                        charger[CONF_CHARGE_POINT_ID], connector[CONF_ID], sens
+                    )
+                )
+            if drawn_current_config := connector.get(CONF_DRAWN_CURRENT):
+                if any(phase in drawn_current_config for phase in (CONF_L1, CONF_L2, CONF_L3)):
+                    for index, phase in enumerate((CONF_L1, CONF_L2, CONF_L3)):
+                        if phase in drawn_current_config:
+                            sens = await sensor.new_sensor(drawn_current_config[phase])
+                            cg.add(
+                                var.set_connector_drawn_current_sensor(
+                                    charger[CONF_CHARGE_POINT_ID], connector[CONF_ID], index, sens
+                                )
+                            )
+                else:
+                    sens = await sensor.new_sensor(drawn_current_config)
+                    cg.add(
+                        var.set_connector_drawn_current_max_sensor(
+                            charger[CONF_CHARGE_POINT_ID], connector[CONF_ID], sens
+                        )
+                    )
             if power_config := connector.get(CONF_POWER):
                 sens = await sensor.new_sensor(power_config)
                 cg.add(
