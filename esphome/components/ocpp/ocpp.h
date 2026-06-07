@@ -39,10 +39,14 @@ class OcppServer : public Component {
   void set_grid_power_l2_sensor(sensor::Sensor *sensor) { this->site_.grid_power_l2_sensor = sensor; }
   void set_grid_power_l3_sensor(sensor::Sensor *sensor) { this->site_.grid_power_l3_sensor = sensor; }
   void set_grid_power_aggregate_sensor(sensor::Sensor *sensor) { this->site_.grid_power_aggregate_sensor = sensor; }
-  void set_site_available_current_max_sensor(sensor::Sensor *available_current_sensor) {
-    this->site_.available_current_sensor = available_current_sensor;
+  void set_grid_headroom_current_max_sensor(sensor::Sensor *headroom_current_sensor) {
+    this->site_.grid_headroom_current_sensor = headroom_current_sensor;
   }
-  void set_site_available_current_sensor(uint8_t phase, sensor::Sensor *available_current_sensor);
+  void set_grid_headroom_current_sensor(uint8_t phase, sensor::Sensor *headroom_current_sensor);
+  void set_site_headroom_current_max_sensor(sensor::Sensor *headroom_current_sensor) {
+    this->site_.headroom_current_sensor = headroom_current_sensor;
+  }
+  void set_site_headroom_current_sensor(uint8_t phase, sensor::Sensor *headroom_current_sensor);
   void set_site_drawn_current_max_sensor(sensor::Sensor *drawn_current_sensor) {
     this->site_.drawn_current_sensor = drawn_current_sensor;
   }
@@ -124,6 +128,12 @@ class OcppServer : public Component {
   ConfiguredConnector *find_transaction_connector_(uint32_t transaction_id);
   void note_transaction_id_(uint32_t transaction_id);
   SitePowerMeasurements site_power_measurements_() const;
+  bool update_grid_headroom_current_();
+  void update_and_publish_grid_headroom_current_if_configured_();
+  void publish_grid_headroom_current_if_configured_();
+  bool update_site_headroom_current_();
+  void update_and_publish_site_headroom_current_if_configured_();
+  void publish_site_headroom_current_if_configured_();
   void update_connector_allocation_(ConfiguredConnector *connector);
   void publish_connector_allocation_if_configured_(ConfiguredConnector *connector);
   void publish_available_current_if_configured_(ConfiguredConnector *connector);
@@ -131,9 +141,6 @@ class OcppServer : public Component {
   bool update_charger_drawn_current_(ConfiguredCharger *charger);
   void update_and_publish_charger_drawn_current_if_configured_(ConfiguredCharger *charger);
   void publish_charger_drawn_current_if_configured_(ConfiguredCharger *charger);
-  bool update_site_available_current_();
-  void update_and_publish_site_available_current_if_configured_();
-  void publish_site_available_current_if_configured_();
   bool update_site_drawn_current_();
   void update_and_publish_site_drawn_current_if_configured_();
   void publish_site_drawn_current_if_configured_();

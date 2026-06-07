@@ -145,12 +145,12 @@ and per-phase sensors may be configured together from the same `drawn_current`
 block. These site values should always be in physical site phase order after phase
 mapping has been applied.
 
-## Site Available Current State Model
+## Grid and Site Headroom Current State Model
 
-Site available current is a derived current-headroom vector in physical site phase
-order, `L1`, `L2`, and `L3`, expressed in `A`. It is calculated from the static
-`site.grid` limits plus the current signed `site.grid.power` measurements. It does
-not come from OCPP charger metering.
+Grid headroom current is calculated in `grid.*` from only grid limits and signed
+grid power measurements. Site headroom current currently mirrors grid headroom,
+but the site-level function is intentionally separate so storage, solar, or other
+power sources can be composed there later.
 
 The calculation evaluates all configured grid limits and keeps the tightest value
 per phase:

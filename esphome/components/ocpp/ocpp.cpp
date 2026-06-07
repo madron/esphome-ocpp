@@ -211,10 +211,16 @@ void OcppServer::set_grid_max_current(float max_current) {
   this->site_.limits.grid_max_current = max_current;
 }
 
-void OcppServer::set_site_available_current_sensor(uint8_t phase, sensor::Sensor *available_current_sensor) {
-  if (phase >= this->site_.available_current_sensors.size())
+void OcppServer::set_grid_headroom_current_sensor(uint8_t phase, sensor::Sensor *headroom_current_sensor) {
+  if (phase >= this->site_.grid_headroom_current_sensors.size())
     return;
-  this->site_.available_current_sensors[phase] = available_current_sensor;
+  this->site_.grid_headroom_current_sensors[phase] = headroom_current_sensor;
+}
+
+void OcppServer::set_site_headroom_current_sensor(uint8_t phase, sensor::Sensor *headroom_current_sensor) {
+  if (phase >= this->site_.headroom_current_sensors.size())
+    return;
+  this->site_.headroom_current_sensors[phase] = headroom_current_sensor;
 }
 
 void OcppServer::set_site_drawn_current_sensor(uint8_t phase, sensor::Sensor *drawn_current_sensor) {
@@ -421,8 +427,10 @@ void OcppServer::setup() {
     this->update_charger_drawn_current_(&this->charger_);
     this->publish_charger_drawn_current_if_configured_(&this->charger_);
   }
-  this->update_site_available_current_();
-  this->publish_site_available_current_if_configured_();
+  this->update_grid_headroom_current_();
+  this->publish_grid_headroom_current_if_configured_();
+  this->update_site_headroom_current_();
+  this->publish_site_headroom_current_if_configured_();
   this->update_site_drawn_current_();
   this->publish_site_drawn_current_if_configured_();
 }
@@ -434,7 +442,8 @@ void OcppServer::loop() {
     this->read_client_();
   if (this->has_charger_)
     this->update_and_publish_charger_drawn_current_if_configured_(&this->charger_);
-  this->update_and_publish_site_available_current_if_configured_();
+  this->update_and_publish_grid_headroom_current_if_configured_();
+  this->update_and_publish_site_headroom_current_if_configured_();
   this->update_and_publish_site_drawn_current_if_configured_();
 }
 
@@ -831,6 +840,32 @@ SitePowerMeasurements OcppServer::site_power_measurements_() const {
   return measurements;
 }
 
+bool OcppServer::update_grid_headroom_current_() {
+  return update_grid_headroom_current(&this->site_, this->site_power_measurements_());
+}
+
+void OcppServer::update_and_publish_grid_headroom_current_if_configured_() {
+  if (this->update_grid_headroom_current_())
+    this->publish_grid_headroom_current_if_configured_();
+}
+
+void OcppServer::publish_grid_headroom_current_if_configured_() {
+  publish_grid_headroom_current_if_configured(&this->site_);
+}
+
+bool OcppServer::update_site_headroom_current_() {
+  return update_site_headroom_current(&this->site_);
+}
+
+void OcppServer::update_and_publish_site_headroom_current_if_configured_() {
+  if (this->update_site_headroom_current_())
+    this->publish_site_headroom_current_if_configured_();
+}
+
+void OcppServer::publish_site_headroom_current_if_configured_() {
+  publish_site_headroom_current_if_configured(&this->site_);
+}
+
 void OcppServer::update_connector_allocation_(ConfiguredConnector *connector) {
   update_connector_allocation(connector, DEFAULT_ALLOCATION_MIN_CURRENT);
 }
@@ -882,19 +917,6 @@ void OcppServer::update_and_publish_charger_drawn_current_if_configured_(Configu
 void OcppServer::publish_charger_drawn_current_if_configured_(ConfiguredCharger *charger) {
   if (charger != nullptr && charger->drawn_current_sensor != nullptr)
     charger->drawn_current_sensor->publish_state(this->drawn_current_max_(*charger));
-}
-
-bool OcppServer::update_site_available_current_() {
-  return update_site_available_current(&this->site_, this->site_power_measurements_());
-}
-
-void OcppServer::update_and_publish_site_available_current_if_configured_() {
-  if (this->update_site_available_current_())
-    this->publish_site_available_current_if_configured_();
-}
-
-void OcppServer::publish_site_available_current_if_configured_() {
-  publish_site_available_current_if_configured(&this->site_);
 }
 
 bool OcppServer::update_site_drawn_current_() {

@@ -19,9 +19,12 @@ struct ConfiguredSite {
   sensor::Sensor *grid_power_l2_sensor{nullptr};
   sensor::Sensor *grid_power_l3_sensor{nullptr};
   sensor::Sensor *grid_power_aggregate_sensor{nullptr};
-  sensor::Sensor *available_current_sensor{nullptr};
-  std::array<sensor::Sensor *, 3> available_current_sensors{};
-  std::array<float, 3> latest_available_current{};
+  sensor::Sensor *grid_headroom_current_sensor{nullptr};
+  std::array<sensor::Sensor *, 3> grid_headroom_current_sensors{};
+  std::array<float, 3> latest_grid_headroom_current{};
+  sensor::Sensor *headroom_current_sensor{nullptr};
+  std::array<sensor::Sensor *, 3> headroom_current_sensors{};
+  std::array<float, 3> latest_headroom_current{};
   sensor::Sensor *drawn_current_sensor{nullptr};
   std::array<sensor::Sensor *, 3> drawn_current_sensors{};
   std::array<float, 3> latest_drawn_current{};
@@ -46,26 +49,25 @@ inline float site_drawn_current_max(const std::array<float, 3> &drawn_current) {
   return std::max(drawn_current[0], std::max(drawn_current[1], drawn_current[2]));
 }
 
-inline float site_available_current_max(const std::array<float, 3> &available_current) {
-  return std::max(available_current[0], std::max(available_current[1], available_current[2]));
-}
-
-inline std::array<float, 3> site_available_current_from_measurements(const SiteLimitConfig &limits,
-                                                                     const SitePowerMeasurements &measurements) {
-  std::array<float, 3> site_available_current{};
-  const auto available_current = site_available_current_per_phase(limits, measurements);
-  for (uint8_t i = 0; i < available_current.size() && i < site_available_current.size(); i++)
-    site_available_current[i] = available_current[i];
-  return site_available_current;
-}
-
-inline bool update_site_available_current(ConfiguredSite *site, const SitePowerMeasurements &measurements = {}) {
+inline bool update_grid_headroom_current(ConfiguredSite *site, const SitePowerMeasurements &measurements = {}) {
   if (site == nullptr)
     return false;
 
-  const auto available_current = site_available_current_from_measurements(site->limits, measurements);
-  const bool changed = site_current_changed(site->latest_available_current, available_current);
-  site->latest_available_current = available_current;
+  const auto headroom_current = grid_headroom_current(site_grid_limit_config(site->limits),
+                                                     site_grid_power_measurements(measurements));
+  const bool changed = site_current_changed(site->latest_grid_headroom_current, headroom_current);
+  site->latest_grid_headroom_current = headroom_current;
+  return changed;
+}
+
+inline bool update_site_headroom_current(ConfiguredSite *site) {
+  if (site == nullptr)
+    return false;
+
+  // Site headroom currently mirrors grid headroom. Future site logic can combine grid, storage, and other sources here.
+  const auto headroom_current = site->latest_grid_headroom_current;
+  const bool changed = site_current_changed(site->latest_headroom_current, headroom_current);
+  site->latest_headroom_current = headroom_current;
   return changed;
 }
 
@@ -96,16 +98,32 @@ inline bool update_site_drawn_current(ConfiguredSite *site, const ConfiguredChar
   return changed;
 }
 
-inline void publish_site_available_current_if_configured(ConfiguredSite *site) {
+inline void publish_grid_headroom_current_if_configured(ConfiguredSite *site) {
 #ifdef USE_OCPP
   if (site == nullptr)
     return;
-  if (site->available_current_sensor != nullptr)
-    site->available_current_sensor->publish_state(site_available_current_max(site->latest_available_current));
+  if (site->grid_headroom_current_sensor != nullptr)
+    site->grid_headroom_current_sensor->publish_state(grid_current_max(site->latest_grid_headroom_current));
   const uint8_t active_phases = site->limits.phases == 3 ? 3 : 1;
   for (uint8_t i = 0; i < active_phases; i++) {
-    if (site->available_current_sensors[i] != nullptr)
-      site->available_current_sensors[i]->publish_state(site->latest_available_current[i]);
+    if (site->grid_headroom_current_sensors[i] != nullptr)
+      site->grid_headroom_current_sensors[i]->publish_state(site->latest_grid_headroom_current[i]);
+  }
+#else
+  (void) site;
+#endif
+}
+
+inline void publish_site_headroom_current_if_configured(ConfiguredSite *site) {
+#ifdef USE_OCPP
+  if (site == nullptr)
+    return;
+  if (site->headroom_current_sensor != nullptr)
+    site->headroom_current_sensor->publish_state(grid_current_max(site->latest_headroom_current));
+  const uint8_t active_phases = site->limits.phases == 3 ? 3 : 1;
+  for (uint8_t i = 0; i < active_phases; i++) {
+    if (site->headroom_current_sensors[i] != nullptr)
+      site->headroom_current_sensors[i]->publish_state(site->latest_headroom_current[i]);
   }
 #else
   (void) site;
