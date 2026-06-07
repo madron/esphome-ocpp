@@ -1,5 +1,7 @@
 log.txt
-*.yaml
+
+# Python virtual environment
+.venv/
 
 # Python bytecode
 **/__pycache__

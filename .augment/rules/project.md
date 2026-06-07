@@ -7,6 +7,7 @@
 ## Repository Scope
 
 - Consider only the esphome-ocpp repository and not any other repositories unless explicitly mentioned.
+- You are allowed to run esphome-wrapper with compile and config command only unless explicily authorized.
 
 ## Units and Configuration Values
 

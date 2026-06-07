@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Development helper for running ESPHome with a SOPS-encrypted secrets file.
+
+Usage:
+  ESPHOME_SOPS_SECRETS_FILE=<encrypted-sops-yaml-outside-this-repository> \
+    ./esphome-wrapper run
+
+Environment:
+  ESPHOME_SOPS_SECRETS_FILE  Encrypted SOPS YAML file. Defaults to $HOME/.config/esphome/ocpp-secrets.sops.yaml.
+  ESPHOME_CONFIG             ESPHome config inside this repository. Defaults to dev.yaml.
+  ESPHOME_BIN                ESPHome executable. Defaults to esphome.
+
+The wrapper activates the repository .venv before resolving sops and ESPHome.
+
+The wrapper decrypts the SOPS file into a temporary secrets.yaml outside the
+repository, runs ESPHome from that temporary config directory, then removes the
+temporary directory when ESPHome exits.
+
+The decrypted YAML must define these ESPHome secret keys:
+  static_ip
+  ota_password
+  wifi_ssid
+  wifi_password
+  gateway
+  subnet
+  dns1
+  web_server_username
+  web_server_password
+
+Creating the encrypted secrets file:
+  1. Create the default secrets directory:
+       mkdir -p "$HOME/.config/esphome"
+
+  2. Add a SOPS config file in that directory, for example with age:
+       cat > "$HOME/.config/esphome/.sops.yaml" <<'SOPS_CONFIG'
+       creation_rules:
+         - path_regex: '.*-secrets\.yaml(\.sops)?$'
+           age: <age-recipient>
+       SOPS_CONFIG
+
+     Replace <age-recipient> with your public age recipient. If you use another
+     SOPS backend, replace the age field with the appropriate SOPS config.
+
+  3. Create a plaintext ocpp-secrets.yaml in that same directory with the keys
+     listed above, then encrypt it from inside the secrets directory:
+       cd "$HOME/.config/esphome"
+       sops encrypt --input-type yaml --output-type yaml ocpp-secrets.yaml > ocpp-secrets.sops.yaml
+       rm ocpp-secrets.yaml
+
+  4. Edit the encrypted file later with:
+       cd "$HOME/.config/esphome"
+       sops edit --input-type yaml --output-type yaml ocpp-secrets.sops.yaml
+
+Troubleshooting:
+  - The command is "sops encrypt", not "sops encypt". If SOPS warns that more
+    than one positional argument was provided, check the command spelling.
+
+  - "error loading config: no matching creation rules found" means SOPS found a
+    .sops.yaml file, but none of its creation_rules matched the file path being
+    encrypted. Run the encrypt command from "$HOME/.config/esphome" or adjust
+    path_regex in "$HOME/.config/esphome/.sops.yaml".
+
+  - "Error unmarshalling input json" from "sops edit ocpp-secrets.sops.yaml"
+    usually means SOPS inferred JSON because the file ends in .sops. Use
+    "sops edit --input-type yaml --output-type yaml ocpp-secrets.sops.yaml".
+EOF
+}
+
+die() {
+  echo "error: $*" >&2
+  exit 1
+}
+
+canonical_path() {
+  python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$1"
+}
+
+is_under() {
+  local candidate="$1"
+  local base="$2"
+
+  [[ "$candidate" == "$base" || "$candidate" == "$base"/* ]]
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+venv_activate="$repo_root/.venv/bin/activate"
+[[ -f "$venv_activate" ]] || die "virtualenv not found; create it with: python3 -m venv .venv"
+# shellcheck source=/dev/null
+source "$venv_activate"
+
+command -v sops >/dev/null 2>&1 || die "sops is not installed or not on PATH"
+command -v "${ESPHOME_BIN:-esphome}" >/dev/null 2>&1 || die "${ESPHOME_BIN:-esphome} is not installed or not on PATH"
+
+if [[ -n "${ESPHOME_SOPS_SECRETS_FILE:-}" ]]; then
+  encrypted_secrets="$ESPHOME_SOPS_SECRETS_FILE"
+else
+  [[ -n "${HOME:-}" ]] || die "HOME must be set when ESPHOME_SOPS_SECRETS_FILE is not provided"
+  encrypted_secrets="$HOME/.config/esphome/ocpp-secrets.sops.yaml"
+fi
+[[ -f "$encrypted_secrets" ]] || die "encrypted SOPS file does not exist: $encrypted_secrets"
+
+encrypted_secrets_abs="$(canonical_path "$encrypted_secrets")"
+if is_under "$encrypted_secrets_abs" "$repo_root"; then
+  die "encrypted SOPS file must be outside this repository"
+fi
+
+config_rel="${ESPHOME_CONFIG:-dev.yaml}"
+if [[ "$config_rel" == /* ]]; then
+  config_abs="$(canonical_path "$config_rel")"
+  config_rel="${config_abs#"$repo_root"/}"
+else
+  config_abs="$(canonical_path "$repo_root/$config_rel")"
+fi
+
+[[ -f "$config_abs" ]] || die "ESPHome config does not exist: $config_abs"
+is_under "$config_abs" "$repo_root" || die "ESPHome config must be inside this repository"
+
+tmp_parent="${TMPDIR:-/tmp}"
+workdir="$(mktemp -d "${tmp_parent%/}/esphome-ocpp.XXXXXXXXXX")"
+workdir="$(canonical_path "$workdir")"
+
+if is_under "$workdir" "$repo_root"; then
+  rm -rf "$workdir"
+  die "temporary directory resolved inside this repository; set TMPDIR outside the repository"
+fi
+
+cleanup() {
+  rm -rf "$workdir"
+}
+trap cleanup EXIT INT TERM
+
+config_dir="$(dirname "$config_rel")"
+if [[ "$config_dir" != "." ]]; then
+  mkdir -p "$workdir/$config_dir"
+fi
+ln -s "$config_abs" "$workdir/$config_rel"
+ln -s "$repo_root/esphome" "$workdir/esphome"
+
+umask 077
+sops decrypt --input-type yaml --output-type yaml "$encrypted_secrets_abs" > "$workdir/secrets.yaml"
+
+args=("$@")
+if [[ ${#args[@]} -eq 0 ]]; then
+  args=(run "$config_rel")
+else
+  has_config=0
+  for i in "${!args[@]}"; do
+    case "${args[$i]}" in
+      "$config_abs"|"$config_rel"|"./$config_rel")
+        args[$i]="$config_rel"
+        has_config=1
+        ;;
+    esac
+  done
+
+  if [[ "$has_config" -eq 0 ]]; then
+    args=("${args[0]}" "$config_rel" "${args[@]:1}")
+  fi
+fi
+
+cd "$workdir"
+"${ESPHOME_BIN:-esphome}" "${args[@]}"
