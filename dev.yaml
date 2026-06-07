@@ -123,6 +123,13 @@ sensor:
     unit_of_measurement: "W"
     accuracy_decimals: 0
   - platform: mqtt_subscribe
+    id: storage_soc
+    name: storage_soc
+    topic: inverter/sensor/battery_soc/state
+    device_class: energy
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+  - platform: mqtt_subscribe
     id: storage_energy
     name: storage_energy
     topic: inverter/sensor/battery_energy_kwh/state
@@ -136,6 +143,14 @@ ocpp:
   site:
     phases: 3
     voltage: 230
+    policy: solar
+    solar:
+      export_margin_power:
+        name: solar_export_margin_power
+        min_value: 0
+        max_value: 1000
+        step: 50
+        initial_value: 300
     headroom_current:
       l1: site_headroom_current_l1
       l2: site_headroom_current_l2
@@ -157,7 +172,11 @@ ocpp:
         l1: grid_power_l1
         l2: grid_power_l2
         l3: grid_power_l3
-
+    storage:
+      capacity: 20
+      energy: storage_soc
+      power:
+        aggregate: storage_power
   allocation:
     strategy: equal
     min_current: 6

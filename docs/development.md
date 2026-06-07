@@ -161,9 +161,9 @@ mapping has been applied.
 ## Grid and Site Headroom Current State Model
 
 Grid headroom current is calculated in `grid.*` from only grid limits and signed
-grid power measurements. Site headroom current currently mirrors grid headroom,
-but the site-level function is intentionally separate so storage, solar, or other
-power sources can be composed there later.
+grid power measurements. Site headroom current is policy-aware: the default
+`normal` policy mirrors grid headroom, while the `solar` policy combines grid
+export, the configured export margin, and optional storage power measurements.
 
 The calculation evaluates all configured grid limits and keeps the tightest value
 per phase:
@@ -185,13 +185,29 @@ Negative results are clamped to `0`. Aggregate-only grid metering uses the same
 sensor follows the site `drawn_current` pattern and reports the maximum phase value;
 per-phase sensors publish the individual site phase values.
 
-Connector allocation uses a separate load-shape-aware grid helper. It applies the
-same limits to the phases that the connector may actually load. Known
-single-phase chargers use their configured site phase. Three-phase chargers fall
-back to all three phases unless phase-specific OCPP `Current.Import` values or
-phase-specific charger current source sensors show exactly one active phase; this
-keeps unknown single-phase cars on three-phase chargers conservative until the
-component has reliable phase evidence.
+Connector allocation uses a separate load-shape-aware site helper. Under the
+`normal` policy this delegates to the grid helper and applies the same limits to
+the phases that the connector may actually load. Known single-phase chargers use
+their configured site phase. Three-phase chargers fall back to all three phases
+unless phase-specific OCPP `Current.Import` values or phase-specific charger
+current source sensors show exactly one active phase; this keeps unknown
+single-phase cars on three-phase chargers conservative until the component has
+reliable phase evidence.
+
+Under the `solar` policy, site headroom is allowed to be negative. This is
+intentional: `equal_available_current()` adds site headroom to the connector's
+current draw, so a negative value is how the policy asks the current limit to be
+reduced. Grid power keeps the existing sign convention: positive means import and
+negative means export. Storage power uses a separate sign convention documented
+for users: positive means the battery is discharging into the site, while
+negative means it is charging. Solar headroom subtracts positive storage power so
+a fast battery discharge can reduce charging even when the inverter has already
+forced grid power back toward `0 W`.
+
+Storage `soc` and `energy` are stored as optional measurements and are mutually
+exclusive in configuration. When one is present and `storage.capacity` is
+configured in `kWh`, `normalize_site_storage_state()` calculates the other
+representation for future policy logic.
 
 ## OCPP Current Metering and Phase Mapping
 

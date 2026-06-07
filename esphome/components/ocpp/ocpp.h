@@ -34,6 +34,7 @@ class OcppServer : public Component {
   void set_path(std::string path);
   void set_allocation_min_current(float min_current) { this->allocation_min_current_ = min_current; }
   void set_site(uint8_t phases, float voltage);
+  void set_site_energy_policy(std::string policy);
   void set_grid_max_power(float max_power);
   void set_grid_max_phase_imbalance(float max_phase_imbalance);
   void set_grid_max_current(float max_current);
@@ -41,6 +42,15 @@ class OcppServer : public Component {
   void set_grid_power_l2_sensor(sensor::Sensor *sensor) { this->site_.grid_power_l2_sensor = sensor; }
   void set_grid_power_l3_sensor(sensor::Sensor *sensor) { this->site_.grid_power_l3_sensor = sensor; }
   void set_grid_power_aggregate_sensor(sensor::Sensor *sensor) { this->site_.grid_power_aggregate_sensor = sensor; }
+  void set_solar_export_margin_power(float export_margin_power);
+  void set_solar_export_margin_power_number(OcppSolarExportMarginNumber *number, float initial_value);
+  void set_storage_capacity(float capacity_kwh);
+  void set_storage_power_l1_sensor(sensor::Sensor *sensor) { this->site_.storage_power_l1_sensor = sensor; }
+  void set_storage_power_l2_sensor(sensor::Sensor *sensor) { this->site_.storage_power_l2_sensor = sensor; }
+  void set_storage_power_l3_sensor(sensor::Sensor *sensor) { this->site_.storage_power_l3_sensor = sensor; }
+  void set_storage_power_aggregate_sensor(sensor::Sensor *sensor) { this->site_.storage_power_aggregate_sensor = sensor; }
+  void set_storage_soc_sensor(sensor::Sensor *sensor) { this->site_.storage_soc_sensor = sensor; }
+  void set_storage_energy_sensor(sensor::Sensor *sensor) { this->site_.storage_energy_sensor = sensor; }
   void set_grid_headroom_current_max_sensor(sensor::Sensor *headroom_current_sensor) {
     this->site_.grid_headroom_current_sensor = headroom_current_sensor;
   }

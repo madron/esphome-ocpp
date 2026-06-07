@@ -43,6 +43,8 @@ int main() {
                equal_available_current(9.0f, 0.0f, 1), 9.0f);
   assert_equal("equal_available_current_adds_equal_site_share",
                equal_available_current(12.0f, 8.0f, 2), 14.0f);
+  assert_equal("equal_available_current_allows_negative_site_headroom",
+               equal_available_current(-3.0f, 10.0f, 1), 7.0f);
   assert_equal("equal_available_current_rejects_negative_current",
                equal_available_current(12.0f, -1.0f, 2), 6.0f);
   assert_equal("connector_state_maps_available", std::string(connector_state_from_ocpp_status("Available")),

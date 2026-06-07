@@ -37,7 +37,7 @@ float equal_available_current(float site_available_current, float connector_curr
   const float safe_connector_current = clamp_finite_non_negative(connector_current);
   if (!std::isfinite(site_available_current))
     return safe_connector_current + site_available_current;
-  return safe_connector_current + clamp_finite_non_negative(site_available_current) / active_connector_count;
+  return clamp_finite_non_negative(safe_connector_current + site_available_current / active_connector_count);
 }
 
 const char *connector_state_from_ocpp_status(const char *status) {

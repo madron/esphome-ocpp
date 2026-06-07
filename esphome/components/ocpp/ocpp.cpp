@@ -165,6 +165,13 @@ bool power_sensor_value(sensor::Sensor *sensor, float *out) {
   return true;
 }
 
+bool finite_sensor_value(sensor::Sensor *sensor, float *out) {
+  if (sensor == nullptr || out == nullptr || !std::isfinite(sensor->state))
+    return false;
+  *out = sensor->state;
+  return true;
+}
+
 bool drawn_current_changed(const std::array<float, 3> &a, const std::array<float, 3> &b) {
   for (uint8_t i = 0; i < a.size(); i++) {
     if (a[i] != b[i])
@@ -197,6 +204,41 @@ void OcppServer::set_path(std::string path) {
 
 void OcppServer::set_site(uint8_t phases, float voltage) {
   configure_site(&this->site_, phases, voltage);
+}
+
+void OcppServer::set_site_energy_policy(std::string policy) {
+  if (policy == "solar") {
+    this->site_.limits.energy_policy = SiteEnergyPolicy::SOLAR;
+  } else {
+    this->site_.limits.energy_policy = SiteEnergyPolicy::NORMAL;
+  }
+}
+
+void OcppServer::set_solar_export_margin_power(float export_margin_power) {
+  this->site_.limits.solar_export_margin_power = std::max(export_margin_power, 0.0f);
+  this->update_and_publish_site_headroom_current_if_configured_();
+}
+
+void OcppServer::set_solar_export_margin_power_number(OcppSolarExportMarginNumber *number, float initial_value) {
+  if (number == nullptr)
+    return;
+  this->site_.solar_export_margin_power_number = number;
+  number->set_parent(this);
+  this->set_solar_export_margin_power(initial_value);
+  number->publish_state(this->site_.limits.solar_export_margin_power);
+}
+
+void OcppServer::set_storage_capacity(float capacity_kwh) {
+  if (capacity_kwh > 0.0f)
+    this->site_.limits.storage_capacity_kwh = capacity_kwh;
+}
+
+void OcppSolarExportMarginNumber::control(float value) {
+  if (this->parent_ == nullptr)
+    return;
+  const float safe_value = std::max(value, 0.0f);
+  this->parent_->set_solar_export_margin_power(safe_value);
+  this->publish_state(safe_value);
 }
 
 void OcppServer::set_grid_max_power(float max_power) {
@@ -461,12 +503,17 @@ void OcppServer::dump_config() {
   ESP_LOGCONFIG(TAG, "  Listen: 0.0.0.0:%u%s", this->port_, this->path_.c_str());
   ESP_LOGCONFIG(TAG, "  Allocation: strategy=equal min_current=%.1f A", this->allocation_min_current_);
   ESP_LOGCONFIG(TAG, "  Site: phases=%u voltage=%.1f V", this->site_.limits.phases, this->site_.limits.voltage);
+  ESP_LOGCONFIG(TAG, "    Policy=%s", this->site_.limits.energy_policy == SiteEnergyPolicy::SOLAR ? "solar" : "normal");
+  if (this->site_.limits.energy_policy == SiteEnergyPolicy::SOLAR)
+    ESP_LOGCONFIG(TAG, "    Solar export_margin_power=%.0f W", this->site_.limits.solar_export_margin_power);
   if (this->site_.limits.grid_max_power.has_value())
     ESP_LOGCONFIG(TAG, "    Grid max_power=%.0f W", this->site_.limits.grid_max_power.value());
   if (this->site_.limits.grid_max_phase_imbalance.has_value())
     ESP_LOGCONFIG(TAG, "    Grid max_phase_imbalance=%.0f W", this->site_.limits.grid_max_phase_imbalance.value());
   if (this->site_.limits.grid_max_current.has_value())
     ESP_LOGCONFIG(TAG, "    Grid max_current=%.1f A per phase", this->site_.limits.grid_max_current.value());
+  if (this->site_.limits.storage_capacity_kwh.has_value())
+    ESP_LOGCONFIG(TAG, "    Storage capacity=%.2f kWh", this->site_.limits.storage_capacity_kwh.value());
   ESP_LOGCONFIG(TAG, "  Configured charger: %s", this->has_charger_ ? this->charger_.charge_point_id.c_str() : "none");
   if (this->has_charger_)
     ESP_LOGCONFIG(TAG, "    Charger max_current=%.1f A per phase", this->charger_.max_current);
@@ -847,6 +894,20 @@ SitePowerMeasurements OcppServer::site_power_measurements_() const {
     measurements.grid_power_l3 = power;
   if (power_sensor_value(this->site_.grid_power_aggregate_sensor, &power))
     measurements.grid_power_aggregate = power;
+  if (power_sensor_value(this->site_.storage_power_l1_sensor, &power))
+    measurements.storage_power_l1 = power;
+  if (power_sensor_value(this->site_.storage_power_l2_sensor, &power))
+    measurements.storage_power_l2 = power;
+  if (power_sensor_value(this->site_.storage_power_l3_sensor, &power))
+    measurements.storage_power_l3 = power;
+  if (power_sensor_value(this->site_.storage_power_aggregate_sensor, &power))
+    measurements.storage_power_aggregate = power;
+  float value = 0.0f;
+  if (finite_sensor_value(this->site_.storage_soc_sensor, &value))
+    measurements.storage_soc = value;
+  if (finite_sensor_value(this->site_.storage_energy_sensor, &value))
+    measurements.storage_energy_kwh = value;
+  normalize_site_storage_state(this->site_.limits, &measurements);
   return measurements;
 }
 
@@ -864,7 +925,7 @@ void OcppServer::publish_grid_headroom_current_if_configured_() {
 }
 
 bool OcppServer::update_site_headroom_current_() {
-  return update_site_headroom_current(&this->site_);
+  return update_site_headroom_current(&this->site_, this->site_power_measurements_());
 }
 
 void OcppServer::update_and_publish_site_headroom_current_if_configured_() {
@@ -897,8 +958,7 @@ float OcppServer::site_available_current_(const ConfiguredCharger &charger, cons
     const uint8_t site_phase = charger.phase_mapping[i] < site_load_phases.size() ? charger.phase_mapping[i] : 0;
     site_load_phases[site_phase] = true;
   }
-  return grid_headroom_current_for_load(site_grid_limit_config(this->site_.limits),
-                                        site_grid_power_measurements(this->site_power_measurements_()), site_load_phases);
+  return site_available_current_for_load(this->site_.limits, this->site_power_measurements_(), site_load_phases);
 }
 
 uint8_t OcppServer::active_connector_count_(const ConfiguredConnector *prospective_connector) const {

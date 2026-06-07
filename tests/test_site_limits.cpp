@@ -7,8 +7,11 @@
 #include <vector>
 
 using esphome::ocpp::SiteLimitConfig;
+using esphome::ocpp::SiteEnergyPolicy;
 using esphome::ocpp::SitePowerMeasurements;
 using esphome::ocpp::example_site_spare_current_per_phase;
+using esphome::ocpp::normalize_site_storage_state;
+using esphome::ocpp::site_available_current_for_load;
 
 template<typename T> std::ostream &operator<<(std::ostream &out, const std::vector<T> &values) {
   out << "{";
@@ -105,6 +108,41 @@ int main() {
   measurements.grid_power_aggregate = 3000.0f;
   result = example_site_spare_current_per_phase(config, measurements);
   assert_equal("aggregate_measurement_fallback", result, std::vector<float>{20.0f, 20.0f, 20.0f});
+
+  // solar_policy_uses_export_above_margin
+  config = SiteLimitConfig{};
+  config.phases = 1;
+  config.voltage = 100.0f;
+  config.grid_max_power = 9000.0f;
+  config.energy_policy = SiteEnergyPolicy::SOLAR;
+  config.solar_export_margin_power = 300.0f;
+  measurements = SitePowerMeasurements{};
+  measurements.grid_power_l1 = -4000.0f;
+  assert_equal("solar_policy_uses_export_above_margin",
+               site_available_current_for_load(config, measurements, {true, false, false}), 37.0f);
+
+  // solar_policy_fallback_margin_can_reduce_current
+  measurements.grid_power_l1 = 0.0f;
+  assert_equal("solar_policy_fallback_margin_can_reduce_current",
+               site_available_current_for_load(config, measurements, {true, false, false}), -3.0f);
+
+  // solar_policy_storage_discharge_reduces_current
+  measurements.storage_power_l1 = 1000.0f;
+  assert_equal("solar_policy_storage_discharge_reduces_current",
+               site_available_current_for_load(config, measurements, {true, false, false}), -13.0f);
+
+  // storage_energy_calculates_soc
+  config.storage_capacity_kwh = 10.0f;
+  measurements = SitePowerMeasurements{};
+  measurements.storage_energy_kwh = 4.0f;
+  normalize_site_storage_state(config, &measurements);
+  assert_equal("storage_energy_calculates_soc", measurements.storage_soc.value(), 40.0f);
+
+  // storage_soc_calculates_energy
+  measurements = SitePowerMeasurements{};
+  measurements.storage_soc = 75.0f;
+  normalize_site_storage_state(config, &measurements);
+  assert_equal("storage_soc_calculates_energy", measurements.storage_energy_kwh.value(), 7.5f);
 
   return 0;
 }

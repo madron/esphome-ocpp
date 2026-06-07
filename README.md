@@ -296,18 +296,20 @@ ocpp:
 | ---                            | --- |
 | `phases` (Required)            | Number of electrical phases at the site.<br>Available values: `1` or `3`. |
 | `voltage` (Required)           | Phase-to-neutral voltage in `V`, for example `230`. |
-| `headroom_current` (Optional)  | Sensor or sensor group that receives total site current headroom in `A`. It currently mirrors `grid.headroom_current`; future versions can combine grid, storage, and other power sources. Configure the same scalar or per-phase shape as `drawn_current`. Defaults to not configured. |
+| `policy` (Optional)            | Site energy policy used by allocation. Defaults to `normal`.<br>Available values:<br>`normal` uses all grid headroom available under configured limits; <br>`solar` only increases charging from exported solar surplus and can reduce charging when the site is no longer exporting enough power. |
+| `solar` (Optional)             | Solar-policy tuning options. Defaults to an internal export margin of `300` W and no user-facing number entity. |
+| `storage` (Optional)           | Storage/battery measurements used by solar policy and future policies. Defaults to not configured. |
+| `headroom_current` (Optional)  | Sensor or sensor group that receives total site current headroom in `A`. In `normal` policy this mirrors `grid.headroom_current`; in `solar` policy it represents solar-surplus headroom after the export margin and storage discharge correction. Configure the same scalar or per-phase shape as `drawn_current`. Defaults to not configured. |
 | `drawn_current` (Optional)     | Sensor or sensor group that receives the total EV current drawn at the site in `A`. Configure `drawn_current.name` for the scalar maximum phase current, any of `drawn_current.l1`, `drawn_current.l2`, and `drawn_current.l3` for per-phase sensors, or both scalar and per-phase sensors in the same block. Defaults to not configured. |
 | `grid` (Optional)              | Grid connection limits and measurements. Defaults to not configured, for example on sites that are not connected to the grid. |
 
 ### Site Headroom Current
 
 The optional site `headroom_current` sensors expose site-level current headroom in
-`A`, using the same scalar and per-phase shape as `drawn_current`. For now this is
-equal to `site.grid.headroom_current`. It is intentionally separate from
-connector-level `available_current` so future policies can combine grid headroom
-with storage, solar, or other site power sources before deciding connector
-availability.
+`A`, using the same scalar and per-phase shape as `drawn_current`. In `normal`
+policy this is equal to `site.grid.headroom_current`. In `solar` policy it is the
+policy-limited solar-surplus headroom and may become negative when charging should
+be reduced to restore the configured export margin or stop storage discharge.
 
 Example for per-phase site headroom-current sensors:
 
@@ -405,12 +407,106 @@ ocpp:
       l3: site_drawn_current_l3
 ```
 
+### Site Energy Policy
+
+The site `policy` controls which energy should be made available to chargers.
+
+- `normal` is the default. It uses the current grid headroom under `site.grid`
+  limits, which is the behavior used before solar policy support was added.
+- `solar` only uses surplus power that is being exported to the grid. Grid limits
+  are still enforced, but allocation is additionally capped by the measured export
+  power.
+
+Solar policy requires signed `site.grid.power` measurements. Positive grid power
+means import from the grid, and negative grid power means export to the grid. When
+the site is not exporting enough, solar policy can produce negative headroom so
+the current allocator lowers the charging limit instead of holding the previous
+limit.
+
+Example with a user-tunable export margin:
+
+```yaml
+ocpp:
+  site:
+    phases: 1
+    voltage: 230
+    policy: solar
+    solar:
+      export_margin_power:
+        name: Solar Export Margin Power
+        min_value: 0
+        max_value: 1000
+        step: 50
+        initial_value: 300
+    grid:
+      max_power: 6000
+      max_current: 32
+      power:
+        l1: grid_power_l1
+```
+
+`solar.export_margin_power` is a number entity in `W`. It configures how much
+export should remain after EV charging. Values around `200` to `500` are useful
+for installations where a battery or inverter tries to keep grid power close to
+`0` before the charger has time to react. If this number is omitted, solar policy
+uses an internal default of `300` and no number entity is created.
+
+### Site Storage
+
+The optional `site.storage` section describes a battery/storage system. Solar
+policy uses `storage.power` when available to detect the case where the battery is
+discharging faster than the charger can reduce power. Storage power uses this sign
+convention: positive values mean the storage is discharging into the site, and
+negative values mean the storage is charging.
+
+When storage power is configured and positive, solar policy subtracts that
+discharge power from available solar headroom. If no storage power sensor is
+configured, solar policy falls back to the `solar.export_margin_power` workaround
+described above.
+
+Example with aggregate storage power and state of charge:
+
+```yaml
+ocpp:
+  site:
+    phases: 3
+    voltage: 230
+    policy: solar
+    storage:
+      power:
+        aggregate: battery_power
+      capacity: 10
+      soc: battery_soc
+```
+
+Use `capacity` in `kWh`. Configure either `soc` in `%` or `energy` in `kWh`, not
+both. When one is provided, the component calculates the other internally from
+`capacity` so future policies can use either representation.
+
+### Storage Options
+
+| Option                       | Description |
+| ---                          | --- |
+| `power` (Optional)           | Storage power sensor configuration under `site.storage.power`. Positive values mean discharging into the site; negative values mean charging. Defaults to not configured. |
+| `capacity` (Optional)        | Storage capacity in `kWh`. Required when `soc` or `energy` is configured. Defaults to not configured. |
+| `soc` (Optional)             | Sensor ID for storage state of charge in `%`. Mutually exclusive with `energy`. Requires `capacity`. Defaults to not configured. |
+| `energy` (Optional)          | Sensor ID for storage energy currently present in `kWh`. Mutually exclusive with `soc`. Requires `capacity`. Defaults to not configured. |
+
+### Storage Power Options
+
+| Option                        | Description |
+| ---                           | --- |
+| `power.l1` (Optional)         | Sensor ID for storage power on phase `L1`. Use this for single-phase sites and configure it together with `power.l2` and `power.l3` for accurate three-phase storage metering.<br>Defaults to none. |
+| `power.l2` (Optional)         | Sensor ID for storage power on phase `L2`. Configure it together with `power.l1` and `power.l3` for accurate three-phase storage metering.<br>Defaults to none. |
+| `power.l3` (Optional)         | Sensor ID for storage power on phase `L3`. Configure it together with `power.l1` and `power.l2` for accurate three-phase storage metering.<br>Defaults to none. |
+| `power.aggregate` (Optional)  | Sensor ID for aggregate storage power. Use only as a fallback for three-phase sites when the storage meter reports aggregate power but not per-phase power; estimated per-phase storage power is calculated as `aggregate / 3`. Do not combine with `power.l1`, `power.l2`, or `power.l3`.<br>Defaults to not configured. |
+
 ### Grid Connection
 
 The optional `site.grid` section describes limits and measurements for the grid
 connection. Any configured grid limit is enforced by the built-in equal
-allocator. Future power sources, such as an inverter or a generator, can be added
-as additional subsections under `site`.
+allocator. `site.storage` can provide battery measurements for the solar policy
+and for future site policies.
 
 ### Grid Options
 
