@@ -383,6 +383,8 @@ generator, can be added as additional subsections under `site`.
 
 For real load balancing, the component should be able to account for the current
 non-EV grid load. This can be provided by existing sensors under `site.grid.power`.
+Use signed grid power values: positive values mean power is imported from the
+grid, and negative values mean power is exported to the grid.
 
 Single-phase example:
 
