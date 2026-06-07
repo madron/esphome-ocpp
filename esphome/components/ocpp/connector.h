@@ -12,11 +12,16 @@
 #include "esphome/components/button/button.h"
 #include "esphome/components/number/number.h"
 #include "esphome/components/switch/switch.h"
+#include "esphome/components/text_sensor/text_sensor.h"
 #endif
 
 namespace esphome::sensor {
 class Sensor;
 }  // namespace esphome::sensor
+
+namespace esphome::text_sensor {
+class TextSensor;
+}  // namespace esphome::text_sensor
 
 namespace esphome::ocpp {
 
@@ -85,6 +90,7 @@ struct ConfiguredConnector {
   std::array<sensor::Sensor *, 3> drawn_current_sensors{};
   sensor::Sensor *current_sensor{nullptr};
   sensor::Sensor *power_sensor{nullptr};
+  text_sensor::TextSensor *state_sensor{nullptr};
   OcppCurrentLimitNumber *current_limit_number{nullptr};
   OcppConnectorEnabledSwitch *enabled_switch{nullptr};
   OcppConnectorButton *restart_button{nullptr};
@@ -99,6 +105,7 @@ struct ConfiguredConnector {
   bool has_latest_current_import{false};
   bool has_latest_power_active_import{false};
   bool has_session_current_import{false};
+  std::string state{"unplugged"};
   float available_current{0.0f};
   float allocated_current{0.0f};
   float latest_current_import{0.0f};
@@ -110,6 +117,7 @@ float effective_allocated_current(float available_current, float max_current, fl
                                   bool enabled);
 float effective_allocated_current(float available_current, float min_current);
 float equal_available_current(float site_available_current, float connector_current, uint8_t active_connector_count);
+const char *connector_state_from_ocpp_status(const char *status);
 float effective_connector_drawn_current(const ConnectorCurrentState &state);
 float effective_connector_drawn_current(const ConfiguredConnector &connector);
 float connector_drawn_current_max(const ConfiguredConnector &connector);

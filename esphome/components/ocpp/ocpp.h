@@ -6,6 +6,7 @@
 #include "esphome/components/json/json_util.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/socket/socket.h"
+#include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/core/component.h"
 
 #ifdef USE_OCPP
@@ -69,6 +70,8 @@ class OcppServer : public Component {
                                           sensor::Sensor *drawn_current_sensor);
   void set_connector_current_sensor(std::string charge_point_id, uint8_t connector_id, sensor::Sensor *current_sensor);
   void set_connector_power_sensor(std::string charge_point_id, uint8_t connector_id, sensor::Sensor *power_sensor);
+  void set_connector_state_sensor(std::string charge_point_id, uint8_t connector_id,
+                                  text_sensor::TextSensor *state_sensor);
   void set_connector_current_limit_number(std::string charge_point_id, uint8_t connector_id,
                                           OcppCurrentLimitNumber *current_limit_number, float initial_limit);
   void set_connector_enabled_switch(std::string charge_point_id, uint8_t connector_id,
@@ -150,6 +153,7 @@ class OcppServer : public Component {
   void publish_site_drawn_current_if_configured_();
   void reset_session_current_(ConfiguredConnector *connector);
   void publish_current_if_configured_(ConfiguredConnector *connector);
+  void publish_connector_state_if_configured_(ConfiguredConnector *connector);
   void publish_drawn_current_if_configured_(ConfiguredConnector *connector);
   float drawn_current_max_(const ConfiguredCharger &charger) const;
   float drawn_current_max_(const ConfiguredConnector &connector) const;

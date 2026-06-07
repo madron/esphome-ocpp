@@ -2,7 +2,7 @@ from collections.abc import Mapping
 
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import button, number, sensor, switch
+from esphome.components import button, number, sensor, switch, text_sensor
 from esphome.const import (
     CONF_CURRENT,
     CONF_ID,
@@ -11,6 +11,7 @@ from esphome.const import (
     CONF_NAME,
     CONF_PORT,
     CONF_POWER,
+    CONF_STATE,
     CONF_STEP,
     CONF_UPDATE_INTERVAL,
     DEVICE_CLASS_CURRENT,
@@ -21,7 +22,7 @@ from esphome.const import (
 )
 
 DEPENDENCIES = ["network"]
-AUTO_LOAD = ["json", "socket", "sensor", "number", "button", "switch"]
+AUTO_LOAD = ["json", "socket", "sensor", "number", "button", "switch", "text_sensor"]
 
 CONF_CHARGE_POINT_ID = "charge_point_id"
 CONF_CHARGERS = "chargers"
@@ -292,6 +293,7 @@ CONNECTOR_SCHEMA = cv.Schema(
         cv.Optional(CONF_ALLOCATED_CURRENT): CURRENT_SENSOR_SCHEMA,
         cv.Optional(CONF_DRAWN_CURRENT): DRAWN_CURRENT_SCHEMA,
         cv.Optional(CONF_CURRENT): CURRENT_SENSOR_SCHEMA,
+        cv.Optional(CONF_STATE): text_sensor.text_sensor_schema(),
         cv.Optional(CONF_POWER): sensor.sensor_schema(
             unit_of_measurement=UNIT_WATT,
             accuracy_decimals=0,
@@ -447,6 +449,13 @@ async def to_code(config):
                 sens = await sensor.new_sensor(current_config)
                 cg.add(
                     var.set_connector_current_sensor(
+                        charger[CONF_CHARGE_POINT_ID], connector[CONF_ID], sens
+                    )
+                )
+            if state_config := connector.get(CONF_STATE):
+                sens = await text_sensor.new_text_sensor(state_config)
+                cg.add(
+                    var.set_connector_state_sensor(
                         charger[CONF_CHARGE_POINT_ID], connector[CONF_ID], sens
                     )
                 )

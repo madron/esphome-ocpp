@@ -129,6 +129,8 @@ ocpp:
               name: Garage Left Drawn Current L3
           power:
             name: Garage Left Power
+          state:
+            name: Garage Left State
           enabled:
             name: Garage Left Enabled
           current_limit:
@@ -600,6 +602,8 @@ ocpp:
               name: Garage Left Drawn Current L3
           power:
             name: Garage Left Power
+          state:
+            name: Garage Left State
           enabled:
             name: Garage Left Enabled
           current_limit:
@@ -664,6 +668,7 @@ internal phase values.
 | `drawn_current` (Optional)       | Sensor or sensor group that receives the actual current drawn by the vehicle/charger in `A`. Configure `drawn_current.name` for the scalar maximum phase current, any of `drawn_current.l1`, `drawn_current.l2`, and `drawn_current.l3` for per-phase sensors, or both scalar and per-phase sensors in the same block. Defaults to not configured. |
 | `current` (Optional)             | Backward-compatible scalar sensor that receives this connector's latest non-phase-specific OCPP `Current.Import` value from `MeterValues`, in `A`. For phase-aware site calculations, prefer `drawn_current`. Defaults to not configured. |
 | `power` (Optional)               | Sensor that receives this connector's latest OCPP `Power.Active.Import` value from `MeterValues`, in `W`. Defaults to not configured. |
+| `state` (Optional)               | Text sensor that receives the connector plug/charging state derived from OCPP `StatusNotification`. Defaults to not configured. |
 | `enabled` (Optional)             | Switch for enabling or disabling charging on this connector. Defaults to enabled when omitted. Turning the switch off stops the active charging session when one is known. Turning it on starts a new charging session when none is active. |
 | `current_limit` (Optional)       | Number for this connector's requested charging current limit in `A`. Defaults: `min_value: 6`, `max_value: max_current`, `step: 1`. When changed during an active transaction, the component updates the charger's current limit; otherwise it stores the value. The stored value is also applied when a transaction starts or when the connector resumes `Charging` after being suspended. If omitted, a restart starts charging without an explicit current limit. |
 | `restart` (Optional)             | Button that restarts the charging session. |
@@ -680,6 +685,30 @@ and measured draw:
 - `drawn_current` is the current in `A` actually drawn by the vehicle/charger.
   The scalar sensor publishes the maximum of the internally tracked phase
   currents. Per-phase sensors can also expose `l1`, `l2`, and `l3` separately.
+
+### Connector State Text Sensor
+
+The optional connector `state` text sensor exposes the latest OCPP connector
+status as a simplified state string:
+
+| State         | Source OCPP status |
+| ---           | --- |
+| `unplugged`   | `Available` |
+| `plugged`     | `Preparing` |
+| `charging`    | `Charging` |
+| `paused`      | `SuspendedEV`, `SuspendedEVSE` |
+| `finishing`   | `Finishing` |
+| `reserved`    | `Reserved` |
+| `unavailable` | `Unavailable` |
+| `faulted`     | `Faulted` |
+| `unknown`     | Any other or missing status |
+
+```yaml
+connectors:
+  - id: 1
+    state:
+      name: Garage Left State
+```
 
 Example for a scalar drawn-current sensor:
 

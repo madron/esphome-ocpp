@@ -331,6 +331,14 @@ void OcppServer::set_connector_power_sensor(std::string charge_point_id, uint8_t
   charger->connector.power_sensor = power_sensor;
 }
 
+void OcppServer::set_connector_state_sensor(std::string charge_point_id, uint8_t connector_id,
+                                            text_sensor::TextSensor *state_sensor) {
+  auto *charger = this->find_charger_(charge_point_id);
+  if (charger == nullptr || !charger->has_connector || charger->connector.id != connector_id)
+    return;
+  charger->connector.state_sensor = state_sensor;
+}
+
 void OcppServer::set_connector_current_limit_number(std::string charge_point_id, uint8_t connector_id,
                                                     OcppCurrentLimitNumber *current_limit_number,
                                                     float initial_limit) {
@@ -429,6 +437,7 @@ void OcppServer::setup() {
     auto *connector = &this->charger_.connector;
     this->update_connector_allocation_(connector);
     this->publish_connector_allocation_if_configured_(connector);
+    this->publish_connector_state_if_configured_(connector);
     this->publish_drawn_current_if_configured_(connector);
     if (connector->enabled_switch != nullptr)
       connector->enabled_switch->publish_state(connector->enabled);
@@ -987,6 +996,11 @@ void OcppServer::publish_current_if_configured_(ConfiguredConnector *connector) 
     connector->current_sensor->publish_state(connector->latest_current_import);
 }
 
+void OcppServer::publish_connector_state_if_configured_(ConfiguredConnector *connector) {
+  if (connector != nullptr && connector->state_sensor != nullptr)
+    connector->state_sensor->publish_state(connector->state);
+}
+
 void OcppServer::publish_drawn_current_if_configured_(ConfiguredConnector *connector) {
   if (connector == nullptr)
     return;
@@ -1349,6 +1363,11 @@ void OcppServer::handle_status_notification_(const std::string &unique_id, JsonO
              this->charge_point_id_.c_str());
   }
   if (connector != nullptr) {
+    const char *connector_state = connector_state_from_ocpp_status(status);
+    if (connector->state != connector_state) {
+      connector->state = connector_state;
+      this->publish_connector_state_if_configured_(connector);
+    }
     bool is_charging = std::strcmp(status, "Charging") == 0;
     started_charging = is_charging && !connector->is_charging;
     bool stopped_charging = !is_charging && connector->is_charging;

@@ -5,6 +5,7 @@
 #endif
 
 #include <algorithm>
+#include <cstring>
 #include <cmath>
 
 namespace esphome::ocpp {
@@ -37,6 +38,28 @@ float equal_available_current(float site_available_current, float connector_curr
   if (!std::isfinite(site_available_current))
     return safe_connector_current + site_available_current;
   return safe_connector_current + clamp_finite_non_negative(site_available_current) / active_connector_count;
+}
+
+const char *connector_state_from_ocpp_status(const char *status) {
+  if (status == nullptr)
+    return "unknown";
+  if (std::strcmp(status, "Available") == 0)
+    return "unplugged";
+  if (std::strcmp(status, "Preparing") == 0)
+    return "plugged";
+  if (std::strcmp(status, "Charging") == 0)
+    return "charging";
+  if (std::strcmp(status, "SuspendedEV") == 0 || std::strcmp(status, "SuspendedEVSE") == 0)
+    return "paused";
+  if (std::strcmp(status, "Finishing") == 0)
+    return "finishing";
+  if (std::strcmp(status, "Reserved") == 0)
+    return "reserved";
+  if (std::strcmp(status, "Unavailable") == 0)
+    return "unavailable";
+  if (std::strcmp(status, "Faulted") == 0)
+    return "faulted";
+  return "unknown";
 }
 
 float effective_connector_drawn_current(const ConnectorCurrentState &state) {

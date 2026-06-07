@@ -63,6 +63,12 @@ assumed current plus an equal share of site headroom. If site headroom is
 unbounded because no grid/source limits are configured, connector allocation falls
 back to the connector `max_current`.
 
+Connector plug/charging status is exposed separately as a text state derived from
+OCPP `StatusNotification`: `Available` becomes `unplugged`, `Preparing` becomes
+`plugged`, `Charging` becomes `charging`, and suspended statuses become `paused`.
+This text state is diagnostic state; it must not replace the transaction state
+tracked by `has_active_transaction` and `active_transaction_id`.
+
 When `allocated_current` is `0`, the component should stop the transaction with
 `RemoteStopTransaction`. It should not send a `SetChargingProfile` below the
 charger minimum current, and it should not rely on a `0 A` charging profile as the

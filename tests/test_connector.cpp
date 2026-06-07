@@ -7,6 +7,7 @@
 using esphome::ocpp::ConfiguredConnector;
 using esphome::ocpp::ConnectorCurrentState;
 using esphome::ocpp::connector_drawn_current_max;
+using esphome::ocpp::connector_state_from_ocpp_status;
 using esphome::ocpp::effective_allocated_current;
 using esphome::ocpp::effective_connector_drawn_current;
 using esphome::ocpp::equal_available_current;
@@ -44,6 +45,16 @@ int main() {
                equal_available_current(12.0f, 8.0f, 2), 14.0f);
   assert_equal("equal_available_current_rejects_negative_current",
                equal_available_current(12.0f, -1.0f, 2), 6.0f);
+  assert_equal("connector_state_maps_available", std::string(connector_state_from_ocpp_status("Available")),
+               std::string("unplugged"));
+  assert_equal("connector_state_maps_preparing", std::string(connector_state_from_ocpp_status("Preparing")),
+               std::string("plugged"));
+  assert_equal("connector_state_maps_charging", std::string(connector_state_from_ocpp_status("Charging")),
+               std::string("charging"));
+  assert_equal("connector_state_maps_suspended_ev", std::string(connector_state_from_ocpp_status("SuspendedEV")),
+               std::string("paused"));
+  assert_equal("connector_state_maps_unknown", std::string(connector_state_from_ocpp_status("Other")),
+               std::string("unknown"));
 
   ConnectorCurrentState current_state;
   current_state.is_charging = false;
