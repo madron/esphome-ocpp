@@ -136,6 +136,10 @@ ocpp:
   site:
     phases: 3
     voltage: 230
+    available_current:
+      l1: site_available_current_l1
+      l2: site_available_current_l2
+      l3: site_available_current_l3
     drawn_current:
       name: site_drawn_current
       l1: site_drawn_current_l1
@@ -145,7 +149,10 @@ ocpp:
       max_current: 32
       max_power: 10000
       max_phase_imbalance: 6000
-      # power
+      power:
+        l1: grid_power_l1
+        l2: grid_power_l2
+        l3: grid_power_l3
 
   chargers:
     - id: garage

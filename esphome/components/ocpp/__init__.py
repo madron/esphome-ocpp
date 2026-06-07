@@ -193,13 +193,20 @@ def _validate_site(value):
     phases = value[CONF_PHASES]
     grid = value.get(CONF_GRID, {})
     power = grid.get(CONF_POWER, {})
+    available_current = value.get(CONF_AVAILABLE_CURRENT, {})
+    if not isinstance(available_current, Mapping):
+        available_current = {}
     drawn_current = value.get(CONF_DRAWN_CURRENT, {})
+    if not isinstance(drawn_current, Mapping):
+        drawn_current = {}
     has_aggregate = CONF_AGGREGATE in power
     configured_phases = [phase for phase in PHASE_KEYS if phase in power]
 
     if phases == 1:
         if CONF_L2 in power or CONF_L3 in power:
             raise cv.Invalid("single-phase sites may only configure grid.power.l1")
+        if CONF_L2 in available_current or CONF_L3 in available_current:
+            raise cv.Invalid("single-phase sites may only configure available_current.l1")
         if CONF_L2 in drawn_current or CONF_L3 in drawn_current:
             raise cv.Invalid("single-phase sites may only configure drawn_current.l1")
         if has_aggregate:
@@ -242,6 +249,7 @@ SITE_SCHEMA = cv.All(
         {
             cv.Required(CONF_PHASES): cv.one_of(1, 3, int=True),
             cv.Required(CONF_VOLTAGE): cv.positive_float,
+            cv.Optional(CONF_AVAILABLE_CURRENT): DRAWN_CURRENT_SCHEMA,
             cv.Optional(CONF_DRAWN_CURRENT): DRAWN_CURRENT_SCHEMA,
             cv.Optional(CONF_GRID): GRID_SCHEMA,
         }
@@ -317,6 +325,15 @@ async def to_code(config):
     cg.add(var.set_path(server[CONF_PATH]))
     if site := config.get(CONF_SITE):
         cg.add(var.set_site(site[CONF_PHASES], site[CONF_VOLTAGE]))
+        if available_current_config := site.get(CONF_AVAILABLE_CURRENT):
+            scalar_config, phase_configs = _split_drawn_current_config(available_current_config)
+            if scalar_config:
+                sens = await sensor.new_sensor(scalar_config)
+                cg.add(var.set_site_available_current_max_sensor(sens))
+            for index, phase in enumerate(PHASE_KEYS):
+                if phase in phase_configs:
+                    sens = await sensor.new_sensor(phase_configs[phase])
+                    cg.add(var.set_site_available_current_sensor(index, sens))
         if drawn_current_config := site.get(CONF_DRAWN_CURRENT):
             scalar_config, phase_configs = _split_drawn_current_config(drawn_current_config)
             if scalar_config:

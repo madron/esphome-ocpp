@@ -5,9 +5,13 @@
 
 using esphome::ocpp::ConfiguredCharger;
 using esphome::ocpp::ConfiguredSite;
+using esphome::ocpp::SitePowerMeasurements;
 using esphome::ocpp::configure_site;
+using esphome::ocpp::site_available_current_from_measurements;
+using esphome::ocpp::site_available_current_max;
 using esphome::ocpp::site_drawn_current_from_charger;
 using esphome::ocpp::site_drawn_current_max;
+using esphome::ocpp::update_site_available_current;
 using esphome::ocpp::update_site_drawn_current;
 
 template<typename T> void assert_equal(const char *description, const T &actual, const T &expected) {
@@ -27,6 +31,26 @@ int main() {
   configure_site(&site, 3, 230.0f);
   assert_equal("configure_site_sets_phases", site.limits.phases, static_cast<uint8_t>(3));
   assert_equal("configure_site_sets_voltage", site.limits.voltage, 230.0f);
+
+  site.limits.voltage = 100.0f;
+  site.limits.grid_max_power = 9000.0f;
+  site.limits.grid_max_current = 32.0f;
+  SitePowerMeasurements measurements;
+  measurements.grid_power_l1 = 2000.0f;
+  measurements.grid_power_l2 = 1000.0f;
+  measurements.grid_power_l3 = 0.0f;
+  auto site_available_current = site_available_current_from_measurements(site.limits, measurements);
+  assert_equal("site_available_current_applies_l1_current_headroom", site_available_current[0], 12.0f);
+  assert_equal("site_available_current_applies_total_power_limit_l2", site_available_current[1], 20.0f);
+  assert_equal("site_available_current_applies_total_power_limit_l3", site_available_current[2], 20.0f);
+  assert_equal("site_available_current_max_uses_highest_phase", site_available_current_max(site_available_current), 20.0f);
+  assert_true("update_site_available_current_reports_change", update_site_available_current(&site, measurements));
+  assert_equal("update_site_available_current_stores_l1", site.latest_available_current[0], 12.0f);
+  assert_equal("update_site_available_current_stores_l2", site.latest_available_current[1], 20.0f);
+  assert_equal("update_site_available_current_stores_l3", site.latest_available_current[2], 20.0f);
+  assert_false("update_site_available_current_reports_unchanged", update_site_available_current(&site, measurements));
+
+  configure_site(&site, 3, 230.0f);
 
   ConfiguredCharger charger;
   charger.phases = 3;
@@ -53,5 +77,6 @@ int main() {
   assert_equal("single_phase_charger_ignores_unused_local_l3", site_drawn_current[2], 0.0f);
 
   assert_true("update_site_drawn_current_accepts_null_site", !update_site_drawn_current(nullptr, &charger));
+  assert_true("update_site_available_current_accepts_null_site", !update_site_available_current(nullptr, measurements));
   return 0;
 }

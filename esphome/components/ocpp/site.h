@@ -19,12 +19,15 @@ struct ConfiguredSite {
   sensor::Sensor *grid_power_l2_sensor{nullptr};
   sensor::Sensor *grid_power_l3_sensor{nullptr};
   sensor::Sensor *grid_power_aggregate_sensor{nullptr};
+  sensor::Sensor *available_current_sensor{nullptr};
+  std::array<sensor::Sensor *, 3> available_current_sensors{};
+  std::array<float, 3> latest_available_current{};
   sensor::Sensor *drawn_current_sensor{nullptr};
   std::array<sensor::Sensor *, 3> drawn_current_sensors{};
   std::array<float, 3> latest_drawn_current{};
 };
 
-inline bool site_drawn_current_changed(const std::array<float, 3> &a, const std::array<float, 3> &b) {
+inline bool site_current_changed(const std::array<float, 3> &a, const std::array<float, 3> &b) {
   for (uint8_t i = 0; i < a.size(); i++) {
     if (a[i] != b[i])
       return true;
@@ -41,6 +44,29 @@ inline void configure_site(ConfiguredSite *site, uint8_t phases, float voltage) 
 
 inline float site_drawn_current_max(const std::array<float, 3> &drawn_current) {
   return std::max(drawn_current[0], std::max(drawn_current[1], drawn_current[2]));
+}
+
+inline float site_available_current_max(const std::array<float, 3> &available_current) {
+  return std::max(available_current[0], std::max(available_current[1], available_current[2]));
+}
+
+inline std::array<float, 3> site_available_current_from_measurements(const SiteLimitConfig &limits,
+                                                                     const SitePowerMeasurements &measurements) {
+  std::array<float, 3> site_available_current{};
+  const auto available_current = site_available_current_per_phase(limits, measurements);
+  for (uint8_t i = 0; i < available_current.size() && i < site_available_current.size(); i++)
+    site_available_current[i] = available_current[i];
+  return site_available_current;
+}
+
+inline bool update_site_available_current(ConfiguredSite *site, const SitePowerMeasurements &measurements = {}) {
+  if (site == nullptr)
+    return false;
+
+  const auto available_current = site_available_current_from_measurements(site->limits, measurements);
+  const bool changed = site_current_changed(site->latest_available_current, available_current);
+  site->latest_available_current = available_current;
+  return changed;
 }
 
 inline std::array<float, 3> site_drawn_current_from_charger(const ConfiguredCharger &charger) {
@@ -65,9 +91,25 @@ inline bool update_site_drawn_current(ConfiguredSite *site, const ConfiguredChar
       drawn_current[i] += charger_drawn_current[i];
   }
 
-  const bool changed = site_drawn_current_changed(site->latest_drawn_current, drawn_current);
+  const bool changed = site_current_changed(site->latest_drawn_current, drawn_current);
   site->latest_drawn_current = drawn_current;
   return changed;
+}
+
+inline void publish_site_available_current_if_configured(ConfiguredSite *site) {
+#ifdef USE_OCPP
+  if (site == nullptr)
+    return;
+  if (site->available_current_sensor != nullptr)
+    site->available_current_sensor->publish_state(site_available_current_max(site->latest_available_current));
+  const uint8_t active_phases = site->limits.phases == 3 ? 3 : 1;
+  for (uint8_t i = 0; i < active_phases; i++) {
+    if (site->available_current_sensors[i] != nullptr)
+      site->available_current_sensors[i]->publish_state(site->latest_available_current[i]);
+  }
+#else
+  (void) site;
+#endif
 }
 
 inline void publish_site_drawn_current_if_configured(ConfiguredSite *site) {

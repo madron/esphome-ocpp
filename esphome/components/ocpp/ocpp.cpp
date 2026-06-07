@@ -158,6 +158,13 @@ bool current_sensor_value(sensor::Sensor *sensor, float *out) {
   return true;
 }
 
+bool power_sensor_value(sensor::Sensor *sensor, float *out) {
+  if (sensor == nullptr || out == nullptr || !std::isfinite(sensor->state))
+    return false;
+  *out = sensor->state;
+  return true;
+}
+
 bool drawn_current_changed(const std::array<float, 3> &a, const std::array<float, 3> &b) {
   for (uint8_t i = 0; i < a.size(); i++) {
     if (a[i] != b[i])
@@ -202,6 +209,12 @@ void OcppServer::set_grid_max_phase_imbalance(float max_phase_imbalance) {
 
 void OcppServer::set_grid_max_current(float max_current) {
   this->site_.limits.grid_max_current = max_current;
+}
+
+void OcppServer::set_site_available_current_sensor(uint8_t phase, sensor::Sensor *available_current_sensor) {
+  if (phase >= this->site_.available_current_sensors.size())
+    return;
+  this->site_.available_current_sensors[phase] = available_current_sensor;
 }
 
 void OcppServer::set_site_drawn_current_sensor(uint8_t phase, sensor::Sensor *drawn_current_sensor) {
@@ -408,6 +421,8 @@ void OcppServer::setup() {
     this->update_charger_drawn_current_(&this->charger_);
     this->publish_charger_drawn_current_if_configured_(&this->charger_);
   }
+  this->update_site_available_current_();
+  this->publish_site_available_current_if_configured_();
   this->update_site_drawn_current_();
   this->publish_site_drawn_current_if_configured_();
 }
@@ -419,6 +434,7 @@ void OcppServer::loop() {
     this->read_client_();
   if (this->has_charger_)
     this->update_and_publish_charger_drawn_current_if_configured_(&this->charger_);
+  this->update_and_publish_site_available_current_if_configured_();
   this->update_and_publish_site_drawn_current_if_configured_();
 }
 
@@ -801,6 +817,20 @@ void OcppServer::note_transaction_id_(uint32_t transaction_id) {
     this->next_transaction_id_ = transaction_id + 1;
 }
 
+SitePowerMeasurements OcppServer::site_power_measurements_() const {
+  SitePowerMeasurements measurements;
+  float power = 0.0f;
+  if (power_sensor_value(this->site_.grid_power_l1_sensor, &power))
+    measurements.grid_power_l1 = power;
+  if (power_sensor_value(this->site_.grid_power_l2_sensor, &power))
+    measurements.grid_power_l2 = power;
+  if (power_sensor_value(this->site_.grid_power_l3_sensor, &power))
+    measurements.grid_power_l3 = power;
+  if (power_sensor_value(this->site_.grid_power_aggregate_sensor, &power))
+    measurements.grid_power_aggregate = power;
+  return measurements;
+}
+
 void OcppServer::update_connector_allocation_(ConfiguredConnector *connector) {
   update_connector_allocation(connector, DEFAULT_ALLOCATION_MIN_CURRENT);
 }
@@ -852,6 +882,19 @@ void OcppServer::update_and_publish_charger_drawn_current_if_configured_(Configu
 void OcppServer::publish_charger_drawn_current_if_configured_(ConfiguredCharger *charger) {
   if (charger != nullptr && charger->drawn_current_sensor != nullptr)
     charger->drawn_current_sensor->publish_state(this->drawn_current_max_(*charger));
+}
+
+bool OcppServer::update_site_available_current_() {
+  return update_site_available_current(&this->site_, this->site_power_measurements_());
+}
+
+void OcppServer::update_and_publish_site_available_current_if_configured_() {
+  if (this->update_site_available_current_())
+    this->publish_site_available_current_if_configured_();
+}
+
+void OcppServer::publish_site_available_current_if_configured_() {
+  publish_site_available_current_if_configured(&this->site_);
 }
 
 bool OcppServer::update_site_drawn_current_() {

@@ -32,8 +32,8 @@ site, chargers, and connectors. Each level has a different responsibility.
   of available phases, the phase-to-neutral voltage in `V`, optional grid limits,
   and optional grid power measurements. Site limits apply to all configured EV
   charging and are used by the allocator to decide how much current is available.
-  Site EV current draw can be exposed as scalar or per-phase `drawn_current`
-  sensors.
+  Site current headroom and EV current draw can be exposed as scalar or per-phase
+  `available_current` and `drawn_current` sensors.
 - A `charger` describes one OCPP charge point that connects to this component.
   It is identified by its `charge_point_id`, which must match the identity used
   by the charger in the WebSocket URL. Charger-level configuration is about
@@ -71,6 +71,13 @@ ocpp:
   site:
     phases: 3
     voltage: 230
+    available_current:
+      l1:
+        name: Site Available Current L1
+      l2:
+        name: Site Available Current L2
+      l3:
+        name: Site Available Current L3
     drawn_current:
       name: Site EV Drawn Current
       l1:
@@ -283,12 +290,60 @@ ocpp:
 
 ### Site Options
 
-| Option                      | Description |
-| ---                         | --- |
-| `phases` (Required)         | Number of electrical phases at the site.<br>Available values: `1` or `3`. |
-| `voltage` (Required)        | Phase-to-neutral voltage in `V`, for example `230`. |
-| `drawn_current` (Optional)  | Sensor or sensor group that receives the total EV current drawn at the site in `A`. Configure `drawn_current.name` for the scalar maximum phase current, any of `drawn_current.l1`, `drawn_current.l2`, and `drawn_current.l3` for per-phase sensors, or both scalar and per-phase sensors in the same block. Defaults to not configured. |
-| `grid` (Optional)           | Grid connection limits and measurements. Defaults to not configured, for example on sites that are not connected to the grid. |
+| Option                         | Description |
+| ---                            | --- |
+| `phases` (Required)            | Number of electrical phases at the site.<br>Available values: `1` or `3`. |
+| `voltage` (Required)           | Phase-to-neutral voltage in `V`, for example `230`. |
+| `available_current` (Optional) | Sensor or sensor group that receives the current headroom available at the site in `A`. Configure `available_current.name` for the scalar maximum phase value, any of `available_current.l1`, `available_current.l2`, and `available_current.l3` for per-phase sensors, or both scalar and per-phase sensors in the same block. Defaults to not configured. |
+| `drawn_current` (Optional)     | Sensor or sensor group that receives the total EV current drawn at the site in `A`. Configure `drawn_current.name` for the scalar maximum phase current, any of `drawn_current.l1`, `drawn_current.l2`, and `drawn_current.l3` for per-phase sensors, or both scalar and per-phase sensors in the same block. Defaults to not configured. |
+| `grid` (Optional)              | Grid connection limits and measurements. Defaults to not configured, for example on sites that are not connected to the grid. |
+
+### Site Available Current
+
+The optional site `available_current` sensors expose the current headroom in `A`
+that remains available from the configured `site.grid` limits. Values are reported
+in physical site phase order. The calculation uses signed `site.grid.power`
+measurements when configured; positive power reduces available current and
+negative power export increases it. If no grid power sensor is configured, the
+component assumes `0 W` measured load and reports the static grid headroom.
+
+The component evaluates each configured grid limit and publishes the tightest
+current for each phase:
+
+- `grid.max_power`: remaining total power divided evenly across the active site
+  phases and converted from `W` to `A` using `site.voltage`.
+- `grid.max_current`: per-phase current headroom calculated from measured phase
+  power divided by `site.voltage`.
+- `grid.max_phase_imbalance`: for three-phase sites, remaining imbalance power
+  per phase divided by `site.voltage`.
+
+The value is the additional current headroom above the current measured grid/site
+load. If the configured grid power meter includes active EV charging, the sensor
+shows the extra current still available beyond the current EV draw; compare it
+with site `drawn_current` to see both current draw and remaining headroom.
+
+Example for per-phase site available-current sensors:
+
+```yaml
+ocpp:
+  site:
+    phases: 3
+    voltage: 230
+    available_current:
+      l1:
+        name: Site Available Current L1
+      l2:
+        name: Site Available Current L2
+      l3:
+        name: Site Available Current L3
+    grid:
+      max_power: 10000
+      max_current: 32
+```
+
+For a single-phase site, configure the scalar form or only
+`available_current.l1`. The scalar form publishes the highest site phase value;
+with a single-phase site this is the same as `L1`.
 
 ### Site Drawn Current
 

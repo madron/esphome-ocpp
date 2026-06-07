@@ -145,6 +145,33 @@ and per-phase sensors may be configured together from the same `drawn_current`
 block. These site values should always be in physical site phase order after phase
 mapping has been applied.
 
+## Site Available Current State Model
+
+Site available current is a derived current-headroom vector in physical site phase
+order, `L1`, `L2`, and `L3`, expressed in `A`. It is calculated from the static
+`site.grid` limits plus the current signed `site.grid.power` measurements. It does
+not come from OCPP charger metering.
+
+The calculation evaluates all configured grid limits and keeps the tightest value
+per phase:
+
+```text
+from grid.max_power:
+  (grid.max_power - sum(measured_phase_power)) / (site.voltage * active_phases)
+
+from grid.max_current:
+  grid.max_current - measured_phase_power[phase] / site.voltage
+
+from grid.max_phase_imbalance:
+  (grid.max_phase_imbalance - (measured_phase_power[phase] - min_phase_power)) /
+    site.voltage
+```
+
+Negative results are clamped to `0`. Aggregate-only grid metering uses the same
+`aggregate / active_phases` estimate as the site limit helper. The published scalar
+sensor follows the site `drawn_current` pattern and reports the maximum phase value;
+per-phase sensors publish the individual site phase values.
+
 ## OCPP Current Metering and Phase Mapping
 
 OCPP 1.6 `MeterValues` is connector-scoped: the message contains a `connectorId`,
