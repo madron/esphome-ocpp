@@ -57,6 +57,74 @@ external_components:
       type: local
       path: ./esphome/components
 
+
+# udp:
+#   - id: udp_grid_power
+#     port: 18511
+
+# packet_transport:
+#   - platform: udp
+#     id: packet_transport_udp_grid_power
+#     udp_id: udp_grid_power
+#     providers:
+#       - name: garage
+#         encryption: !secret udp_grid_power_packet_transport_key
+
+# sensor:
+#   - platform: packet_transport
+#     transport_id: packet_transport_udp_grid_power
+#     provider: garage
+#     remote_id: wb1_power_grid
+#     id: grid_power_aggregate
+#     internal: true
+
+
+mqtt:
+  broker: !secret mqtt_broker
+  username: !secret mqtt_username
+  password: !secret mqtt_password
+  reboot_timeout: 0s
+  keepalive: 5s
+
+
+sensor:
+  - platform: mqtt_subscribe
+    id: grid_power_l1
+    name: grid_power_l1
+    topic: inverter/sensor/grid_power_a/state
+    device_class: power
+    unit_of_measurement: "W"
+    accuracy_decimals: 0
+  - platform: mqtt_subscribe
+    id: grid_power_l2
+    name: grid_power_l2
+    topic: inverter/sensor/grid_power_b/state
+    device_class: power
+    unit_of_measurement: "W"
+    accuracy_decimals: 0
+  - platform: mqtt_subscribe
+    id: grid_power_l3
+    name: grid_power_l3
+    topic: inverter/sensor/grid_power_c/state
+    device_class: power
+    unit_of_measurement: "W"
+    accuracy_decimals: 0
+  - platform: mqtt_subscribe
+    id: storage_power
+    name: storage_power
+    topic: inverter/sensor/battery_power/state
+    device_class: power
+    unit_of_measurement: "W"
+    accuracy_decimals: 0
+  - platform: mqtt_subscribe
+    id: storage_energy
+    name: storage_energy
+    topic: inverter/sensor/battery_energy_kwh/state
+    device_class: energy
+    unit_of_measurement: "kWh"
+    accuracy_decimals: 1
+
+
 ocpp:
   id: ocpp_server
   site:
