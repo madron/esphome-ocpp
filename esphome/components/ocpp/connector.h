@@ -105,6 +105,7 @@ struct ConfiguredConnector {
   bool has_latest_current_import{false};
   bool has_latest_power_active_import{false};
   bool has_session_current_import{false};
+  bool has_phase_specific_current_import{false};
   std::string state{"unplugged"};
   float available_current{0.0f};
   float allocated_current{0.0f};

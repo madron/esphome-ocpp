@@ -138,7 +138,7 @@ class OcppServer : public Component {
   bool update_site_headroom_current_();
   void update_and_publish_site_headroom_current_if_configured_();
   void publish_site_headroom_current_if_configured_();
-  float site_available_current_(const ConfiguredCharger &charger) const;
+  float site_available_current_(const ConfiguredCharger &charger, const ConfiguredConnector *connector = nullptr) const;
   uint8_t active_connector_count_(const ConfiguredConnector *prospective_connector = nullptr) const;
   float connector_current_for_allocation_(const ConfiguredConnector &connector) const;
   void update_connector_allocation_(ConfiguredConnector *connector, bool include_connector_as_active = false);

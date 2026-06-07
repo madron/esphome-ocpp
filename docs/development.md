@@ -56,12 +56,12 @@ explains what the component actually applies to the charger. Keeping both makes 
 possible to diagnose why a connector is paused without exposing additional names
 such as target or applied current.
 
-The first implemented allocator is equal sharing. It treats site headroom current
-as the additional current that can be shared between active transactions. For each
-active connector, the raw `available_current` is the connector's measured or
-assumed current plus an equal share of site headroom. If site headroom is
-unbounded because no grid/source limits are configured, connector allocation falls
-back to the connector `max_current`.
+The first implemented allocator is equal sharing. It treats load-shape-aware site
+headroom current as the additional current that can be shared between active
+transactions. For each active connector, the raw `available_current` is the
+connector's measured or assumed current plus an equal share of site headroom. If
+site headroom is unbounded because no grid/source limits are configured,
+connector allocation falls back to the connector `max_current`.
 
 Connector plug/charging status is exposed separately as a text state derived from
 OCPP `StatusNotification`: `Available` becomes `unplugged`, `Preparing` becomes
@@ -184,6 +184,14 @@ Negative results are clamped to `0`. Aggregate-only grid metering uses the same
 `aggregate / active_phases` estimate as the site limit helper. The published scalar
 sensor follows the site `drawn_current` pattern and reports the maximum phase value;
 per-phase sensors publish the individual site phase values.
+
+Connector allocation uses a separate load-shape-aware grid helper. It applies the
+same limits to the phases that the connector may actually load. Known
+single-phase chargers use their configured site phase. Three-phase chargers fall
+back to all three phases unless phase-specific OCPP `Current.Import` values or
+phase-specific charger current source sensors show exactly one active phase; this
+keeps unknown single-phase cars on three-phase chargers conservative until the
+component has reliable phase evidence.
 
 ## OCPP Current Metering and Phase Mapping
 

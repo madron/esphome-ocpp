@@ -422,6 +422,12 @@ as additional subsections under `site`.
 | `headroom_current` (Optional)       | Sensor or sensor group that receives pure grid current headroom in `A`, calculated only from grid limits and signed `site.grid.power` measurements. Configure the same scalar or per-phase shape as `drawn_current`. Defaults to not configured. |
 | `power` (Optional)                  | Grid power sensor configuration under `site.grid.power`. If omitted, the component assumes all of `grid.max_power` is available for charging. If other loads draw power from the grid and no power sensor is configured, configure a lower `max_power` to account for those loads. |
 
+Published `grid.headroom_current` sensors are diagnostic grid values. Connector
+allocation recalculates current headroom for the charger's actual load shape: a
+known single-phase charger uses its configured `phase_mapping`; a three-phase
+charger uses all three phases unless phase-specific current measurements show
+that the active car is drawing from exactly one phase.
+
 ## Dynamic Grid Power Measurements
 
 For real load balancing, the component should be able to account for the current
@@ -533,11 +539,14 @@ ocpp:
     preference: first_connected
 ```
 
-Equal allocation starts from the site headroom current and the current already
-used by active charging sessions. The available site headroom is shared equally
-between active connectors and added to each connector's current draw. With the
-current single-connector implementation, this means the active connector can use
-its measured or assumed EV current plus the current still available at the site.
+Equal allocation starts from site current headroom calculated for the connector's
+load shape and the current already used by active charging sessions. The
+available site headroom is shared equally between active connectors and added to
+each connector's current draw. With the current single-connector implementation,
+this means the active connector can use its measured or assumed EV current plus
+the current still available at the site. A single-phase load can therefore use
+more current than a balanced three-phase load when `grid.max_phase_imbalance`,
+`grid.max_current`, and `grid.max_power` allow it.
 
 Each allocation cycle calculates two connector current states. `available_current`
 is the raw current in `A` that the allocator calculated for the connector.

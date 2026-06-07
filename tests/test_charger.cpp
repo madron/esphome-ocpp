@@ -7,6 +7,8 @@ using esphome::ocpp::ConfiguredCharger;
 using esphome::ocpp::ConfiguredConnector;
 using esphome::ocpp::charger_drawn_current_from_connectors;
 using esphome::ocpp::charger_drawn_current_from_source;
+using esphome::ocpp::charger_effective_load_phases;
+using esphome::ocpp::charger_configured_load_phases;
 using esphome::ocpp::charger_drawn_current_max;
 using esphome::ocpp::charger_has_charge_point_id;
 using esphome::ocpp::configure_charger;
@@ -40,6 +42,10 @@ int main() {
   assert_equal("configure_charger_sets_max_current", charger.max_current, 32.0f);
   assert_equal("configure_charger_defaults_to_three_phases", charger.phases, static_cast<uint8_t>(3));
   assert_equal("configure_charger_resets_drawn_current", charger_drawn_current_max(charger), 0.0f);
+  auto load_phases = charger_configured_load_phases(charger);
+  assert_true("configured_three_phase_load_uses_l1", load_phases[0]);
+  assert_true("configured_three_phase_load_uses_l2", load_phases[1]);
+  assert_true("configured_three_phase_load_uses_l3", load_phases[2]);
 
   assert_equal("effective_connector_max_current_uses_charger_limit", effective_connector_max_current(16.0f, 32.0f),
                16.0f);
@@ -52,6 +58,10 @@ int main() {
   assert_equal("charger_drawn_current_source_replicates_l3", scalar_source_drawn_current[2], 13.0f);
   update_charger_drawn_current_from_source(&charger, 13.0f);
   assert_equal("charger_drawn_current_source_max_matches_source", charger_drawn_current_max(charger), 13.0f);
+  load_phases = charger_effective_load_phases(charger, &charger.connector);
+  assert_true("scalar_source_keeps_safe_three_phase_l1", load_phases[0]);
+  assert_true("scalar_source_keeps_safe_three_phase_l2", load_phases[1]);
+  assert_true("scalar_source_keeps_safe_three_phase_l3", load_phases[2]);
 
   charger.connector = ConfiguredConnector{2, 16.0f};
   charger.has_connector = true;
@@ -62,6 +72,26 @@ int main() {
   assert_equal("charger_drawn_current_sums_l3", connector_drawn_current[2], 4.0f);
   update_charger_drawn_current_from_connectors(&charger);
   assert_equal("charger_drawn_current_max_uses_highest_phase", charger_drawn_current_max(charger), 8.0f);
+
+  charger.connector.has_phase_specific_current_import = true;
+  charger.connector.latest_drawn_current = {0.0f, 7.0f, 0.0f};
+  load_phases = charger_effective_load_phases(charger, &charger.connector);
+  assert_false("phase_specific_single_phase_detection_ignores_l1", load_phases[0]);
+  assert_true("phase_specific_single_phase_detection_uses_l2", load_phases[1]);
+  assert_false("phase_specific_single_phase_detection_ignores_l3", load_phases[2]);
+
+  charger.connector.latest_drawn_current = {6.0f, 7.0f, 6.0f};
+  load_phases = charger_effective_load_phases(charger, &charger.connector);
+  assert_true("phase_specific_three_phase_detection_uses_l1", load_phases[0]);
+  assert_true("phase_specific_three_phase_detection_uses_l2", load_phases[1]);
+  assert_true("phase_specific_three_phase_detection_uses_l3", load_phases[2]);
+
+  charger.phases = 1;
+  load_phases = charger_effective_load_phases(charger, &charger.connector);
+  assert_true("configured_single_phase_uses_local_l1", load_phases[0]);
+  assert_false("configured_single_phase_ignores_local_l2", load_phases[1]);
+  assert_false("configured_single_phase_ignores_local_l3", load_phases[2]);
+  charger.phases = 3;
 
   charger.connector = ConfiguredConnector{2, 16.0f};
   charger.has_connector = true;

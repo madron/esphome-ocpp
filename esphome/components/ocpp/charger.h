@@ -17,6 +17,7 @@ struct ConfiguredCharger {
   sensor::Sensor *drawn_current_source_sensor{nullptr};
   std::array<sensor::Sensor *, 3> drawn_current_source_sensors{};
   std::array<float, 3> latest_drawn_current{};
+  bool latest_drawn_current_phase_specific{false};
   ConfiguredConnector connector;
   bool has_connector{false};
 };
@@ -25,6 +26,9 @@ void configure_charger(ConfiguredCharger *charger, std::string charge_point_id, 
 bool charger_has_charge_point_id(const ConfiguredCharger &charger, const std::string &charge_point_id);
 float effective_connector_max_current(float charger_max_current, float connector_max_current);
 float charger_drawn_current_max(const ConfiguredCharger &charger);
+std::array<bool, 3> charger_configured_load_phases(const ConfiguredCharger &charger);
+std::array<bool, 3> charger_effective_load_phases(const ConfiguredCharger &charger,
+                                                  const ConfiguredConnector *connector = nullptr);
 std::array<float, 3> charger_drawn_current_from_source(float source_current);
 void update_charger_drawn_current_from_source(ConfiguredCharger *charger, float source_current);
 std::array<float, 3> charger_drawn_current_from_connectors(const ConfiguredCharger &charger);

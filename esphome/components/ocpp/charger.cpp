@@ -16,6 +16,7 @@ void configure_charger(ConfiguredCharger *charger, std::string charge_point_id, 
   charger->drawn_current_source_sensor = nullptr;
   charger->drawn_current_source_sensors = {};
   charger->latest_drawn_current = {};
+  charger->latest_drawn_current_phase_specific = false;
   charger->has_connector = false;
 }
 
@@ -32,6 +33,40 @@ float charger_drawn_current_max(const ConfiguredCharger &charger) {
                   std::max(charger.latest_drawn_current[1], charger.latest_drawn_current[2]));
 }
 
+std::array<bool, 3> charger_configured_load_phases(const ConfiguredCharger &charger) {
+  std::array<bool, 3> load_phases{};
+  const uint8_t active_phases = charger.phases == 3 ? 3 : 1;
+  for (uint8_t i = 0; i < active_phases; i++)
+    load_phases[i] = true;
+  return load_phases;
+}
+
+std::array<bool, 3> charger_effective_load_phases(const ConfiguredCharger &charger,
+                                                  const ConfiguredConnector *connector) {
+  auto load_phases = charger_configured_load_phases(charger);
+  if (charger.phases != 3)
+    return load_phases;
+
+  const std::array<float, 3> *phase_current = nullptr;
+  if (connector != nullptr && connector->has_phase_specific_current_import) {
+    phase_current = &connector->latest_drawn_current;
+  } else if (charger.latest_drawn_current_phase_specific) {
+    phase_current = &charger.latest_drawn_current;
+  }
+  if (phase_current == nullptr)
+    return load_phases;
+
+  std::array<bool, 3> detected_phases{};
+  uint8_t detected_phase_count = 0;
+  for (uint8_t i = 0; i < charger.phases; i++) {
+    if ((*phase_current)[i] > 0.1f) {
+      detected_phases[i] = true;
+      detected_phase_count++;
+    }
+  }
+  return detected_phase_count == 1 ? detected_phases : load_phases;
+}
+
 std::array<float, 3> charger_drawn_current_from_source(float source_current) {
   return {source_current, source_current, source_current};
 }
@@ -40,6 +75,7 @@ void update_charger_drawn_current_from_source(ConfiguredCharger *charger, float 
   if (charger == nullptr)
     return;
   charger->latest_drawn_current = charger_drawn_current_from_source(source_current);
+  charger->latest_drawn_current_phase_specific = false;
 }
 
 std::array<float, 3> charger_drawn_current_from_connectors(const ConfiguredCharger &charger) {
@@ -55,6 +91,8 @@ void update_charger_drawn_current_from_connectors(ConfiguredCharger *charger) {
   if (charger == nullptr)
     return;
   charger->latest_drawn_current = charger_drawn_current_from_connectors(*charger);
+  charger->latest_drawn_current_phase_specific = charger->has_connector &&
+                                                 charger->connector.has_phase_specific_current_import;
 }
 
 ConfiguredConnector *find_configured_connector(ConfiguredCharger *charger, int connector_id) {

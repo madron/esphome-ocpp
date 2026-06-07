@@ -87,6 +87,7 @@ void reset_connector_session_current(ConfiguredConnector *connector) {
     return;
   connector->has_session_current_import = false;
   connector->has_latest_current_import = false;
+  connector->has_phase_specific_current_import = false;
   connector->latest_current_import = 0.0f;
   connector->latest_drawn_current = {};
 }
