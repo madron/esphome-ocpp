@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 
 namespace esphome::ocpp {
 namespace {
@@ -25,7 +26,6 @@ static constexpr size_t MAX_WS_PAYLOAD = 2048;
 static constexpr size_t MAX_WS_FRAMES_PER_LOOP = 1;
 static constexpr const char *CURRENT_TIME = "1970-01-01T00:00:00Z";
 static constexpr const char *WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-static constexpr float DEFAULT_ALLOCATION_MIN_CURRENT = 6.0f;
 
 uint32_t rol(uint32_t value, uint8_t bits) { return (value << bits) | (value >> (32 - bits)); }
 
@@ -415,14 +415,6 @@ void OcppServer::setup() {
       this->charger_.connector.has_preferred_current_limit) {
     this->charger_.connector.current_limit_number->publish_state(this->charger_.connector.preferred_current_limit);
   }
-  if (this->has_charger_ && this->charger_.has_connector) {
-    auto *connector = &this->charger_.connector;
-    this->update_connector_allocation_(connector);
-    this->publish_connector_allocation_if_configured_(connector);
-    this->publish_drawn_current_if_configured_(connector);
-    if (connector->enabled_switch != nullptr)
-      connector->enabled_switch->publish_state(connector->enabled);
-  }
   if (this->has_charger_) {
     this->update_charger_drawn_current_(&this->charger_);
     this->publish_charger_drawn_current_if_configured_(&this->charger_);
@@ -433,6 +425,14 @@ void OcppServer::setup() {
   this->publish_site_headroom_current_if_configured_();
   this->update_site_drawn_current_();
   this->publish_site_drawn_current_if_configured_();
+  if (this->has_charger_ && this->charger_.has_connector) {
+    auto *connector = &this->charger_.connector;
+    this->update_connector_allocation_(connector);
+    this->publish_connector_allocation_if_configured_(connector);
+    this->publish_drawn_current_if_configured_(connector);
+    if (connector->enabled_switch != nullptr)
+      connector->enabled_switch->publish_state(connector->enabled);
+  }
 }
 
 void OcppServer::loop() {
@@ -450,6 +450,7 @@ void OcppServer::loop() {
 void OcppServer::dump_config() {
   ESP_LOGCONFIG(TAG, "OCPP server:");
   ESP_LOGCONFIG(TAG, "  Listen: 0.0.0.0:%u%s", this->port_, this->path_.c_str());
+  ESP_LOGCONFIG(TAG, "  Allocation: strategy=equal min_current=%.1f A", this->allocation_min_current_);
   ESP_LOGCONFIG(TAG, "  Site: phases=%u voltage=%.1f V", this->site_.limits.phases, this->site_.limits.voltage);
   if (this->site_.limits.grid_max_power.has_value())
     ESP_LOGCONFIG(TAG, "    Grid max_power=%.0f W", this->site_.limits.grid_max_power.value());
@@ -483,7 +484,7 @@ void OcppServer::disconnect() {
 void OcppServer::remote_start(uint8_t connector_id) {
   auto *connector = this->find_connector_(connector_id);
   if (connector != nullptr) {
-    this->update_connector_allocation_(connector);
+    this->update_connector_allocation_(connector, true);
     this->publish_connector_allocation_if_configured_(connector);
     if (connector->allocated_current <= 0.0f) {
       ESP_LOGI(TAG, "Not starting connector session: connectorId=%u allocated_current=0.0 A", connector_id);
@@ -858,16 +859,61 @@ bool OcppServer::update_site_headroom_current_() {
 }
 
 void OcppServer::update_and_publish_site_headroom_current_if_configured_() {
-  if (this->update_site_headroom_current_())
+  if (this->update_site_headroom_current_()) {
     this->publish_site_headroom_current_if_configured_();
+    if (this->has_charger_ && this->charger_.has_connector) {
+      auto *connector = &this->charger_.connector;
+      const float previous_allocated_current = connector->allocated_current;
+      this->update_connector_allocation_(connector);
+      this->publish_connector_allocation_if_configured_(connector);
+      if (this->client_ != nullptr && this->handshake_done_ && connector->has_active_transaction &&
+          connector->allocated_current != previous_allocated_current) {
+        connector->charging_profile_applied = false;
+        this->send_preferred_current_limit_if_needed_(connector->id);
+      }
+    }
+  }
 }
 
 void OcppServer::publish_site_headroom_current_if_configured_() {
   publish_site_headroom_current_if_configured(&this->site_);
 }
 
-void OcppServer::update_connector_allocation_(ConfiguredConnector *connector) {
-  update_connector_allocation(connector, DEFAULT_ALLOCATION_MIN_CURRENT);
+float OcppServer::site_available_current_(const ConfiguredCharger &charger) const {
+  const uint8_t active_phases = charger.phases == 3 ? 3 : 1;
+  float available_current = std::numeric_limits<float>::infinity();
+  for (uint8_t i = 0; i < active_phases; i++) {
+    const uint8_t site_phase = charger.phase_mapping[i] < this->site_.latest_headroom_current.size()
+                                   ? charger.phase_mapping[i]
+                                   : 0;
+    available_current = std::min(available_current, this->site_.latest_headroom_current[site_phase]);
+  }
+  return available_current;
+}
+
+uint8_t OcppServer::active_connector_count_(const ConfiguredConnector *prospective_connector) const {
+  if (!this->has_charger_ || !this->charger_.has_connector)
+    return 0;
+  if (!this->charger_.connector.has_active_transaction && prospective_connector != &this->charger_.connector)
+    return 0;
+  return 1;
+}
+
+float OcppServer::connector_current_for_allocation_(const ConfiguredConnector &connector) const {
+  if (!connector.has_active_transaction)
+    return 0.0f;
+  return this->effective_drawn_current_(connector);
+}
+
+void OcppServer::update_connector_allocation_(ConfiguredConnector *connector, bool include_connector_as_active) {
+  float available_current = 0.0f;
+  if (connector != nullptr && this->has_charger_) {
+    const float site_available_current = this->site_available_current_(this->charger_);
+    const float connector_current = this->connector_current_for_allocation_(*connector);
+    available_current = equal_available_current(site_available_current, connector_current,
+                                                this->active_connector_count_(include_connector_as_active ? connector : nullptr));
+  }
+  update_connector_allocation(connector, available_current, this->allocation_min_current_);
 }
 
 void OcppServer::publish_connector_allocation_if_configured_(ConfiguredConnector *connector) {

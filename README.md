@@ -99,7 +99,7 @@ ocpp:
     strategy: equal
     min_current: 6
     update_interval: 10s
-    preference: least_charged
+    preference: first_connected
 
   chargers:
     - id: garage_left
@@ -406,9 +406,9 @@ ocpp:
 ### Grid Connection
 
 The optional `site.grid` section describes limits and measurements for the grid
-connection. Any configured grid limit is enforced for every allocation strategy,
-including manual allocation. Future power sources, such as an inverter or a
-generator, can be added as additional subsections under `site`.
+connection. Any configured grid limit is enforced by the built-in equal
+allocator. Future power sources, such as an inverter or a generator, can be added
+as additional subsections under `site`.
 
 ### Grid Options
 
@@ -519,8 +519,8 @@ sensors are configured, the allocator can only use the static limits from
 ## Allocation
 
 The `allocation` section defines how charging current is assigned to active
-charging sessions. Configured power-source limits are always respected,
-regardless of the selected strategy.
+charging sessions. The component currently has one implemented strategy: equal
+sharing.
 
 ```yaml
 ocpp:
@@ -528,28 +528,14 @@ ocpp:
     strategy: equal
     min_current: 6
     update_interval: 10s
-    preference: least_charged
-```
-
-Use `manual` when each connector should be controlled by its own
-`current_limit` number. The configured number value is treated as that
-connector's requested current in `A`. If the sum of requests would exceed the
-configured power-source limits, the allocator reduces or pauses connectors
-according to `preference`. If no power-source limits are configured, manual
-allocation is still limited by the charger and connector `max_current` values and
-the number bounds.
-
-```yaml
-ocpp:
-  allocation:
-    strategy: manual
-    min_current: 6
-    update_interval: 10s
     preference: first_connected
 ```
 
-Use `equal` when the component should automatically split the available charging
-capacity evenly between active connectors.
+Equal allocation starts from the site headroom current and the current already
+used by active charging sessions. The available site headroom is shared equally
+between active connectors and added to each connector's current draw. With the
+current single-connector implementation, this means the active connector can use
+its measured or assumed EV current plus the current still available at the site.
 
 Each allocation cycle calculates two connector current states. `available_current`
 is the raw current in `A` that the allocator calculated for the connector.
@@ -560,27 +546,24 @@ constraints have been applied. If the calculated value is below `min_current`,
 Positive `allocated_current` values are sent to the charger using
 `SetChargingProfile`.
 
-If there is not enough available current to keep every active connector at or
-above `min_current`, the allocator can keep only a subset of sessions active.
-For example, with `16 A` available and `min_current: 6`, only two connectors can
-charge at the same time. `preference` decides which sessions keep charging; the
-remaining sessions are paused or left waiting. `first_connected` keeps existing
-sessions ahead of newer ones, so it behaves like denying new sessions when the
-available current is already fully allocated.
+`preference` expresses which sessions should keep charging first when there is
+not enough current to keep all cars above `min_current`. It is accepted as a
+forward-compatible configuration option for future multi-connector allocation;
+with the current single-connector implementation it has no effect.
 
-`least_charged` requires live delivered-energy readings during the transaction.
-If a charger does not provide live energy values, use a preference that does not
-depend on metered session energy, such as `first_connected`, `last_connected`, or
-`round_robin`.
+`update_interval` is also accepted as a forward-compatible allocation option. The
+current implementation recalculates allocation when relevant site or connector
+state changes. Whether a periodic interval remains useful should be revisited
+before multi-connector scheduling is finalized.
 
 ### Allocation Options
 
 | Option                       | Description |
 | ---                          | --- |
-| `strategy` (Optional)        | Power sharing strategy. Defaults to `equal`.<br>Available values for v1:<br>`manual` uses each connector's `current_limit` number as the requested current in `A` while still respecting configured power-source limits; <br>`equal` automatically splits available charging capacity evenly between active connectors. |
-| `min_current` (Optional)     | Minimum AC charging current per active connector. Defaults to `6`. |
-| `update_interval` (Optional) | How often current limits are recalculated and sent. Defaults to `10s`. |
-| `preference` (Optional)      | Which sessions are preferred when not all active sessions can receive at least `min_current`. Defaults to `first_connected`.<br>Available values:<br>`first_connected` prefers older sessions and leaves newer sessions waiting when capacity is full; <br>`last_connected` prefers newer sessions; <br>`least_charged` prefers sessions with the lowest delivered `kWh` and requires live OCPP `Energy.Active.Import.Register` meter values; <br>`round_robin` rotates active charging slots over time. |
+| `strategy` (Optional)        | Power sharing strategy. Defaults to `equal`.<br>Available values: `equal`. |
+| `min_current` (Optional)     | Minimum AC charging current per active connector in `A`. Defaults to `6`. |
+| `update_interval` (Optional) | Forward-compatible interval for future periodic allocation updates. Defaults to `10s`; currently accepted but not used for scheduling. |
+| `preference` (Optional)      | Forward-compatible preference for choosing which sessions keep charging when not all active sessions can receive at least `min_current`. Defaults to `first_connected`; currently accepted but has no effect while only one connector is supported.<br>Available values:<br>`first_connected` prefers older sessions; <br>`last_connected` prefers newer sessions; <br>`least_charged` prefers sessions with the lowest delivered `kWh` and will require live OCPP `Energy.Active.Import.Register` meter values; <br>`round_robin` rotates active charging slots over time. |
 
 ## Chargers and Connectors
 
@@ -768,7 +751,7 @@ allocation logic applies.
 
 If there is not enough available current when the connector is enabled, the
 transaction can stay effectively paused or waiting until enough current is
-available, depending on the charger and the allocation strategy.
+available, depending on the charger.
 
 ### Connector Restart Button
 
@@ -809,12 +792,10 @@ connectors:
 ```
 
 If `max_value` is omitted, it defaults to the lower of the charger and connector
-`max_current` values. With `allocation.strategy: manual`, the current value of
-`current_limit` is this connector's requested allocation. The effective limit may
-be lower when needed to respect configured power-source limits or when
-`preference` pauses the connector. If `current_limit` is not configured,
-restarting the connector starts charging without an explicit current limit and the
-charger uses its own configured limit.
+`max_current` values. The current value of `current_limit` is treated as this
+connector's preferred upper limit. The effective limit may be lower when needed to
+respect configured power-source limits. If `current_limit` is not configured,
+the connector uses its configured `max_current` as the preferred upper limit.
 
 ### Phase Mapping
 

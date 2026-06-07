@@ -109,10 +109,11 @@ struct ConfiguredConnector {
 float effective_allocated_current(float available_current, float max_current, float requested_current, float min_current,
                                   bool enabled);
 float effective_allocated_current(float available_current, float min_current);
+float equal_available_current(float site_available_current, float connector_current, uint8_t active_connector_count);
 float effective_connector_drawn_current(const ConnectorCurrentState &state);
 float effective_connector_drawn_current(const ConfiguredConnector &connector);
 float connector_drawn_current_max(const ConfiguredConnector &connector);
 void reset_connector_session_current(ConfiguredConnector *connector);
-void update_connector_allocation(ConfiguredConnector *connector, float min_current);
+void update_connector_allocation(ConfiguredConnector *connector, float available_current, float min_current);
 
 }  // namespace esphome::ocpp

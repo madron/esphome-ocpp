@@ -31,6 +31,7 @@ class OcppServer : public Component {
  public:
   void set_port(uint16_t port) { this->port_ = port; }
   void set_path(std::string path);
+  void set_allocation_min_current(float min_current) { this->allocation_min_current_ = min_current; }
   void set_site(uint8_t phases, float voltage);
   void set_grid_max_power(float max_power);
   void set_grid_max_phase_imbalance(float max_phase_imbalance);
@@ -134,7 +135,10 @@ class OcppServer : public Component {
   bool update_site_headroom_current_();
   void update_and_publish_site_headroom_current_if_configured_();
   void publish_site_headroom_current_if_configured_();
-  void update_connector_allocation_(ConfiguredConnector *connector);
+  float site_available_current_(const ConfiguredCharger &charger) const;
+  uint8_t active_connector_count_(const ConfiguredConnector *prospective_connector = nullptr) const;
+  float connector_current_for_allocation_(const ConfiguredConnector &connector) const;
+  void update_connector_allocation_(ConfiguredConnector *connector, bool include_connector_as_active = false);
   void publish_connector_allocation_if_configured_(ConfiguredConnector *connector);
   void publish_available_current_if_configured_(ConfiguredConnector *connector);
   void publish_allocated_current_if_configured_(ConfiguredConnector *connector);
@@ -163,6 +167,7 @@ class OcppServer : public Component {
   std::string websocket_accept_key_(const std::string &client_key);
 
   uint16_t port_{9000};
+  float allocation_min_current_{6.0f};
   std::string path_{"/ocpp"};
   ConfiguredSite site_;
   ConfiguredCharger charger_;

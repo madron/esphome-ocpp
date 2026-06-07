@@ -9,6 +9,7 @@ using esphome::ocpp::ConnectorCurrentState;
 using esphome::ocpp::connector_drawn_current_max;
 using esphome::ocpp::effective_allocated_current;
 using esphome::ocpp::effective_connector_drawn_current;
+using esphome::ocpp::equal_available_current;
 using esphome::ocpp::reset_connector_session_current;
 using esphome::ocpp::update_connector_allocation;
 
@@ -35,6 +36,14 @@ int main() {
                effective_allocated_current(16.0f, 16.0f, 4.0f, 6.0f, true), 0.0f);
   assert_equal("allocated_current_respects_enabled_state",
                effective_allocated_current(16.0f, 16.0f, 16.0f, 6.0f, false), 0.0f);
+  assert_equal("equal_available_current_is_zero_without_active_connectors",
+               equal_available_current(18.0f, 12.0f, 0), 0.0f);
+  assert_equal("equal_available_current_allows_prospective_connector",
+               equal_available_current(9.0f, 0.0f, 1), 9.0f);
+  assert_equal("equal_available_current_adds_equal_site_share",
+               equal_available_current(12.0f, 8.0f, 2), 14.0f);
+  assert_equal("equal_available_current_rejects_negative_current",
+               equal_available_current(12.0f, -1.0f, 2), 6.0f);
 
   ConnectorCurrentState current_state;
   current_state.is_charging = false;
@@ -77,13 +86,19 @@ int main() {
 
   connector.has_preferred_current_limit = true;
   connector.preferred_current_limit = 10.0f;
-  update_connector_allocation(&connector, 6.0f);
-  assert_equal("update_allocation_uses_preferred_limit", connector.available_current, 32.0f);
+  update_connector_allocation(&connector, 14.0f, 6.0f);
+  assert_equal("update_allocation_uses_calculated_available_current", connector.available_current, 14.0f);
   assert_equal("update_allocation_sets_allocated_current", connector.allocated_current, 10.0f);
 
   connector.enabled = false;
-  update_connector_allocation(&connector, 6.0f);
+  update_connector_allocation(&connector, 14.0f, 6.0f);
   assert_equal("update_allocation_respects_disabled_state", connector.allocated_current, 0.0f);
+
+  connector.enabled = true;
+  connector.has_preferred_current_limit = false;
+  update_connector_allocation(&connector, std::numeric_limits<float>::infinity(), 6.0f);
+  assert_equal("update_allocation_uses_connector_maximum_when_site_is_unbounded", connector.available_current, 32.0f);
+  assert_equal("update_allocation_allocates_connector_maximum_when_site_is_unbounded", connector.allocated_current, 32.0f);
 
   return 0;
 }

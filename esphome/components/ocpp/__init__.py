@@ -12,6 +12,7 @@ from esphome.const import (
     CONF_PORT,
     CONF_POWER,
     CONF_STEP,
+    CONF_UPDATE_INTERVAL,
     DEVICE_CLASS_CURRENT,
     DEVICE_CLASS_POWER,
     STATE_CLASS_MEASUREMENT,
@@ -26,6 +27,7 @@ CONF_CHARGE_POINT_ID = "charge_point_id"
 CONF_CHARGERS = "chargers"
 CONF_CONNECTORS = "connectors"
 CONF_AVAILABLE_CURRENT = "available_current"
+CONF_ALLOCATION = "allocation"
 CONF_ALLOCATED_CURRENT = "allocated_current"
 CONF_CURRENT_LIMIT = "current_limit"
 CONF_DRAWN_CURRENT = "drawn_current"
@@ -39,13 +41,16 @@ CONF_AGGREGATE = "aggregate"
 CONF_MAX_CURRENT = "max_current"
 CONF_MAX_PHASE_IMBALANCE = "max_phase_imbalance"
 CONF_MAX_POWER = "max_power"
+CONF_MIN_CURRENT = "min_current"
 CONF_PHASE_MAPPING = "phase_mapping"
 CONF_PHASES = "phases"
+CONF_PREFERENCE = "preference"
 CONF_ENABLED = "enabled"
 CONF_RESTART = "restart"
 CONF_SERVER = "server"
 CONF_SITE = "site"
 CONF_PATH = "path"
+CONF_STRATEGY = "strategy"
 CONF_VOLTAGE = "voltage"
 
 ocpp_ns = cg.esphome_ns.namespace("ocpp")
@@ -232,6 +237,21 @@ SERVER_SCHEMA = cv.Schema(
     }
 )
 
+ALLOCATION_SCHEMA = cv.Schema(
+    {
+        cv.Optional(CONF_STRATEGY, default="equal"): cv.one_of("equal", lower=True),
+        cv.Optional(CONF_MIN_CURRENT, default=6): cv.positive_float,
+        cv.Optional(CONF_UPDATE_INTERVAL, default="10s"): cv.positive_time_period_milliseconds,
+        cv.Optional(CONF_PREFERENCE, default="first_connected"): cv.one_of(
+            "first_connected",
+            "last_connected",
+            "least_charged",
+            "round_robin",
+            lower=True,
+        ),
+    }
+)
+
 GRID_POWER_SCHEMA = cv.Schema(
     {
         cv.Optional(CONF_L1): cv.use_id(sensor.Sensor),
@@ -313,6 +333,7 @@ CONFIG_SCHEMA = cv.All(
         {
             cv.GenerateID(): cv.declare_id(OcppServer),
             cv.Optional(CONF_SERVER, default={}): SERVER_SCHEMA,
+            cv.Optional(CONF_ALLOCATION, default={}): ALLOCATION_SCHEMA,
             cv.Optional(CONF_SITE): SITE_SCHEMA,
             cv.Optional(CONF_CHARGERS, default=[]): cv.All(
                 cv.ensure_list(CHARGER_SCHEMA), cv.Length(max=1), _validate_chargers
@@ -330,6 +351,8 @@ async def to_code(config):
     server = config[CONF_SERVER]
     cg.add(var.set_port(server[CONF_PORT]))
     cg.add(var.set_path(server[CONF_PATH]))
+    allocation = config[CONF_ALLOCATION]
+    cg.add(var.set_allocation_min_current(allocation[CONF_MIN_CURRENT]))
     if site := config.get(CONF_SITE):
         cg.add(var.set_site(site[CONF_PHASES], site[CONF_VOLTAGE]))
         if headroom_current_config := site.get(CONF_HEADROOM_CURRENT):

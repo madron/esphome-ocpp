@@ -158,6 +158,12 @@ ocpp:
         l2: grid_power_l2
         l3: grid_power_l3
 
+  allocation:
+    strategy: equal
+    min_current: 6
+    update_interval: 10s
+    preference: first_connected
+
   chargers:
     - id: garage
       charge_point_id: A99999

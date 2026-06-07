@@ -30,6 +30,15 @@ float effective_allocated_current(float available_current, float min_current) {
   return effective_allocated_current(available_current, available_current, available_current, min_current, true);
 }
 
+float equal_available_current(float site_available_current, float connector_current, uint8_t active_connector_count) {
+  if (active_connector_count == 0)
+    return 0.0f;
+  const float safe_connector_current = clamp_finite_non_negative(connector_current);
+  if (!std::isfinite(site_available_current))
+    return safe_connector_current + site_available_current;
+  return safe_connector_current + clamp_finite_non_negative(site_available_current) / active_connector_count;
+}
+
 float effective_connector_drawn_current(const ConnectorCurrentState &state) {
   if (!state.is_charging)
     return 0.0f;
@@ -59,12 +68,11 @@ void reset_connector_session_current(ConfiguredConnector *connector) {
   connector->latest_drawn_current = {};
 }
 
-void update_connector_allocation(ConfiguredConnector *connector, float min_current) {
+void update_connector_allocation(ConfiguredConnector *connector, float available_current, float min_current) {
   if (connector == nullptr)
     return;
-  // TODO: available_current currently uses the connector maximum as a placeholder. It should become dependent on
-  // site availability, other active sessions, and the configured allocation policy.
-  connector->available_current = connector->max_current;
+  connector->available_current = std::isfinite(available_current) ? clamp_finite_non_negative(available_current)
+                                                                  : connector->max_current;
   const float requested_current = connector->has_preferred_current_limit ? connector->preferred_current_limit
                                                                          : connector->max_current;
   connector->allocated_current = effective_allocated_current(connector->available_current, connector->max_current,
