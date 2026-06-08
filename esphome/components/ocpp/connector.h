@@ -13,6 +13,7 @@
 #include "esphome/components/number/number.h"
 #include "esphome/components/switch/switch.h"
 #include "esphome/components/text_sensor/text_sensor.h"
+#include "esphome/core/preferences.h"
 #endif
 
 namespace esphome::sensor {
@@ -59,18 +60,26 @@ class OcppConnectorButton : public button::Button {
   uint8_t connector_id_{0};
 };
 
-class OcppCurrentLimitNumber : public number::Number {
+class OcppCurrentLimitNumber : public number::Number, public Component {
  public:
   void set_parent(OcppServer *parent, uint8_t connector_id) {
     this->parent_ = parent;
     this->connector_id_ = connector_id;
   }
+  void set_initial_value(float initial_value) { this->initial_value_ = initial_value; }
+  void set_restore_value(bool restore_value) { this->restore_value_ = restore_value; }
+
+  void setup() override;
+  float get_setup_priority() const override { return setup_priority::HARDWARE; }
 
  protected:
   void control(float value) override;
 
   OcppServer *parent_{nullptr};
   uint8_t connector_id_{0};
+  float initial_value_{0.0f};
+  bool restore_value_{false};
+  ESPPreferenceObject pref_;
 };
 #endif
 

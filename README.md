@@ -135,6 +135,8 @@ ocpp:
             name: Garage Left Enabled
           current_limit:
             name: Garage Left Current Limit
+            initial_value: 16
+            restore_value: true
           restart:
             name: Garage Left Restart Session
 
@@ -160,6 +162,8 @@ ocpp:
             name: Garage Right Enabled
           current_limit:
             name: Garage Right Current Limit
+            initial_value: 32
+            restore_value: true
           restart:
             name: Garage Right Restart Session
 ```
@@ -213,10 +217,17 @@ ocpp:
 Chargers will typically be configured with a backend URL such as:
 
 ```text
-ws://<esp-ip>:9000/ocpp/<charge_point_id>
+ws://<esp-ip>:9000/ocpp
 ```
 
 For example:
+
+```text
+ws://192.168.1.50:9000/ocpp
+```
+
+Some chargers append their own charge point identity to the configured backend URL.
+In that case, the effective WebSocket URL becomes:
 
 ```text
 ws://192.168.1.50:9000/ocpp/GARAGE_LEFT
@@ -713,6 +724,8 @@ ocpp:
             name: Garage Left Enabled
           current_limit:
             name: Garage Left Current Limit
+            initial_value: 16
+            restore_value: true
           restart:
             name: Garage Left Restart Session
 ```
@@ -921,15 +934,29 @@ connectors:
       min_value: 6
       max_value: 16
       step: 1
+      initial_value: 16
+      restore_value: true
     restart:
       name: Garage Left Restart Session
 ```
 
 If `max_value` is omitted, it defaults to the lower of the charger and connector
-`max_current` values. The current value of `current_limit` is treated as this
-connector's preferred upper limit. The effective limit may be lower when needed to
-respect configured power-source limits. If `current_limit` is not configured,
-the connector uses its configured `max_current` as the preferred upper limit.
+`max_current` values. If `initial_value` is omitted, it defaults to `min_value`.
+Set `restore_value: true` to restore the last selected current limit from flash;
+when no stored value exists yet, `initial_value` is used. The current value of
+`current_limit` is treated as this connector's preferred upper limit. The
+effective limit may be lower when needed to respect configured power-source
+limits. If `current_limit` is not configured, the connector uses its configured
+`max_current` as the preferred upper limit.
+
+| Option                     | Description |
+| ---                        | --- |
+| `name` (Required)          | Name of the current-limit number entity. |
+| `min_value` (Optional)     | Minimum selectable current in `A`. Defaults to `6`. |
+| `max_value` (Optional)     | Maximum selectable current in `A`. Defaults to the lower of the charger and connector `max_current` values. |
+| `step` (Optional)          | Step size in `A`. Defaults to `1`. |
+| `initial_value` (Optional) | Startup value in `A` when no restored value is available. Defaults to `min_value`. |
+| `restore_value` (Optional) | Whether to restore the last selected value from flash. Defaults to `false`. |
 
 ### Phase Mapping
 

@@ -84,6 +84,7 @@ class OcppServer : public Component {
                                   text_sensor::TextSensor *state_sensor);
   void set_connector_current_limit_number(std::string charge_point_id, uint8_t connector_id,
                                           OcppCurrentLimitNumber *current_limit_number, float initial_limit);
+  void apply_connector_current_limit_restore(uint8_t connector_id, float current_limit);
   void set_connector_enabled_switch(std::string charge_point_id, uint8_t connector_id,
                                     OcppConnectorEnabledSwitch *enabled_switch);
   void set_connector_restart_button(std::string charge_point_id, uint8_t connector_id,

@@ -14,6 +14,7 @@ from esphome.const import (
     CONF_NAME,
     CONF_PORT,
     CONF_POWER,
+    CONF_RESTORE_VALUE,
     CONF_STATE,
     CONF_STEP,
     CONF_UPDATE_INTERVAL,
@@ -66,7 +67,7 @@ ocpp_ns = cg.esphome_ns.namespace("ocpp")
 OcppServer = ocpp_ns.class_("OcppServer", cg.Component)
 OcppConnectorButton = ocpp_ns.class_("OcppConnectorButton", button.Button)
 OcppConnectorEnabledSwitch = ocpp_ns.class_("OcppConnectorEnabledSwitch", switch.Switch)
-OcppCurrentLimitNumber = ocpp_ns.class_("OcppCurrentLimitNumber", number.Number)
+OcppCurrentLimitNumber = ocpp_ns.class_("OcppCurrentLimitNumber", number.Number, cg.Component)
 OcppSolarExportMarginNumber = ocpp_ns.class_("OcppSolarExportMarginNumber", number.Number)
 
 PHASE_KEYS = (CONF_L1, CONF_L2, CONF_L3)
@@ -194,6 +195,7 @@ def _validate_chargers(value):
             if limit := connector.get(CONF_CURRENT_LIMIT):
                 effective_max_current = min(charger[CONF_MAX_CURRENT], connector[CONF_MAX_CURRENT])
                 limit.setdefault(CONF_MAX_VALUE, effective_max_current)
+                limit.setdefault(CONF_INITIAL_VALUE, limit[CONF_MIN_VALUE])
                 if limit[CONF_MAX_VALUE] > effective_max_current:
                     raise cv.Invalid(
                         f"current_limit max_value for connector '{connector_id}' must not exceed the effective max_current"
@@ -201,6 +203,13 @@ def _validate_chargers(value):
                 if limit[CONF_MIN_VALUE] >= limit[CONF_MAX_VALUE]:
                     raise cv.Invalid(
                         f"current_limit min_value for connector '{connector_id}' must be less than max_value"
+                    )
+                if (
+                    limit[CONF_INITIAL_VALUE] < limit[CONF_MIN_VALUE]
+                    or limit[CONF_INITIAL_VALUE] > limit[CONF_MAX_VALUE]
+                ):
+                    raise cv.Invalid(
+                        f"current_limit initial_value for connector '{connector_id}' must be between min_value and max_value"
                     )
     return value
 
@@ -376,6 +385,8 @@ CONNECTOR_SCHEMA = cv.Schema(
                 cv.Optional(CONF_MIN_VALUE, default=6): cv.positive_float,
                 cv.Optional(CONF_MAX_VALUE): cv.positive_float,
                 cv.Optional(CONF_STEP, default=1): cv.positive_float,
+                cv.Optional(CONF_INITIAL_VALUE): cv.positive_float,
+                cv.Optional(CONF_RESTORE_VALUE, default=False): cv.boolean,
             }
         ),
         cv.Optional(CONF_ENABLED): switch.switch_schema(OcppConnectorEnabledSwitch),
@@ -607,12 +618,15 @@ async def to_code(config):
                     max_value=limit_config[CONF_MAX_VALUE],
                     step=limit_config[CONF_STEP],
                 )
+                await cg.register_component(num, limit_config)
+                cg.add(num.set_initial_value(limit_config[CONF_INITIAL_VALUE]))
+                cg.add(num.set_restore_value(limit_config[CONF_RESTORE_VALUE]))
                 cg.add(
                     var.set_connector_current_limit_number(
                         charger[CONF_CHARGE_POINT_ID],
                         connector[CONF_ID],
                         num,
-                        limit_config[CONF_MIN_VALUE],
+                        limit_config[CONF_INITIAL_VALUE],
                     )
                 )
             if enabled_config := connector.get(CONF_ENABLED):

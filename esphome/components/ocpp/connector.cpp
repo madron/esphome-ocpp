@@ -104,10 +104,27 @@ void update_connector_allocation(ConfiguredConnector *connector, float available
 }
 
 #ifdef USE_OCPP
+void OcppCurrentLimitNumber::setup() {
+  float value = this->initial_value_;
+  if (this->restore_value_) {
+    this->pref_ = this->make_entity_preference<float>();
+    if (!this->pref_.load(&value))
+      value = this->initial_value_;
+  }
+  if (!std::isfinite(value))
+    value = this->traits.get_min_value();
+  value = std::min(std::max(value, this->traits.get_min_value()), this->traits.get_max_value());
+  this->publish_state(value);
+  if (this->parent_ != nullptr)
+    this->parent_->apply_connector_current_limit_restore(this->connector_id_, value);
+}
+
 void OcppCurrentLimitNumber::control(float value) {
   if (this->parent_ == nullptr)
     return;
   this->parent_->set_current_limit(this->connector_id_, value);
+  if (this->restore_value_)
+    this->pref_.save(&value);
 }
 
 void OcppConnectorEnabledSwitch::write_state(bool state) {

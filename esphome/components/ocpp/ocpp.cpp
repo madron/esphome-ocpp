@@ -396,6 +396,20 @@ void OcppServer::set_connector_current_limit_number(std::string charge_point_id,
   current_limit_number->set_parent(this, connector_id);
 }
 
+void OcppServer::apply_connector_current_limit_restore(uint8_t connector_id, float current_limit) {
+  auto *connector = this->find_connector_(connector_id);
+  if (connector == nullptr)
+    return;
+  const float limit = std::min(current_limit, connector->max_current);
+  if (limit <= 0.0f)
+    return;
+  connector->preferred_current_limit = limit;
+  connector->has_preferred_current_limit = true;
+  connector->charging_profile_applied = false;
+  this->update_connector_allocation_(connector);
+  this->publish_connector_allocation_if_configured_(connector);
+}
+
 void OcppServer::set_connector_enabled_switch(std::string charge_point_id, uint8_t connector_id,
                                               OcppConnectorEnabledSwitch *enabled_switch) {
   auto *charger = this->find_charger_(charge_point_id);
