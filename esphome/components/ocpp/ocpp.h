@@ -4,6 +4,7 @@
 #include "site.h"
 
 #include "esphome/components/json/json_util.h"
+#include "esphome/components/number/number.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/socket/socket.h"
 #include "esphome/components/text_sensor/text_sensor.h"
@@ -18,6 +19,7 @@
 namespace esphome::ocpp {
 
 class OcppServer;
+class OcppAllocationDelayNumber;
 
 struct PendingOcppCall {
   bool active{false};
@@ -33,9 +35,11 @@ class OcppServer : public Component {
   void set_port(uint16_t port) { this->port_ = port; }
   void set_path(std::string path);
   void set_allocation_min_current(float min_current) { this->allocation_min_current_ = min_current; }
-  void set_charging_profile_settle_time_per_amp(uint32_t settle_time_per_amp_ms) {
-    this->set_charging_profile_settle_time_per_amp_ms_ = settle_time_per_amp_ms;
-  }
+  void set_allocation_log_decisions(bool log_decisions) { this->allocation_log_decisions_ = log_decisions; }
+  void set_allocation_settle_delay(float seconds);
+  void set_allocation_settle_delay_per_amp(float seconds);
+  void set_allocation_settle_delay_number(OcppAllocationDelayNumber *number, float initial_value);
+  void set_allocation_settle_delay_per_amp_number(OcppAllocationDelayNumber *number, float initial_value);
   void set_site(uint8_t phases, float voltage);
   void set_site_energy_policy(std::string policy);
   void set_grid_max_power(float max_power);
@@ -140,7 +144,6 @@ class OcppServer : public Component {
   void request_set_charging_profile_(uint8_t connector_id, uint32_t transaction_id, float current_limit);
   bool send_set_charging_profile_now_(uint8_t connector_id, uint32_t transaction_id, float current_limit);
   void send_pending_set_charging_profile_if_ready_();
-  uint32_t set_charging_profile_settle_delay_ms_(float next_current_limit) const;
   std::string send_ocpp_call_(const char *unique_prefix, const char *action, const std::string &payload_json,
                               uint8_t connector_id = 0, uint32_t transaction_id = 0, float current_limit = 0.0f,
                               bool fixed_unique_id = false);
@@ -168,7 +171,12 @@ class OcppServer : public Component {
   float site_available_current_(const ConfiguredCharger &charger, const ConfiguredConnector *connector = nullptr) const;
   uint8_t active_connector_count_(const ConfiguredConnector *prospective_connector = nullptr) const;
   float connector_current_for_allocation_(const ConfiguredConnector &connector) const;
-  void update_connector_allocation_(ConfiguredConnector *connector, bool include_connector_as_active = false);
+  bool update_connector_allocation_(ConfiguredConnector *connector, bool include_connector_as_active = false);
+  bool should_defer_connector_allocation_(ConfiguredConnector *connector, bool include_connector_as_active);
+  uint32_t allocation_evaluation_delay_remaining_ms_() const;
+  void run_pending_allocation_evaluation_if_ready_();
+  void note_set_charging_profile_accepted_(float current_limit);
+  uint32_t allocation_settle_delay_for_current_ms_(float next_current_limit) const;
   void publish_connector_allocation_if_configured_(ConfiguredConnector *connector);
   void publish_available_current_if_configured_(ConfiguredConnector *connector);
   void publish_allocated_current_if_configured_(ConfiguredConnector *connector);
@@ -230,16 +238,37 @@ class OcppServer : public Component {
   uint8_t pending_set_charging_profile_connector_id_{0};
   uint32_t pending_set_charging_profile_transaction_id_{0};
   float pending_set_charging_profile_current_limit_{0.0f};
+  bool pending_allocation_evaluation_{false};
+  uint8_t pending_allocation_connector_id_{0};
+  bool pending_allocation_include_connector_as_active_{false};
   bool has_last_set_charging_profile_current_limit_{false};
   float last_set_charging_profile_current_limit_{0.0f};
-  uint32_t last_set_charging_profile_accepted_at_{0};
-  uint32_t set_charging_profile_settle_time_per_amp_ms_{0};
+  uint32_t allocation_evaluation_deferred_until_{0};
+  uint32_t allocation_settle_delay_ms_{0};
+  uint32_t allocation_settle_delay_per_amp_ms_{0};
+  bool allocation_log_decisions_{false};
+  OcppAllocationDelayNumber *allocation_settle_delay_number_{nullptr};
+  OcppAllocationDelayNumber *allocation_settle_delay_per_amp_number_{nullptr};
   std::array<PendingOcppCall, 4> pending_calls_{};
   std::array<std::string, 4> tx_queue_{};
   uint8_t tx_queue_head_{0};
   uint8_t tx_queue_count_{0};
   uint32_t next_message_id_{1};
   uint32_t next_transaction_id_{1};
+};
+
+class OcppAllocationDelayNumber : public number::Number {
+ public:
+  void set_parent(OcppServer *parent, bool per_amp) {
+    this->parent_ = parent;
+    this->per_amp_ = per_amp;
+  }
+
+ protected:
+  void control(float value) override;
+
+  OcppServer *parent_{nullptr};
+  bool per_amp_{false};
 };
 
 }  // namespace esphome::ocpp

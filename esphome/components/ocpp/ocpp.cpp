@@ -181,6 +181,17 @@ bool drawn_current_changed(const std::array<float, 3> &a, const std::array<float
   return false;
 }
 
+uint32_t seconds_to_milliseconds(float seconds) {
+  if (!std::isfinite(seconds) || seconds <= 0.0f)
+    return 0;
+  const float milliseconds = seconds * 1000.0f;
+  if (milliseconds >= static_cast<float>(std::numeric_limits<uint32_t>::max()))
+    return std::numeric_limits<uint32_t>::max();
+  return static_cast<uint32_t>(milliseconds);
+}
+
+float milliseconds_to_seconds(uint32_t milliseconds) { return static_cast<float>(milliseconds) / 1000.0f; }
+
 int phase_index(const char *phase) {
   if (phase == nullptr || phase[0] == '\0')
     return -1;
@@ -227,6 +238,42 @@ void OcppServer::set_solar_export_margin_power_number(OcppSolarExportMarginNumbe
   number->set_parent(this);
   this->set_solar_export_margin_power(initial_value);
   number->publish_state(this->site_.limits.solar_export_margin_power);
+}
+
+void OcppServer::set_allocation_settle_delay(float seconds) {
+  this->allocation_settle_delay_ms_ = seconds_to_milliseconds(seconds);
+}
+
+void OcppServer::set_allocation_settle_delay_per_amp(float seconds) {
+  this->allocation_settle_delay_per_amp_ms_ = seconds_to_milliseconds(seconds);
+}
+
+void OcppServer::set_allocation_settle_delay_number(OcppAllocationDelayNumber *number, float initial_value) {
+  if (number == nullptr)
+    return;
+  this->allocation_settle_delay_number_ = number;
+  number->set_parent(this, false);
+  this->set_allocation_settle_delay(initial_value);
+  number->publish_state(milliseconds_to_seconds(this->allocation_settle_delay_ms_));
+}
+
+void OcppServer::set_allocation_settle_delay_per_amp_number(OcppAllocationDelayNumber *number, float initial_value) {
+  if (number == nullptr)
+    return;
+  this->allocation_settle_delay_per_amp_number_ = number;
+  number->set_parent(this, true);
+  this->set_allocation_settle_delay_per_amp(initial_value);
+  number->publish_state(milliseconds_to_seconds(this->allocation_settle_delay_per_amp_ms_));
+}
+
+void OcppAllocationDelayNumber::control(float value) {
+  if (this->parent_ == nullptr)
+    return;
+  if (this->per_amp_)
+    this->parent_->set_allocation_settle_delay_per_amp(value);
+  else
+    this->parent_->set_allocation_settle_delay(value);
+  this->publish_state(value);
 }
 
 void OcppServer::set_storage_capacity(float capacity_kwh) {
@@ -511,6 +558,7 @@ void OcppServer::loop() {
   this->send_pending_remote_stop_if_ready_();
   this->send_pending_remote_start_if_ready_();
   this->send_pending_set_charging_profile_if_ready_();
+  this->run_pending_allocation_evaluation_if_ready_();
   if (this->has_charger_)
     this->update_and_publish_charger_drawn_current_if_configured_(&this->charger_);
   this->update_and_publish_grid_headroom_current_if_configured_();
@@ -521,8 +569,12 @@ void OcppServer::loop() {
 void OcppServer::dump_config() {
   ESP_LOGCONFIG(TAG, "OCPP server:");
   ESP_LOGCONFIG(TAG, "  Listen: 0.0.0.0:%u%s", this->port_, this->path_.c_str());
-  ESP_LOGCONFIG(TAG, "  Allocation: strategy=equal min_current=%.1f A settle_time_per_amp=%u ms/A",
-                this->allocation_min_current_, this->set_charging_profile_settle_time_per_amp_ms_);
+  ESP_LOGCONFIG(TAG,
+                "  Allocation: strategy=equal min_current=%.1f A settle_delay=%.1f s settle_delay_per_amp=%.1f s/A "
+                "log_decisions=%s",
+                this->allocation_min_current_, milliseconds_to_seconds(this->allocation_settle_delay_ms_),
+                milliseconds_to_seconds(this->allocation_settle_delay_per_amp_ms_),
+                YESNO(this->allocation_log_decisions_));
   ESP_LOGCONFIG(TAG, "  Site: phases=%u voltage=%.1f V", this->site_.limits.phases, this->site_.limits.voltage);
   ESP_LOGCONFIG(TAG, "    Policy=%s", this->site_.limits.energy_policy == SiteEnergyPolicy::SOLAR ? "solar" : "normal");
   if (this->site_.limits.energy_policy == SiteEnergyPolicy::SOLAR)
@@ -561,7 +613,8 @@ void OcppServer::disconnect() {
 void OcppServer::remote_start(uint8_t connector_id) {
   auto *connector = this->find_connector_(connector_id);
   if (connector != nullptr) {
-    this->update_connector_allocation_(connector, true);
+    if (!this->update_connector_allocation_(connector, true))
+      return;
     this->publish_connector_allocation_if_configured_(connector);
     if (connector->allocated_current <= 0.0f) {
       ESP_LOGI(TAG, "Not starting connector session: connectorId=%u allocated_current=0.0 A", connector_id);
@@ -764,10 +817,13 @@ void OcppServer::set_current_limit(uint8_t connector_id, float current_limit) {
     connector->preferred_current_limit = limit;
     connector->has_preferred_current_limit = true;
     connector->charging_profile_applied = false;
-    this->update_connector_allocation_(connector);
-    this->publish_connector_allocation_if_configured_(connector);
+    const bool allocation_updated = this->update_connector_allocation_(connector);
+    if (allocation_updated)
+      this->publish_connector_allocation_if_configured_(connector);
     if (connector->current_limit_number != nullptr)
       connector->current_limit_number->publish_state(limit);
+    if (!allocation_updated)
+      return;
   }
 
   if (this->client_ == nullptr || !this->handshake_done_) {
@@ -806,8 +862,9 @@ void OcppServer::set_connector_enabled(uint8_t connector_id, bool enabled) {
 
   connector->enabled = enabled;
   connector->charging_profile_applied = false;
-  this->update_connector_allocation_(connector);
-  this->publish_connector_allocation_if_configured_(connector);
+  const bool allocation_updated = this->update_connector_allocation_(connector);
+  if (allocation_updated)
+    this->publish_connector_allocation_if_configured_(connector);
   if (connector->enabled_switch != nullptr)
     connector->enabled_switch->publish_state(enabled);
 
@@ -825,6 +882,9 @@ void OcppServer::set_connector_enabled(uint8_t connector_id, bool enabled) {
     }
     return;
   }
+
+  if (!allocation_updated)
+    return;
 
   if (connector->has_active_transaction) {
     if (connector->allocated_current <= 0.0f) {
@@ -910,6 +970,8 @@ void OcppServer::close_client_() {
   this->pending_remote_stop_ = false;
   this->set_charging_profile_in_flight_ = false;
   this->pending_set_charging_profile_ = false;
+  this->pending_allocation_evaluation_ = false;
+  this->allocation_evaluation_deferred_until_ = 0;
   this->clear_pending_calls_();
   this->clear_queued_ws_text_();
 }
@@ -1047,10 +1109,11 @@ void OcppServer::update_and_publish_site_headroom_current_if_configured_() {
     if (this->has_charger_ && this->charger_.has_connector) {
       auto *connector = &this->charger_.connector;
       const float previous_allocated_current = connector->allocated_current;
-      this->update_connector_allocation_(connector);
-      this->publish_connector_allocation_if_configured_(connector);
+      const bool allocation_updated = this->update_connector_allocation_(connector);
+      if (allocation_updated)
+        this->publish_connector_allocation_if_configured_(connector);
       if (this->client_ != nullptr && this->handshake_done_ && connector->has_active_transaction &&
-          connector->allocated_current != previous_allocated_current) {
+          allocation_updated && connector->allocated_current != previous_allocated_current) {
         connector->charging_profile_applied = false;
         this->send_preferred_current_limit_if_needed_(connector->id);
       }
@@ -1088,15 +1151,113 @@ float OcppServer::connector_current_for_allocation_(const ConfiguredConnector &c
   return this->effective_drawn_current_(connector);
 }
 
-void OcppServer::update_connector_allocation_(ConfiguredConnector *connector, bool include_connector_as_active) {
+bool OcppServer::update_connector_allocation_(ConfiguredConnector *connector, bool include_connector_as_active) {
+  if (connector == nullptr)
+    return false;
+  if (this->should_defer_connector_allocation_(connector, include_connector_as_active))
+    return false;
+
   float available_current = 0.0f;
-  if (connector != nullptr && this->has_charger_) {
-    const float site_available_current = this->site_available_current_(this->charger_, connector);
-    const float connector_current = this->connector_current_for_allocation_(*connector);
-    available_current = equal_available_current(site_available_current, connector_current,
-                                                this->active_connector_count_(include_connector_as_active ? connector : nullptr));
+  float site_available_current = 0.0f;
+  float connector_current = 0.0f;
+  uint8_t active_connector_count = 0;
+  if (this->has_charger_) {
+    site_available_current = this->site_available_current_(this->charger_, connector);
+    connector_current = this->connector_current_for_allocation_(*connector);
+    active_connector_count = this->active_connector_count_(include_connector_as_active ? connector : nullptr);
+    available_current = equal_available_current(site_available_current, connector_current, active_connector_count);
   }
+  const float previous_available_current = connector->available_current;
+  const float previous_allocated_current = connector->allocated_current;
+  const float requested_current = connector->has_preferred_current_limit ? connector->preferred_current_limit : NAN;
   update_connector_allocation(connector, available_current, this->allocation_min_current_);
+  if (this->allocation_log_decisions_) {
+    ESP_LOGI(TAG,
+             "Allocation decision: connectorId=%u enabled=%s active=%s include_as_active=%s active_count=%u "
+             "site_available=%.1f A connector_current=%.1f A available=%.1f->%.1f A max=%.1f A requested=%.1f A "
+             "min=%.1f A allocated=%.1f->%.1f A",
+             connector->id, YESNO(connector->enabled), YESNO(connector->has_active_transaction),
+             YESNO(include_connector_as_active), active_connector_count, site_available_current, connector_current,
+             previous_available_current, connector->available_current, connector->max_current, requested_current,
+             this->allocation_min_current_, previous_allocated_current, connector->allocated_current);
+  }
+  return true;
+}
+
+bool OcppServer::should_defer_connector_allocation_(ConfiguredConnector *connector, bool include_connector_as_active) {
+  if (connector == nullptr || !connector->has_active_transaction)
+    return false;
+  const uint32_t remaining_ms = this->allocation_evaluation_delay_remaining_ms_();
+  if (!this->set_charging_profile_in_flight_ && remaining_ms == 0)
+    return false;
+
+  this->pending_allocation_evaluation_ = true;
+  this->pending_allocation_connector_id_ = connector->id;
+  this->pending_allocation_include_connector_as_active_ = include_connector_as_active;
+  if (this->allocation_log_decisions_) {
+    ESP_LOGI(TAG,
+             "Allocation decision deferred: connectorId=%u set_charging_profile_in_flight=%s remaining=%u ms",
+             connector->id, YESNO(this->set_charging_profile_in_flight_), remaining_ms);
+  }
+  return true;
+}
+
+uint32_t OcppServer::allocation_evaluation_delay_remaining_ms_() const {
+  if (this->allocation_evaluation_deferred_until_ == 0)
+    return 0;
+  const uint32_t now = millis();
+  return static_cast<int32_t>(this->allocation_evaluation_deferred_until_ - now) > 0
+             ? this->allocation_evaluation_deferred_until_ - now
+             : 0;
+}
+
+void OcppServer::run_pending_allocation_evaluation_if_ready_() {
+  if (!this->pending_allocation_evaluation_ || this->set_charging_profile_in_flight_ ||
+      this->allocation_evaluation_delay_remaining_ms_() > 0)
+    return;
+
+  const uint8_t connector_id = this->pending_allocation_connector_id_;
+  const bool include_connector_as_active = this->pending_allocation_include_connector_as_active_;
+  this->pending_allocation_evaluation_ = false;
+  auto *connector = this->find_connector_(connector_id);
+  if (connector == nullptr)
+    return;
+
+  const float previous_allocated_current = connector->allocated_current;
+  if (!this->update_connector_allocation_(connector, include_connector_as_active))
+    return;
+  this->publish_connector_allocation_if_configured_(connector);
+  if (this->client_ != nullptr && this->handshake_done_ && connector->has_active_transaction &&
+      connector->allocated_current != previous_allocated_current) {
+    connector->charging_profile_applied = false;
+    this->send_preferred_current_limit_if_needed_(connector->id);
+  }
+}
+
+uint32_t OcppServer::allocation_settle_delay_for_current_ms_(float next_current_limit) const {
+  uint32_t delay_ms = this->allocation_settle_delay_ms_;
+  if (this->has_last_set_charging_profile_current_limit_) {
+    const float delta = std::fabs(next_current_limit - this->last_set_charging_profile_current_limit_);
+    const float proportional_ms = delta * static_cast<float>(this->allocation_settle_delay_per_amp_ms_);
+    if (proportional_ms >= static_cast<float>(std::numeric_limits<uint32_t>::max() - delay_ms))
+      delay_ms = std::numeric_limits<uint32_t>::max();
+    else
+      delay_ms += static_cast<uint32_t>(proportional_ms);
+  }
+  return delay_ms;
+}
+
+void OcppServer::note_set_charging_profile_accepted_(float current_limit) {
+  const uint32_t delay_ms = this->allocation_settle_delay_for_current_ms_(current_limit);
+  this->has_last_set_charging_profile_current_limit_ = true;
+  this->last_set_charging_profile_current_limit_ = current_limit;
+  if (delay_ms == 0)
+    return;
+  this->allocation_evaluation_deferred_until_ = millis() + delay_ms;
+  if (this->allocation_log_decisions_) {
+    ESP_LOGI(TAG, "Deferring allocation evaluation for %u ms after accepted SetChargingProfile %.1f A", delay_ms,
+             current_limit);
+  }
 }
 
 void OcppServer::publish_connector_allocation_if_configured_(ConfiguredConnector *connector) {
@@ -1282,7 +1443,8 @@ void OcppServer::send_preferred_current_limit_if_needed_(uint8_t connector_id) {
   auto *connector = this->find_connector_(connector_id);
   if (connector == nullptr || connector->charging_profile_applied)
     return;
-  this->update_connector_allocation_(connector);
+  if (!this->update_connector_allocation_(connector))
+    return;
   this->publish_connector_allocation_if_configured_(connector);
   if (!connector->enabled)
     return;
@@ -1613,8 +1775,9 @@ void OcppServer::handle_start_transaction_(const std::string &unique_id, JsonObj
 
   auto *started_connector = this->find_connector_(connector_id);
   if (started_connector != nullptr) {
-    this->update_connector_allocation_(started_connector);
-    this->publish_connector_allocation_if_configured_(started_connector);
+    const bool allocation_updated = this->update_connector_allocation_(started_connector);
+    if (allocation_updated)
+      this->publish_connector_allocation_if_configured_(started_connector);
     if (!started_connector->enabled) {
       ESP_LOGI(TAG, "Stopping transaction %u because connector %d is disabled", transaction_id, connector_id);
       this->remote_stop(transaction_id);
@@ -1622,6 +1785,8 @@ void OcppServer::handle_start_transaction_(const std::string &unique_id, JsonObj
       this->pending_profile_current_limit_ = 0.0f;
       return;
     }
+    if (!allocation_updated)
+      return;
     if (started_connector->allocated_current <= 0.0f) {
       ESP_LOGI(TAG, "Stopping transaction %u because connector %d allocated_current=0.0 A", transaction_id,
                connector_id);
@@ -1787,10 +1952,11 @@ void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject p
   if (connector != nullptr && drawn_current_updated) {
     this->publish_drawn_current_if_configured_(connector);
     const float previous_allocated_current = connector->allocated_current;
-    this->update_connector_allocation_(connector);
-    this->publish_connector_allocation_if_configured_(connector);
+    const bool allocation_updated = this->update_connector_allocation_(connector);
+    if (allocation_updated)
+      this->publish_connector_allocation_if_configured_(connector);
     if (this->client_ != nullptr && this->handshake_done_ && connector->has_active_transaction &&
-        connector->allocated_current != previous_allocated_current) {
+        allocation_updated && connector->allocated_current != previous_allocated_current) {
       connector->charging_profile_applied = false;
       this->send_preferred_current_limit_if_needed_(connector->id);
     }
@@ -1833,11 +1999,8 @@ void OcppServer::handle_call_result_(const std::string &unique_id, JsonObject pa
   }
   if (set_charging_profile_call) {
     this->set_charging_profile_in_flight_ = false;
-    if (std::strcmp(status, "Accepted") == 0) {
-      this->has_last_set_charging_profile_current_limit_ = true;
-      this->last_set_charging_profile_current_limit_ = set_charging_profile_current_limit;
-      this->last_set_charging_profile_accepted_at_ = millis();
-    }
+    if (std::strcmp(status, "Accepted") == 0)
+      this->note_set_charging_profile_accepted_(set_charging_profile_current_limit);
   }
   if (remote_start_call) {
     this->remote_start_in_flight_ = false;
@@ -1911,31 +2074,12 @@ void OcppServer::request_set_charging_profile_(uint8_t connector_id, uint32_t tr
 void OcppServer::send_pending_set_charging_profile_if_ready_() {
   if (!this->pending_set_charging_profile_ || this->set_charging_profile_in_flight_)
     return;
-  const uint32_t settle_delay =
-      this->set_charging_profile_settle_delay_ms_(this->pending_set_charging_profile_current_limit_);
-  if (settle_delay > 0)
-    return;
 
   const uint8_t connector_id = this->pending_set_charging_profile_connector_id_;
   const uint32_t transaction_id = this->pending_set_charging_profile_transaction_id_;
   const float current_limit = this->pending_set_charging_profile_current_limit_;
   if (this->send_set_charging_profile_now_(connector_id, transaction_id, current_limit))
     this->pending_set_charging_profile_ = false;
-}
-
-uint32_t OcppServer::set_charging_profile_settle_delay_ms_(float next_current_limit) const {
-  if (this->set_charging_profile_settle_time_per_amp_ms_ == 0 ||
-      !this->has_last_set_charging_profile_current_limit_)
-    return 0;
-  const float delta = std::fabs(next_current_limit - this->last_set_charging_profile_current_limit_);
-  const float settle_ms = delta * static_cast<float>(this->set_charging_profile_settle_time_per_amp_ms_);
-  if (settle_ms <= 0.0f)
-    return 0;
-  const uint32_t required_delay = settle_ms >= static_cast<float>(std::numeric_limits<uint32_t>::max())
-                                      ? std::numeric_limits<uint32_t>::max()
-                                      : static_cast<uint32_t>(settle_ms);
-  const uint32_t elapsed = millis() - this->last_set_charging_profile_accepted_at_;
-  return elapsed >= required_delay ? 0 : required_delay - elapsed;
 }
 
 bool OcppServer::send_set_charging_profile_now_(uint8_t connector_id, uint32_t transaction_id, float current_limit) {

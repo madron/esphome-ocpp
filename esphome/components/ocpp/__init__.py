@@ -17,11 +17,12 @@ from esphome.const import (
     CONF_RESTORE_VALUE,
     CONF_STATE,
     CONF_STEP,
-    CONF_UPDATE_INTERVAL,
+    DEVICE_CLASS_DURATION,
     DEVICE_CLASS_CURRENT,
     DEVICE_CLASS_POWER,
     STATE_CLASS_MEASUREMENT,
     UNIT_AMPERE,
+    UNIT_SECOND,
     UNIT_WATT,
 )
 
@@ -57,7 +58,9 @@ CONF_SERVER = "server"
 CONF_SITE = "site"
 CONF_PATH = "path"
 CONF_SOLAR = "solar"
-CONF_SETTLE_TIME_PER_AMP = "settle_time_per_amp"
+CONF_SETTLE_DELAY = "settle_delay"
+CONF_SETTLE_DELAY_PER_AMP = "settle_delay_per_amp"
+CONF_LOG_DECISIONS = "log_decisions"
 CONF_EXPORT_MARGIN_POWER = "export_margin_power"
 CONF_STORAGE = "storage"
 CONF_SOC = "soc"
@@ -70,6 +73,7 @@ OcppConnectorButton = ocpp_ns.class_("OcppConnectorButton", button.Button)
 OcppConnectorEnabledSwitch = ocpp_ns.class_("OcppConnectorEnabledSwitch", switch.Switch)
 OcppCurrentLimitNumber = ocpp_ns.class_("OcppCurrentLimitNumber", number.Number, cg.Component)
 OcppSolarExportMarginNumber = ocpp_ns.class_("OcppSolarExportMarginNumber", number.Number)
+OcppAllocationDelayNumber = ocpp_ns.class_("OcppAllocationDelayNumber", number.Number)
 
 PHASE_KEYS = (CONF_L1, CONF_L2, CONF_L3)
 PHASE_TO_INDEX = {CONF_L1.upper(): 0, CONF_L2.upper(): 1, CONF_L3.upper(): 2}
@@ -285,8 +289,30 @@ ALLOCATION_SCHEMA = cv.Schema(
     {
         cv.Optional(CONF_STRATEGY, default="equal"): cv.one_of("equal", lower=True),
         cv.Optional(CONF_MIN_CURRENT, default=6): cv.positive_float,
-        cv.Optional(CONF_UPDATE_INTERVAL, default="10s"): cv.positive_time_period_milliseconds,
-        cv.Optional(CONF_SETTLE_TIME_PER_AMP, default="0s"): cv.positive_time_period_milliseconds,
+        cv.Optional(CONF_SETTLE_DELAY): number.number_schema(
+            OcppAllocationDelayNumber,
+            unit_of_measurement=UNIT_SECOND,
+            device_class=DEVICE_CLASS_DURATION,
+        ).extend(
+            {
+                cv.Optional(CONF_MIN_VALUE, default=0): cv.float_range(min=0),
+                cv.Optional(CONF_MAX_VALUE, default=120): cv.positive_float,
+                cv.Optional(CONF_STEP, default=0.5): cv.positive_float,
+                cv.Optional(CONF_INITIAL_VALUE, default=0): cv.float_range(min=0),
+            }
+        ),
+        cv.Optional(CONF_SETTLE_DELAY_PER_AMP): number.number_schema(
+            OcppAllocationDelayNumber,
+            unit_of_measurement="s/A",
+        ).extend(
+            {
+                cv.Optional(CONF_MIN_VALUE, default=0): cv.float_range(min=0),
+                cv.Optional(CONF_MAX_VALUE, default=30): cv.positive_float,
+                cv.Optional(CONF_STEP, default=0.1): cv.positive_float,
+                cv.Optional(CONF_INITIAL_VALUE, default=0): cv.float_range(min=0),
+            }
+        ),
+        cv.Optional(CONF_LOG_DECISIONS, default=False): cv.boolean,
         cv.Optional(CONF_PREFERENCE, default="first_connected"): cv.one_of(
             "first_connected",
             "last_connected",
@@ -435,11 +461,33 @@ async def to_code(config):
     cg.add(var.set_path(server[CONF_PATH]))
     allocation = config[CONF_ALLOCATION]
     cg.add(var.set_allocation_min_current(allocation[CONF_MIN_CURRENT]))
-    cg.add(
-        var.set_charging_profile_settle_time_per_amp(
-            allocation[CONF_SETTLE_TIME_PER_AMP].total_milliseconds
+    cg.add(var.set_allocation_log_decisions(allocation[CONF_LOG_DECISIONS]))
+    if settle_delay := allocation.get(CONF_SETTLE_DELAY):
+        num = await number.new_number(
+            settle_delay,
+            min_value=settle_delay[CONF_MIN_VALUE],
+            max_value=settle_delay[CONF_MAX_VALUE],
+            step=settle_delay[CONF_STEP],
         )
-    )
+        cg.add(
+            var.set_allocation_settle_delay_number(
+                num, settle_delay[CONF_INITIAL_VALUE]
+            )
+        )
+    else:
+        cg.add(var.set_allocation_settle_delay(0))
+    if settle_delay_per_amp := allocation.get(CONF_SETTLE_DELAY_PER_AMP):
+        num = await number.new_number(
+            settle_delay_per_amp,
+            min_value=settle_delay_per_amp[CONF_MIN_VALUE],
+            max_value=settle_delay_per_amp[CONF_MAX_VALUE],
+            step=settle_delay_per_amp[CONF_STEP],
+        )
+        cg.add(
+            var.set_allocation_settle_delay_per_amp_number(
+                num, settle_delay_per_amp[CONF_INITIAL_VALUE]
+            )
+        )
     if site := config.get(CONF_SITE):
         cg.add(var.set_site(site[CONF_PHASES], site[CONF_VOLTAGE]))
         cg.add(var.set_site_energy_policy(site[CONF_POLICY]))

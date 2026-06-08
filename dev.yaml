@@ -180,8 +180,13 @@ ocpp:
   allocation:
     strategy: equal
     min_current: 6
-    update_interval: 10s
-    settle_time_per_amp: 3s
+    log_decisions: true
+    settle_delay:
+      name: allocation_settle_delay
+      initial_value: 2
+    settle_delay_per_amp:
+      name: allocation_settle_delay_per_amp
+      initial_value: 3
     preference: first_connected
 
   chargers:

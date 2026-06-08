@@ -98,8 +98,13 @@ ocpp:
   allocation:
     strategy: equal
     min_current: 6
-    update_interval: 10s
-    settle_time_per_amp: 1s
+    settle_delay:
+      name: Allocation settle delay
+      initial_value: 2
+    settle_delay_per_amp:
+      name: Allocation settle delay per amp
+      initial_value: 1
+    log_decisions: false
     preference: first_connected
 
   chargers:
@@ -643,8 +648,13 @@ ocpp:
   allocation:
     strategy: equal
     min_current: 6
-    update_interval: 10s
-    settle_time_per_amp: 1s
+    settle_delay:
+      name: Allocation settle delay
+      initial_value: 2
+    settle_delay_per_amp:
+      name: Allocation settle delay per amp
+      initial_value: 1
+    log_decisions: false
     preference: first_connected
 ```
 
@@ -666,29 +676,27 @@ constraints have been applied. If the calculated value is below `min_current`,
 Positive `allocated_current` values are sent to the charger using
 `SetChargingProfile`. The component serializes these requests: it waits for the
 charger's response to the previous `SetChargingProfile` before sending another
-one. If `settle_time_per_amp` is configured, it also waits after an accepted
-profile so the car has time to approach the previous limit before another
-adjustment is sent.
+one. After an accepted profile, allocation evaluation can be deferred by the
+runtime-tuneable `settle_delay` plus `settle_delay_per_amp` multiplied by the `A`
+change. During that window, new site or charger measurements are still ingested,
+but allocation is recalculated only after the delay so the next decision can use
+more settled current data.
 
 `preference` expresses which sessions should keep charging first when there is
 not enough current to keep all cars above `min_current`. It is accepted as a
 forward-compatible configuration option for future multi-connector allocation;
 with the current single-connector implementation it has no effect.
 
-`update_interval` is also accepted as a forward-compatible allocation option. The
-current implementation recalculates allocation when relevant site or connector
-state changes. Whether a periodic interval remains useful should be revisited
-before multi-connector scheduling is finalized.
-
 ### Allocation Options
 
-| Option                            | Description |
-| ---                               | --- |
-| `strategy` (Optional)             | Power sharing strategy. Defaults to `equal`.<br>Available values: `equal`. |
-| `min_current` (Optional)          | Minimum AC charging current per active connector in `A`. Defaults to `6`. |
-| `update_interval` (Optional)      | Forward-compatible interval for future periodic allocation updates. Defaults to `10s`; currently accepted but not used for scheduling. |
-| `settle_time_per_amp` (Optional)  | Delay per `A` of current change after an accepted `SetChargingProfile` before sending the next one. For example, with `1s`, changing from `6 A` to `16 A` waits about `10s`. Defaults to `0s`. |
-| `preference` (Optional)           | Forward-compatible preference for choosing which sessions keep charging when not all active sessions can receive at least `min_current`. Defaults to `first_connected`; currently accepted but has no effect while only one connector is supported.<br>Available values:<br>`first_connected` prefers older sessions; <br>`last_connected` prefers newer sessions; <br>`least_charged` prefers sessions with the lowest delivered `kWh` and will require live OCPP `Energy.Active.Import.Register` meter values; <br>`round_robin` rotates active charging slots over time. |
+| Option                                | Description |
+| ---                                   | --- |
+| `strategy` (Optional)                 | Power sharing strategy. Defaults to `equal`.<br>Available values: `equal`. |
+| `min_current` (Optional)              | Minimum AC charging current per active connector in `A`. Defaults to `6`. |
+| `settle_delay` (Optional)             | Number entity for the fixed allocation-evaluation delay in seconds after an accepted `SetChargingProfile`. Defaults to no entity and `0 s`. Number defaults: `min_value: 0`, `max_value: 120`, `step: 0.5`, `initial_value: 0`. |
+| `settle_delay_per_amp` (Optional)     | Number entity for the proportional allocation-evaluation delay in seconds per `A` of current change after an accepted `SetChargingProfile`. For example, with `1`, changing from `6 A` to `16 A` adds about `10 s`. Defaults to no entity and `0 s/A`. Number defaults: `min_value: 0`, `max_value: 30`, `step: 0.1`, `initial_value: 0`. |
+| `log_decisions` (Optional)            | Enables INFO logs from each allocation evaluation with the relevant input and output values. Defaults to `false`. |
+| `preference` (Optional)               | Forward-compatible preference for choosing which sessions keep charging when not all active sessions can receive at least `min_current`. Defaults to `first_connected`; currently accepted but has no effect while only one connector is supported.<br>Available values:<br>`first_connected` prefers older sessions; <br>`last_connected` prefers newer sessions; <br>`least_charged` prefers sessions with the lowest delivered `kWh` and will require live OCPP `Energy.Active.Import.Register` meter values; <br>`round_robin` rotates active charging slots over time. |
 
 ## Chargers and Connectors
 

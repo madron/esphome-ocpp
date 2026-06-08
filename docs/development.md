@@ -31,8 +31,7 @@ For that reason:
   immediately requests `RemoteStopTransaction` for that transaction.
 - `SetChargingProfile` requests are serialized. The component keeps only the
   newest desired profile while one request is waiting for a charger response,
-  then sends that newest profile after the response and any configured settling
-  delay.
+  then sends that newest profile after the response.
 - `RemoteStartTransaction` and `RemoteStopTransaction` requests are also
   serialized per action. Exact duplicate requests while one is in flight are
   coalesced; otherwise the newest pending request is sent after the charger
@@ -82,10 +81,12 @@ When `allocated_current` is `0`, the component should stop the transaction with
 charger minimum current, and it should not rely on a `0 A` charging profile as the
 primary stop mechanism. When `allocated_current` is positive, it should be at least
 the configured minimum current and may be sent using `SetChargingProfile`.
-After an accepted profile, `allocation.settle_time_per_amp` can hold back the next
-profile for a delay proportional to the requested current change. This avoids
-overcompensating while the car and charger are still moving toward the previous
-limit.
+After an accepted profile, allocation evaluation can be deferred by
+`allocation.settle_delay` plus `allocation.settle_delay_per_amp` multiplied by the
+requested current change. The delay gates the allocator, not WebSocket I/O: new
+meter values are still recorded, but the next allocation decision waits until the
+system has had time to settle. This avoids overcompensating while the car and
+charger are still moving toward the previous limit.
 
 OCPP 1.6 `SetChargingProfile` provides a scalar current or power value for a
 charging schedule period, optionally with `numberPhases`. It does not provide
