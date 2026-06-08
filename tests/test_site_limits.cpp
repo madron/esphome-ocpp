@@ -12,6 +12,7 @@ using esphome::ocpp::SitePowerMeasurements;
 using esphome::ocpp::example_site_spare_current_per_phase;
 using esphome::ocpp::normalize_site_storage_state;
 using esphome::ocpp::site_available_current_for_load;
+using esphome::ocpp::site_load_headroom_current;
 
 template<typename T> std::ostream &operator<<(std::ostream &out, const std::vector<T> &values) {
   out << "{";
@@ -120,6 +121,10 @@ int main() {
   measurements.grid_power_l1 = -4000.0f;
   assert_equal("solar_policy_uses_export_above_margin",
                site_available_current_for_load(config, measurements, {true, false, false}), 37.0f);
+  auto load_headroom = site_load_headroom_current(config, measurements, {true, false, false});
+  assert_equal("solar_policy_reports_grid_headroom", load_headroom.grid_headroom, 130.0f);
+  assert_equal("solar_policy_reports_solar_headroom", load_headroom.solar_headroom, 37.0f);
+  assert_equal("solar_policy_reports_site_headroom", load_headroom.site_headroom, 37.0f);
 
   // solar_policy_fallback_margin_can_reduce_current
   measurements.grid_power_l1 = 0.0f;

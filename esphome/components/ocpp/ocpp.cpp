@@ -28,6 +28,18 @@ static constexpr size_t MAX_WS_FRAMES_PER_LOOP = 1;
 static constexpr const char *CURRENT_TIME = "1970-01-01T00:00:00Z";
 static constexpr const char *WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
+std::array<bool, 3> charger_site_load_phases(const ConfiguredCharger &charger, const ConfiguredConnector *connector) {
+  const auto charger_load_phases = charger_effective_load_phases(charger, connector);
+  std::array<bool, 3> site_load_phases{};
+  for (uint8_t i = 0; i < charger_load_phases.size(); i++) {
+    if (!charger_load_phases[i])
+      continue;
+    const uint8_t site_phase = charger.phase_mapping[i] < site_load_phases.size() ? charger.phase_mapping[i] : 0;
+    site_load_phases[site_phase] = true;
+  }
+  return site_load_phases;
+}
+
 uint32_t rol(uint32_t value, uint8_t bits) { return (value << bits) | (value >> (32 - bits)); }
 
 std::array<uint8_t, 20> sha1(const std::string &input) {
@@ -1126,15 +1138,9 @@ void OcppServer::publish_site_headroom_current_if_configured_() {
 }
 
 float OcppServer::site_available_current_(const ConfiguredCharger &charger, const ConfiguredConnector *connector) const {
-  const auto charger_load_phases = charger_effective_load_phases(charger, connector);
-  std::array<bool, 3> site_load_phases{};
-  for (uint8_t i = 0; i < charger_load_phases.size(); i++) {
-    if (!charger_load_phases[i])
-      continue;
-    const uint8_t site_phase = charger.phase_mapping[i] < site_load_phases.size() ? charger.phase_mapping[i] : 0;
-    site_load_phases[site_phase] = true;
-  }
-  return site_available_current_for_load(this->site_.limits, this->site_power_measurements_(), site_load_phases);
+  return site_load_headroom_current(this->site_.limits, this->site_power_measurements_(),
+                                    charger_site_load_phases(charger, connector))
+      .site_headroom;
 }
 
 uint8_t OcppServer::active_connector_count_(const ConfiguredConnector *prospective_connector) const {
@@ -1161,25 +1167,39 @@ bool OcppServer::update_connector_allocation_(ConfiguredConnector *connector, bo
   float site_available_current = 0.0f;
   float connector_current = 0.0f;
   uint8_t active_connector_count = 0;
+  SiteLoadHeadroomCurrent load_headroom;
   if (this->has_charger_) {
-    site_available_current = this->site_available_current_(this->charger_, connector);
+    const auto site_load_phases = charger_site_load_phases(this->charger_, connector);
+    load_headroom = site_load_headroom_current(this->site_.limits, this->site_power_measurements_(), site_load_phases);
+    site_available_current = load_headroom.site_headroom;
     connector_current = this->connector_current_for_allocation_(*connector);
     active_connector_count = this->active_connector_count_(include_connector_as_active ? connector : nullptr);
     available_current = equal_available_current(site_available_current, connector_current, active_connector_count);
   }
   const float previous_available_current = connector->available_current;
   const float previous_allocated_current = connector->allocated_current;
-  const float requested_current = connector->has_preferred_current_limit ? connector->preferred_current_limit : NAN;
+  const float preferred_limit = connector->has_preferred_current_limit ? connector->preferred_current_limit : NAN;
   update_connector_allocation(connector, available_current, this->allocation_min_current_);
   if (this->allocation_log_decisions_) {
-    ESP_LOGI(TAG,
-             "Allocation decision: connectorId=%u enabled=%s active=%s include_as_active=%s active_count=%u "
-             "site_available=%.1f A connector_current=%.1f A available=%.1f->%.1f A max=%.1f A requested=%.1f A "
-             "min=%.1f A allocated=%.1f->%.1f A",
-             connector->id, YESNO(connector->enabled), YESNO(connector->has_active_transaction),
-             YESNO(include_connector_as_active), active_connector_count, site_available_current, connector_current,
-             previous_available_current, connector->available_current, connector->max_current, requested_current,
-             this->allocation_min_current_, previous_allocated_current, connector->allocated_current);
+    if (this->site_.limits.energy_policy == SiteEnergyPolicy::SOLAR) {
+      ESP_LOGI(TAG,
+               "Allocation decision: connectorId=%u enabled=%s active=%s include_as_active=%s active_count=%u "
+               "grid_headroom=%.1f A solar_headroom=%.1f A site_headroom=%.1f A connector_current=%.1f A "
+               "available=%.1f->%.1f A preferred_limit=%.1f A allocated=%.1f->%.1f A",
+               connector->id, YESNO(connector->enabled), YESNO(connector->has_active_transaction),
+               YESNO(include_connector_as_active), active_connector_count, load_headroom.grid_headroom,
+               load_headroom.solar_headroom, site_available_current, connector_current, previous_available_current,
+               connector->available_current, preferred_limit, previous_allocated_current, connector->allocated_current);
+    } else {
+      ESP_LOGI(TAG,
+               "Allocation decision: connectorId=%u enabled=%s active=%s include_as_active=%s active_count=%u "
+               "grid_headroom=%.1f A site_headroom=%.1f A connector_current=%.1f A available=%.1f->%.1f A "
+               "preferred_limit=%.1f A allocated=%.1f->%.1f A",
+               connector->id, YESNO(connector->enabled), YESNO(connector->has_active_transaction),
+               YESNO(include_connector_as_active), active_connector_count, load_headroom.grid_headroom,
+               site_available_current, connector_current, previous_available_current, connector->available_current,
+               preferred_limit, previous_allocated_current, connector->allocated_current);
+    }
   }
   return true;
 }
