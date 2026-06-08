@@ -1365,8 +1365,13 @@ void OcppServer::handle_ws_text_(const std::string &message) {
 
   std::string unique_id = root[1] | "";
   std::string action = root[2] | "";
-  ESP_LOGD(TAG, "OCPP message: charge_point='%s' action='%s' uniqueId='%s'", this->charge_point_id_.c_str(),
-           action.c_str(), unique_id.c_str());
+  if (action == "MeterValues") {
+    ESP_LOGV(TAG, "OCPP message: charge_point='%s' action='%s' uniqueId='%s'", this->charge_point_id_.c_str(),
+             action.c_str(), unique_id.c_str());
+  } else {
+    ESP_LOGD(TAG, "OCPP message: charge_point='%s' action='%s' uniqueId='%s'", this->charge_point_id_.c_str(),
+             action.c_str(), unique_id.c_str());
+  }
   if (action == "BootNotification") {
     this->handle_boot_notification_(unique_id, root[3].as<JsonObject>());
   } else if (action == "Heartbeat") {
@@ -1568,6 +1573,7 @@ void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject p
   if (this->has_charger_ && connector == &this->charger_.connector)
     connector_phases = this->charger_.phases;
   bool current_updated = false;
+  bool drawn_current_updated = false;
   bool power_updated = false;
   if (transaction_id >= 0) {
     this->note_transaction_id_(static_cast<uint32_t>(transaction_id));
@@ -1578,14 +1584,14 @@ void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject p
   JsonArray meter_values = payload["meterValue"].as<JsonArray>();
 
   if (meter_values.isNull()) {
-    ESP_LOGD(TAG, "MeterValues: charge_point='%s' connectorId=%d transactionId=%d", this->charge_point_id_.c_str(),
+    ESP_LOGV(TAG, "MeterValues: charge_point='%s' connectorId=%d transactionId=%d", this->charge_point_id_.c_str(),
              connector_id, transaction_id);
   } else {
     for (JsonObject meter_value : meter_values) {
       const char *timestamp = meter_value["timestamp"] | "";
       JsonArray sampled_values = meter_value["sampledValue"].as<JsonArray>();
       if (sampled_values.isNull()) {
-        ESP_LOGD(TAG, "MeterValues: charge_point='%s' connectorId=%d transactionId=%d timestamp='%s'",
+        ESP_LOGV(TAG, "MeterValues: charge_point='%s' connectorId=%d transactionId=%d timestamp='%s'",
                  this->charge_point_id_.c_str(), connector_id, transaction_id, timestamp);
         continue;
       }
@@ -1599,12 +1605,17 @@ void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject p
         float parsed_value;
         if (parse_float(value, &parsed_value)) {
           if (std::strcmp(measurand, "Current.Import") == 0 && (unit[0] == '\0' || std::strcmp(unit, "A") == 0)) {
+            bool latest_current_changed = false;
             if (valid_current_import(parsed_value) && connector != nullptr) {
+              latest_current_changed = !connector->has_latest_current_import ||
+                                       connector->latest_current_import != parsed_value;
               bool first_session_current = connector->is_charging && !connector->has_session_current_import;
               connector->latest_current_import = parsed_value;
               connector->has_latest_current_import = true;
               connector->has_session_current_import = connector->is_charging;
               if (connector->is_charging) {
+                const auto previous_drawn_current = connector->latest_drawn_current;
+                const bool previous_phase_specific = connector->has_phase_specific_current_import;
                 int current_phase = phase_index(phase);
                 if (current_phase >= 0 && current_phase < connector_phases) {
                   if (!connector->has_phase_specific_current_import)
@@ -1616,30 +1627,36 @@ void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject p
                   for (uint8_t i = 0; i < connector->latest_drawn_current.size(); i++)
                     connector->latest_drawn_current[i] = i < connector_phases ? parsed_value : 0.0f;
                 } else {
-                  ESP_LOGD(TAG, "Ignoring Current.Import phase '%s' for drawn_current sensors", phase);
+                  ESP_LOGV(TAG, "Ignoring Current.Import phase '%s' for drawn_current sensors", phase);
                 }
+                drawn_current_updated = drawn_current_updated ||
+                                        previous_phase_specific != connector->has_phase_specific_current_import ||
+                                        drawn_current_changed(previous_drawn_current, connector->latest_drawn_current);
               }
               if (first_session_current) {
                 ESP_LOGI(TAG, "Current.Import available for active session: charge_point='%s' connectorId=%d",
                          this->charge_point_id_.c_str(), connector_id);
               }
               if (!connector->is_charging)
-                ESP_LOGD(TAG, "Ignoring Current.Import as active drawn current because connectorId=%d is not charging",
+                ESP_LOGV(TAG, "Ignoring Current.Import as active drawn current because connectorId=%d is not charging",
                          connector_id);
             } else if (!valid_current_import(parsed_value)) {
               ESP_LOGW(TAG, "Ignoring invalid Current.Import %.3f A for connectorId=%d", parsed_value, connector_id);
             }
-            current_updated = valid_current_import(parsed_value);
+            current_updated = current_updated || (connector != nullptr && latest_current_changed);
           } else if (std::strcmp(measurand, "Power.Active.Import") == 0 &&
                      (unit[0] == '\0' || std::strcmp(unit, "W") == 0)) {
             if (connector != nullptr) {
+              power_updated = power_updated || !connector->has_latest_power_active_import ||
+                              connector->latest_power_active_import != parsed_value;
               connector->latest_power_active_import = parsed_value;
               connector->has_latest_power_active_import = true;
+            } else {
+              power_updated = true;
             }
-            power_updated = true;
           }
         }
-        ESP_LOGD(TAG,
+        ESP_LOGV(TAG,
                  "MeterValues: charge_point='%s' connectorId=%d transactionId=%d timestamp='%s' value='%s' "
                  "measurand='%s' unit='%s' phase='%s' context='%s' location='%s'",
                  this->charge_point_id_.c_str(), connector_id, transaction_id, timestamp, value, measurand, unit,
@@ -1649,12 +1666,12 @@ void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject p
   }
 
   if ((current_updated || power_updated) && connector != nullptr) {
-    ESP_LOGD(TAG, "Latest meter values: connectorId=%d current=%.1f A power=%.1f W", connector_id,
+    ESP_LOGV(TAG, "Latest meter values: connectorId=%d current=%.1f A power=%.1f W", connector_id,
              connector->latest_current_import, connector->latest_power_active_import);
   }
   if (connector != nullptr && current_updated && connector->current_sensor != nullptr)
     connector->current_sensor->publish_state(connector->latest_current_import);
-  if (connector != nullptr && current_updated) {
+  if (connector != nullptr && drawn_current_updated) {
     this->publish_drawn_current_if_configured_(connector);
     const float previous_allocated_current = connector->allocated_current;
     this->update_connector_allocation_(connector);
