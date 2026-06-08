@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <utility>
 
 namespace esphome::ocpp {
 namespace {
@@ -489,6 +490,8 @@ void OcppServer::setup() {
 void OcppServer::loop() {
   if (this->server_ != nullptr && this->server_->ready())
     this->accept_client_();
+  if (this->flush_queued_ws_text_())
+    return;
   if (this->client_ != nullptr && this->client_->ready())
     this->read_client_();
   if (this->has_charger_)
@@ -799,6 +802,7 @@ void OcppServer::close_client_() {
   this->pending_session_restart_connector_id_ = 0;
   this->pending_profile_current_limit_ = 0.0f;
   this->clear_pending_calls_();
+  this->clear_queued_ws_text_();
 }
 
 void OcppServer::read_client_() {
@@ -1737,10 +1741,54 @@ void OcppServer::send_set_charging_profile_(uint8_t connector_id, uint32_t trans
 std::string OcppServer::send_ocpp_call_(const char *unique_prefix, const char *action, const std::string &payload_json,
                                         uint8_t connector_id, uint32_t transaction_id, float current_limit) {
   std::string unique_id = this->next_unique_id_(unique_prefix);
+  if (this->client_ == nullptr || !this->handshake_done_) {
+    ESP_LOGW(TAG, "Cannot send %s; no OCPP wallbox is connected", action);
+    return unique_id;
+  }
   std::string message = "[2,\"" + json_escape(unique_id) + "\",\"" + action + "\"," + payload_json + "]";
   this->track_pending_call_(unique_id, action, connector_id, transaction_id, current_limit);
-  this->send_ws_text_(message);
+  if (!this->queue_ws_text_(std::move(message)))
+    this->clear_pending_call_(unique_id);
   return unique_id;
+}
+
+bool OcppServer::queue_ws_text_(std::string message) {
+  if (this->client_ == nullptr || !this->handshake_done_)
+    return false;
+
+  if (this->tx_queue_count_ >= this->tx_queue_.size()) {
+    ESP_LOGW(TAG, "Outbound OCPP queue full; sending message immediately");
+    this->send_ws_text_(message);
+    return true;
+  }
+
+  uint8_t slot = (this->tx_queue_head_ + this->tx_queue_count_) % this->tx_queue_.size();
+  this->tx_queue_[slot] = std::move(message);
+  this->tx_queue_count_++;
+  return true;
+}
+
+bool OcppServer::flush_queued_ws_text_() {
+  if (this->tx_queue_count_ == 0)
+    return false;
+  if (this->client_ == nullptr || !this->handshake_done_) {
+    this->clear_queued_ws_text_();
+    return false;
+  }
+
+  std::string message = std::move(this->tx_queue_[this->tx_queue_head_]);
+  this->tx_queue_[this->tx_queue_head_].clear();
+  this->tx_queue_head_ = (this->tx_queue_head_ + 1) % this->tx_queue_.size();
+  this->tx_queue_count_--;
+  this->send_ws_text_(message);
+  return true;
+}
+
+void OcppServer::clear_queued_ws_text_() {
+  for (auto &message : this->tx_queue_)
+    message.clear();
+  this->tx_queue_head_ = 0;
+  this->tx_queue_count_ = 0;
 }
 
 void OcppServer::send_ws_text_(const std::string &message) {

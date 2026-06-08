@@ -130,6 +130,9 @@ class OcppServer : public Component {
   void send_set_charging_profile_(uint8_t connector_id, uint32_t transaction_id, float current_limit);
   std::string send_ocpp_call_(const char *unique_prefix, const char *action, const std::string &payload_json,
                               uint8_t connector_id = 0, uint32_t transaction_id = 0, float current_limit = 0.0f);
+  bool queue_ws_text_(std::string message);
+  bool flush_queued_ws_text_();
+  void clear_queued_ws_text_();
   void send_ws_text_(const std::string &message);
   void send_ocpp_error_(const std::string &unique_id, const char *code, const char *description);
 
@@ -195,6 +198,9 @@ class OcppServer : public Component {
   uint8_t pending_session_restart_connector_id_{0};
   float pending_profile_current_limit_{0.0f};
   std::array<PendingOcppCall, 4> pending_calls_{};
+  std::array<std::string, 4> tx_queue_{};
+  uint8_t tx_queue_head_{0};
+  uint8_t tx_queue_count_{0};
   uint32_t next_message_id_{1};
   uint32_t next_transaction_id_{1};
 };
