@@ -99,6 +99,7 @@ ocpp:
     strategy: equal
     min_current: 6
     update_interval: 10s
+    settle_time_per_amp: 1s
     preference: first_connected
 
   chargers:
@@ -643,6 +644,7 @@ ocpp:
     strategy: equal
     min_current: 6
     update_interval: 10s
+    settle_time_per_amp: 1s
     preference: first_connected
 ```
 
@@ -662,7 +664,11 @@ constraints have been applied. If the calculated value is below `min_current`,
 `allocated_current` is `0`, and the component stops the transaction with
 `RemoteStopTransaction` instead of sending a too-low `SetChargingProfile` value.
 Positive `allocated_current` values are sent to the charger using
-`SetChargingProfile`.
+`SetChargingProfile`. The component serializes these requests: it waits for the
+charger's response to the previous `SetChargingProfile` before sending another
+one. If `settle_time_per_amp` is configured, it also waits after an accepted
+profile so the car has time to approach the previous limit before another
+adjustment is sent.
 
 `preference` expresses which sessions should keep charging first when there is
 not enough current to keep all cars above `min_current`. It is accepted as a
@@ -676,12 +682,13 @@ before multi-connector scheduling is finalized.
 
 ### Allocation Options
 
-| Option                       | Description |
-| ---                          | --- |
-| `strategy` (Optional)        | Power sharing strategy. Defaults to `equal`.<br>Available values: `equal`. |
-| `min_current` (Optional)     | Minimum AC charging current per active connector in `A`. Defaults to `6`. |
-| `update_interval` (Optional) | Forward-compatible interval for future periodic allocation updates. Defaults to `10s`; currently accepted but not used for scheduling. |
-| `preference` (Optional)      | Forward-compatible preference for choosing which sessions keep charging when not all active sessions can receive at least `min_current`. Defaults to `first_connected`; currently accepted but has no effect while only one connector is supported.<br>Available values:<br>`first_connected` prefers older sessions; <br>`last_connected` prefers newer sessions; <br>`least_charged` prefers sessions with the lowest delivered `kWh` and will require live OCPP `Energy.Active.Import.Register` meter values; <br>`round_robin` rotates active charging slots over time. |
+| Option                            | Description |
+| ---                               | --- |
+| `strategy` (Optional)             | Power sharing strategy. Defaults to `equal`.<br>Available values: `equal`. |
+| `min_current` (Optional)          | Minimum AC charging current per active connector in `A`. Defaults to `6`. |
+| `update_interval` (Optional)      | Forward-compatible interval for future periodic allocation updates. Defaults to `10s`; currently accepted but not used for scheduling. |
+| `settle_time_per_amp` (Optional)  | Delay per `A` of current change after an accepted `SetChargingProfile` before sending the next one. For example, with `1s`, changing from `6 A` to `16 A` waits about `10s`. Defaults to `0s`. |
+| `preference` (Optional)           | Forward-compatible preference for choosing which sessions keep charging when not all active sessions can receive at least `min_current`. Defaults to `first_connected`; currently accepted but has no effect while only one connector is supported.<br>Available values:<br>`first_connected` prefers older sessions; <br>`last_connected` prefers newer sessions; <br>`least_charged` prefers sessions with the lowest delivered `kWh` and will require live OCPP `Energy.Active.Import.Register` meter values; <br>`round_robin` rotates active charging slots over time. |
 
 ## Chargers and Connectors
 
@@ -892,6 +899,11 @@ If `enabled` is omitted, the connector is treated as enabled. When the switch is
 turned off and an active transaction is known, the current charging session is
 stopped. When the switch is turned on again and no active transaction is known, a
 new charging session is started.
+
+The component serializes `RemoteStopTransaction` and `RemoteStartTransaction`
+requests independently. If the same control is requested repeatedly while the
+charger response is still pending, duplicate requests are coalesced instead of
+being sent in a burst.
 
 When charging should resume, a new transaction is started and the normal current
 allocation logic applies.

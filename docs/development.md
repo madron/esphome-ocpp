@@ -29,6 +29,14 @@ For that reason:
   way to stop charging.
 - If a transaction starts while the connector is disabled, the implementation
   immediately requests `RemoteStopTransaction` for that transaction.
+- `SetChargingProfile` requests are serialized. The component keeps only the
+  newest desired profile while one request is waiting for a charger response,
+  then sends that newest profile after the response and any configured settling
+  delay.
+- `RemoteStartTransaction` and `RemoteStopTransaction` requests are also
+  serialized per action. Exact duplicate requests while one is in flight are
+  coalesced; otherwise the newest pending request is sent after the charger
+  responds to the previous request of the same action.
 
 This behavior avoids relying on charger-specific handling of `0 A` smart charging
 profiles.
@@ -74,6 +82,10 @@ When `allocated_current` is `0`, the component should stop the transaction with
 charger minimum current, and it should not rely on a `0 A` charging profile as the
 primary stop mechanism. When `allocated_current` is positive, it should be at least
 the configured minimum current and may be sent using `SetChargingProfile`.
+After an accepted profile, `allocation.settle_time_per_amp` can hold back the next
+profile for a delay proportional to the requested current change. This avoids
+overcompensating while the car and charger are still moving toward the previous
+limit.
 
 OCPP 1.6 `SetChargingProfile` provides a scalar current or power value for a
 charging schedule period, optionally with `numberPhases`. It does not provide
@@ -283,6 +295,11 @@ The `restart` connector button is intended as a manual recovery control for this
 case. If no active transaction is known, it sends `RemoteStartTransaction`
 directly. If a transaction is known, it stops that transaction and starts a new one
 after the charger reports `StopTransaction`.
+
+Remote start/stop serialization is independent of transaction-state sequencing:
+`restart` still waits for `StopTransaction` before starting again, while duplicate
+OCPP remote-control requests are suppressed until the corresponding CALLRESULT or
+CALLERROR arrives.
 
 ## OCPP Message Scope
 

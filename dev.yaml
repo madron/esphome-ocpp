@@ -181,6 +181,7 @@ ocpp:
     strategy: equal
     min_current: 6
     update_interval: 10s
+    settle_time_per_amp: 3s
     preference: first_connected
 
   chargers:

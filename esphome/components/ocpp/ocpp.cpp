@@ -508,6 +508,9 @@ void OcppServer::loop() {
     return;
   if (this->client_ != nullptr && this->client_->ready())
     this->read_client_();
+  this->send_pending_remote_stop_if_ready_();
+  this->send_pending_remote_start_if_ready_();
+  this->send_pending_set_charging_profile_if_ready_();
   if (this->has_charger_)
     this->update_and_publish_charger_drawn_current_if_configured_(&this->charger_);
   this->update_and_publish_grid_headroom_current_if_configured_();
@@ -518,7 +521,8 @@ void OcppServer::loop() {
 void OcppServer::dump_config() {
   ESP_LOGCONFIG(TAG, "OCPP server:");
   ESP_LOGCONFIG(TAG, "  Listen: 0.0.0.0:%u%s", this->port_, this->path_.c_str());
-  ESP_LOGCONFIG(TAG, "  Allocation: strategy=equal min_current=%.1f A", this->allocation_min_current_);
+  ESP_LOGCONFIG(TAG, "  Allocation: strategy=equal min_current=%.1f A settle_time_per_amp=%u ms/A",
+                this->allocation_min_current_, this->set_charging_profile_settle_time_per_amp_ms_);
   ESP_LOGCONFIG(TAG, "  Site: phases=%u voltage=%.1f V", this->site_.limits.phases, this->site_.limits.voltage);
   ESP_LOGCONFIG(TAG, "    Policy=%s", this->site_.limits.energy_policy == SiteEnergyPolicy::SOLAR ? "solar" : "normal");
   if (this->site_.limits.energy_policy == SiteEnergyPolicy::SOLAR)
@@ -579,16 +583,57 @@ void OcppServer::remote_start_(uint8_t connector_id, std::string id_tag, bool us
     return;
   }
 
+  if (this->remote_start_in_flight_ && this->remote_start_in_flight_connector_id_ == connector_id &&
+      this->remote_start_in_flight_id_tag_ == id_tag &&
+      this->remote_start_in_flight_use_current_limit_ == use_current_limit &&
+      this->remote_start_in_flight_current_limit_ == current_limit) {
+    ESP_LOGD(TAG, "Coalescing duplicate RemoteStartTransaction while previous request is pending");
+    return;
+  }
+
+  this->pending_remote_start_ = true;
+  this->pending_remote_start_connector_id_ = connector_id;
+  this->pending_remote_start_id_tag_ = std::move(id_tag);
+  this->pending_remote_start_use_current_limit_ = use_current_limit;
+  this->pending_remote_start_current_limit_ = current_limit;
+  this->send_pending_remote_start_if_ready_();
+}
+
+void OcppServer::send_pending_remote_start_if_ready_() {
+  if (!this->pending_remote_start_ || this->remote_start_in_flight_)
+    return;
+  if (this->send_remote_start_now_(this->pending_remote_start_connector_id_, this->pending_remote_start_id_tag_,
+                                  this->pending_remote_start_use_current_limit_,
+                                  this->pending_remote_start_current_limit_))
+    this->pending_remote_start_ = false;
+}
+
+bool OcppServer::send_remote_start_now_(uint8_t connector_id, const std::string &id_tag, bool use_current_limit,
+                                        float current_limit) {
+  if (this->client_ == nullptr || !this->handshake_done_) {
+    ESP_LOGW(TAG, "Cannot send RemoteStartTransaction; no OCPP wallbox is connected");
+    return false;
+  }
+  if (use_current_limit && current_limit <= 0) {
+    ESP_LOGW(TAG, "Cannot send RemoteStartTransaction with non-positive current limit %.1f A", current_limit);
+    return true;
+  }
+
   float limit = current_limit;
   const auto *connector = this->find_connector_(connector_id);
   if (this->has_charger_ && connector == nullptr) {
     ESP_LOGW(TAG, "Cannot send RemoteStartTransaction; connector %u is not configured for charge point '%s'",
              connector_id, this->charge_point_id_.c_str());
-    return;
+    return true;
   }
   if (connector != nullptr && !connector->enabled) {
     ESP_LOGW(TAG, "Cannot send RemoteStartTransaction; connector %u is disabled", connector_id);
-    return;
+    return true;
+  }
+  if (connector != nullptr && connector->has_active_transaction) {
+    ESP_LOGI(TAG, "Not sending RemoteStartTransaction; connector %u already has active transactionId=%u", connector_id,
+             connector->active_transaction_id);
+    return true;
   }
   if (use_current_limit && connector != nullptr && limit > connector->max_current) {
     ESP_LOGW(TAG, "Clamping RemoteStartTransaction current limit %.1f A to configured connector maximum %.1f A",
@@ -622,8 +667,16 @@ void OcppServer::remote_start_(uint8_t connector_id, std::string id_tag, bool us
     this->pending_profile_connector_id_ = 0;
     this->pending_profile_current_limit_ = 0.0f;
   }
-  this->send_ocpp_call_("remote-start", "RemoteStartTransaction", payload, connector_id, 0,
-                        use_current_limit ? limit : 0.0f);
+  std::string unique_id = this->send_ocpp_call_("remote-start", "RemoteStartTransaction", payload, connector_id, 0,
+                                               use_current_limit ? limit : 0.0f, true);
+  this->remote_start_in_flight_ = this->find_pending_call_(unique_id) != nullptr;
+  if (this->remote_start_in_flight_) {
+    this->remote_start_in_flight_connector_id_ = connector_id;
+    this->remote_start_in_flight_id_tag_ = id_tag;
+    this->remote_start_in_flight_use_current_limit_ = use_current_limit;
+    this->remote_start_in_flight_current_limit_ = current_limit;
+  }
+  return this->remote_start_in_flight_;
 }
 
 void OcppServer::remote_stop() {
@@ -650,11 +703,42 @@ void OcppServer::remote_stop(uint32_t transaction_id) {
     return;
   }
 
+  this->request_remote_stop_(transaction_id);
+}
+
+void OcppServer::request_remote_stop_(uint32_t transaction_id) {
+  if (this->remote_stop_in_flight_ && this->remote_stop_in_flight_transaction_id_ == transaction_id) {
+    ESP_LOGD(TAG, "Coalescing duplicate RemoteStopTransaction while previous request is pending");
+    return;
+  }
+  this->pending_remote_stop_ = true;
+  this->pending_remote_stop_transaction_id_ = transaction_id;
+  this->send_pending_remote_stop_if_ready_();
+}
+
+void OcppServer::send_pending_remote_stop_if_ready_() {
+  if (!this->pending_remote_stop_ || this->remote_stop_in_flight_)
+    return;
+  if (this->send_remote_stop_now_(this->pending_remote_stop_transaction_id_))
+    this->pending_remote_stop_ = false;
+}
+
+bool OcppServer::send_remote_stop_now_(uint32_t transaction_id) {
+  if (this->client_ == nullptr || !this->handshake_done_) {
+    ESP_LOGW(TAG, "Cannot send RemoteStopTransaction; no OCPP wallbox is connected");
+    return false;
+  }
+
   std::string payload = "{\"transactionId\":" + to_string(transaction_id) + "}";
 
   ESP_LOGI(TAG, "Sending RemoteStopTransaction: charge_point='%s' transactionId=%u", this->charge_point_id_.c_str(),
            transaction_id);
-  this->send_ocpp_call_("remote-stop", "RemoteStopTransaction", payload, 0, transaction_id);
+  std::string unique_id = this->send_ocpp_call_("remote-stop", "RemoteStopTransaction", payload, 0, transaction_id,
+                                               0.0f, true);
+  this->remote_stop_in_flight_ = this->find_pending_call_(unique_id) != nullptr;
+  if (this->remote_stop_in_flight_)
+    this->remote_stop_in_flight_transaction_id_ = transaction_id;
+  return this->remote_stop_in_flight_;
 }
 
 void OcppServer::set_current_limit(uint8_t connector_id, float current_limit) {
@@ -707,7 +791,7 @@ void OcppServer::set_current_limit(uint8_t connector_id, float current_limit) {
     return;
   }
 
-  this->send_set_charging_profile_(connector_id, connector->active_transaction_id, connector->allocated_current);
+  this->request_set_charging_profile_(connector_id, connector->active_transaction_id, connector->allocated_current);
 }
 
 void OcppServer::set_connector_enabled(uint8_t connector_id, bool enabled) {
@@ -749,7 +833,7 @@ void OcppServer::set_connector_enabled(uint8_t connector_id, bool enabled) {
       return;
     }
     ESP_LOGI(TAG, "Stored connector %u as enabled; transaction already active", connector_id);
-    this->send_set_charging_profile_(connector_id, connector->active_transaction_id, connector->allocated_current);
+    this->request_set_charging_profile_(connector_id, connector->active_transaction_id, connector->allocated_current);
     return;
   }
   if (connector->allocated_current <= 0.0f) {
@@ -815,6 +899,17 @@ void OcppServer::close_client_() {
   this->pending_profile_connector_id_ = 0;
   this->pending_session_restart_connector_id_ = 0;
   this->pending_profile_current_limit_ = 0.0f;
+  this->remote_start_in_flight_ = false;
+  this->remote_start_in_flight_connector_id_ = 0;
+  this->remote_start_in_flight_id_tag_.clear();
+  this->remote_start_in_flight_use_current_limit_ = false;
+  this->remote_start_in_flight_current_limit_ = 0.0f;
+  this->pending_remote_start_ = false;
+  this->remote_stop_in_flight_ = false;
+  this->remote_stop_in_flight_transaction_id_ = 0;
+  this->pending_remote_stop_ = false;
+  this->set_charging_profile_in_flight_ = false;
+  this->pending_set_charging_profile_ = false;
   this->clear_pending_calls_();
   this->clear_queued_ws_text_();
 }
@@ -1170,6 +1265,10 @@ void OcppServer::clear_transaction_(uint32_t transaction_id) {
   connector->active_id_tag.clear();
   connector->is_charging = false;
   connector->charging_profile_applied = false;
+  if (this->pending_remote_stop_ && this->pending_remote_stop_transaction_id_ == transaction_id)
+    this->pending_remote_stop_ = false;
+  if (this->pending_set_charging_profile_ && this->pending_set_charging_profile_transaction_id_ == transaction_id)
+    this->pending_set_charging_profile_ = false;
   this->reset_session_current_(connector);
   connector->latest_power_active_import = 0.0f;
   connector->has_latest_power_active_import = true;
@@ -1196,7 +1295,7 @@ void OcppServer::send_preferred_current_limit_if_needed_(uint8_t connector_id) {
     this->remote_stop(connector->active_transaction_id);
     return;
   }
-  this->send_set_charging_profile_(connector_id, connector->active_transaction_id, connector->allocated_current);
+  this->request_set_charging_profile_(connector_id, connector->active_transaction_id, connector->allocated_current);
 }
 
 std::string OcppServer::next_unique_id_(const char *prefix) {
@@ -1536,7 +1635,7 @@ void OcppServer::handle_start_transaction_(const std::string &unique_id, JsonObj
   if (this->pending_profile_current_limit_ > 0.0f && this->pending_profile_connector_id_ == connector_id) {
     float allocated_current = started_connector != nullptr ? started_connector->allocated_current
                                                            : this->pending_profile_current_limit_;
-    this->send_set_charging_profile_(static_cast<uint8_t>(connector_id), transaction_id, allocated_current);
+    this->request_set_charging_profile_(static_cast<uint8_t>(connector_id), transaction_id, allocated_current);
     this->pending_profile_connector_id_ = 0;
     this->pending_profile_current_limit_ = 0.0f;
   }
@@ -1706,6 +1805,13 @@ void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject p
 void OcppServer::handle_call_result_(const std::string &unique_id, JsonObject payload) {
   const char *status = payload["status"] | "";
   auto *pending = this->find_pending_call_(unique_id);
+  const bool set_charging_profile_call = pending != nullptr && pending->action != nullptr &&
+                                         std::strcmp(pending->action, "SetChargingProfile") == 0;
+  const bool remote_start_call = pending != nullptr && pending->action != nullptr &&
+                                 std::strcmp(pending->action, "RemoteStartTransaction") == 0;
+  const bool remote_stop_call = pending != nullptr && pending->action != nullptr &&
+                                std::strcmp(pending->action, "RemoteStopTransaction") == 0;
+  const float set_charging_profile_current_limit = pending != nullptr ? pending->current_limit : 0.0f;
   if (pending != nullptr && status[0] != '\0') {
     ESP_LOGI(TAG,
              "OCPP CALLRESULT: charge_point='%s' uniqueId='%s' action='%s' status='%s' connectorId=%u "
@@ -1725,12 +1831,43 @@ void OcppServer::handle_call_result_(const std::string &unique_id, JsonObject pa
     ESP_LOGI(TAG, "OCPP CALLRESULT: charge_point='%s' uniqueId='%s'", this->charge_point_id_.c_str(),
              unique_id.c_str());
   }
+  if (set_charging_profile_call) {
+    this->set_charging_profile_in_flight_ = false;
+    if (std::strcmp(status, "Accepted") == 0) {
+      this->has_last_set_charging_profile_current_limit_ = true;
+      this->last_set_charging_profile_current_limit_ = set_charging_profile_current_limit;
+      this->last_set_charging_profile_accepted_at_ = millis();
+    }
+  }
+  if (remote_start_call) {
+    this->remote_start_in_flight_ = false;
+    this->remote_start_in_flight_connector_id_ = 0;
+    this->remote_start_in_flight_id_tag_.clear();
+    this->remote_start_in_flight_use_current_limit_ = false;
+    this->remote_start_in_flight_current_limit_ = 0.0f;
+  }
+  if (remote_stop_call) {
+    this->remote_stop_in_flight_ = false;
+    this->remote_stop_in_flight_transaction_id_ = 0;
+  }
   this->clear_pending_call_(unique_id);
+  if (remote_stop_call)
+    this->send_pending_remote_stop_if_ready_();
+  if (remote_start_call)
+    this->send_pending_remote_start_if_ready_();
+  if (set_charging_profile_call)
+    this->send_pending_set_charging_profile_if_ready_();
 }
 
 void OcppServer::handle_call_error_(const std::string &unique_id, const std::string &error_code,
                                     const std::string &description) {
   auto *pending = this->find_pending_call_(unique_id);
+  const bool set_charging_profile_call = pending != nullptr && pending->action != nullptr &&
+                                         std::strcmp(pending->action, "SetChargingProfile") == 0;
+  const bool remote_start_call = pending != nullptr && pending->action != nullptr &&
+                                 std::strcmp(pending->action, "RemoteStartTransaction") == 0;
+  const bool remote_stop_call = pending != nullptr && pending->action != nullptr &&
+                                std::strcmp(pending->action, "RemoteStopTransaction") == 0;
   if (pending != nullptr) {
     ESP_LOGW(TAG,
              "OCPP CALLERROR: charge_point='%s' uniqueId='%s' action='%s' errorCode='%s' description='%s' "
@@ -1741,10 +1878,67 @@ void OcppServer::handle_call_error_(const std::string &unique_id, const std::str
     ESP_LOGW(TAG, "OCPP CALLERROR: charge_point='%s' uniqueId='%s' errorCode='%s' description='%s'",
              this->charge_point_id_.c_str(), unique_id.c_str(), error_code.c_str(), description.c_str());
   }
+  if (set_charging_profile_call)
+    this->set_charging_profile_in_flight_ = false;
+  if (remote_start_call) {
+    this->remote_start_in_flight_ = false;
+    this->remote_start_in_flight_connector_id_ = 0;
+    this->remote_start_in_flight_id_tag_.clear();
+    this->remote_start_in_flight_use_current_limit_ = false;
+    this->remote_start_in_flight_current_limit_ = 0.0f;
+  }
+  if (remote_stop_call) {
+    this->remote_stop_in_flight_ = false;
+    this->remote_stop_in_flight_transaction_id_ = 0;
+  }
   this->clear_pending_call_(unique_id);
+  if (remote_stop_call)
+    this->send_pending_remote_stop_if_ready_();
+  if (remote_start_call)
+    this->send_pending_remote_start_if_ready_();
+  if (set_charging_profile_call)
+    this->send_pending_set_charging_profile_if_ready_();
 }
 
-void OcppServer::send_set_charging_profile_(uint8_t connector_id, uint32_t transaction_id, float current_limit) {
+void OcppServer::request_set_charging_profile_(uint8_t connector_id, uint32_t transaction_id, float current_limit) {
+  this->pending_set_charging_profile_ = true;
+  this->pending_set_charging_profile_connector_id_ = connector_id;
+  this->pending_set_charging_profile_transaction_id_ = transaction_id;
+  this->pending_set_charging_profile_current_limit_ = current_limit;
+  this->send_pending_set_charging_profile_if_ready_();
+}
+
+void OcppServer::send_pending_set_charging_profile_if_ready_() {
+  if (!this->pending_set_charging_profile_ || this->set_charging_profile_in_flight_)
+    return;
+  const uint32_t settle_delay =
+      this->set_charging_profile_settle_delay_ms_(this->pending_set_charging_profile_current_limit_);
+  if (settle_delay > 0)
+    return;
+
+  const uint8_t connector_id = this->pending_set_charging_profile_connector_id_;
+  const uint32_t transaction_id = this->pending_set_charging_profile_transaction_id_;
+  const float current_limit = this->pending_set_charging_profile_current_limit_;
+  if (this->send_set_charging_profile_now_(connector_id, transaction_id, current_limit))
+    this->pending_set_charging_profile_ = false;
+}
+
+uint32_t OcppServer::set_charging_profile_settle_delay_ms_(float next_current_limit) const {
+  if (this->set_charging_profile_settle_time_per_amp_ms_ == 0 ||
+      !this->has_last_set_charging_profile_current_limit_)
+    return 0;
+  const float delta = std::fabs(next_current_limit - this->last_set_charging_profile_current_limit_);
+  const float settle_ms = delta * static_cast<float>(this->set_charging_profile_settle_time_per_amp_ms_);
+  if (settle_ms <= 0.0f)
+    return 0;
+  const uint32_t required_delay = settle_ms >= static_cast<float>(std::numeric_limits<uint32_t>::max())
+                                      ? std::numeric_limits<uint32_t>::max()
+                                      : static_cast<uint32_t>(settle_ms);
+  const uint32_t elapsed = millis() - this->last_set_charging_profile_accepted_at_;
+  return elapsed >= required_delay ? 0 : required_delay - elapsed;
+}
+
+bool OcppServer::send_set_charging_profile_now_(uint8_t connector_id, uint32_t transaction_id, float current_limit) {
   char limit_buf[16];
   std::snprintf(limit_buf, sizeof(limit_buf), "%.1f", current_limit);
 
@@ -1765,13 +1959,16 @@ void OcppServer::send_set_charging_profile_(uint8_t connector_id, uint32_t trans
   auto *connector = this->find_connector_(connector_id);
   if (connector != nullptr && connector->has_active_transaction && connector->active_transaction_id == transaction_id)
     connector->charging_profile_applied = true;
-  this->send_ocpp_call_("set-charging-profile", "SetChargingProfile", payload, connector_id, transaction_id,
-                        current_limit);
+  std::string unique_id = this->send_ocpp_call_("set-charging-profile", "SetChargingProfile", payload, connector_id,
+                                               transaction_id, current_limit, true);
+  this->set_charging_profile_in_flight_ = this->find_pending_call_(unique_id) != nullptr;
+  return this->set_charging_profile_in_flight_;
 }
 
 std::string OcppServer::send_ocpp_call_(const char *unique_prefix, const char *action, const std::string &payload_json,
-                                        uint8_t connector_id, uint32_t transaction_id, float current_limit) {
-  std::string unique_id = this->next_unique_id_(unique_prefix);
+                                        uint8_t connector_id, uint32_t transaction_id, float current_limit,
+                                        bool fixed_unique_id) {
+  std::string unique_id = fixed_unique_id ? std::string(unique_prefix) : this->next_unique_id_(unique_prefix);
   if (this->client_ == nullptr || !this->handshake_done_) {
     ESP_LOGW(TAG, "Cannot send %s; no OCPP wallbox is connected", action);
     return unique_id;

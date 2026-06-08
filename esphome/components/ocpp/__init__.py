@@ -57,6 +57,7 @@ CONF_SERVER = "server"
 CONF_SITE = "site"
 CONF_PATH = "path"
 CONF_SOLAR = "solar"
+CONF_SETTLE_TIME_PER_AMP = "settle_time_per_amp"
 CONF_EXPORT_MARGIN_POWER = "export_margin_power"
 CONF_STORAGE = "storage"
 CONF_SOC = "soc"
@@ -285,6 +286,7 @@ ALLOCATION_SCHEMA = cv.Schema(
         cv.Optional(CONF_STRATEGY, default="equal"): cv.one_of("equal", lower=True),
         cv.Optional(CONF_MIN_CURRENT, default=6): cv.positive_float,
         cv.Optional(CONF_UPDATE_INTERVAL, default="10s"): cv.positive_time_period_milliseconds,
+        cv.Optional(CONF_SETTLE_TIME_PER_AMP, default="0s"): cv.positive_time_period_milliseconds,
         cv.Optional(CONF_PREFERENCE, default="first_connected"): cv.one_of(
             "first_connected",
             "last_connected",
@@ -433,6 +435,11 @@ async def to_code(config):
     cg.add(var.set_path(server[CONF_PATH]))
     allocation = config[CONF_ALLOCATION]
     cg.add(var.set_allocation_min_current(allocation[CONF_MIN_CURRENT]))
+    cg.add(
+        var.set_charging_profile_settle_time_per_amp(
+            allocation[CONF_SETTLE_TIME_PER_AMP].total_milliseconds
+        )
+    )
     if site := config.get(CONF_SITE):
         cg.add(var.set_site(site[CONF_PHASES], site[CONF_VOLTAGE]))
         cg.add(var.set_site_energy_policy(site[CONF_POLICY]))
