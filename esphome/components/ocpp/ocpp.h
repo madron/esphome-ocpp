@@ -1,17 +1,17 @@
 #pragma once
 
-#include "esphome/components/json/json_util.h"
-#include "esphome/components/socket/socket.h"
+#include "protocol.h"
+#include "server.h"
 #include "esphome/core/component.h"
 
-#include <memory>
 #include <string>
+#include <utility>
 
 namespace esphome::ocpp {
 
 class OcppComponent;
 
-class OcppComponent : public Component {
+class OcppComponent : public Component, public OcppServerListener, public OcppProtocolTransport {
   public:
     void setup() override;
     void loop() override;
@@ -19,24 +19,17 @@ class OcppComponent : public Component {
     float get_setup_priority() const override;
 
     // server
-    void set_server_port(uint16_t port) { this->server_port_ = port; }
-    void set_server_path(std::string path);
+    void set_server_port(uint16_t port) { this->server_.set_port(port); }
+    void set_server_path(std::string path) { this->server_.set_path(std::move(path)); }
 
   protected:
-    void accept_client_();
-    void close_client_();
-    void read_client_();
-    void handle_http_handshake_();
-    void handle_ws_frames_();
-    #include "protocol.h"
+    void on_websocket_connected(const std::string &connection_id) override;
+    void on_websocket_disconnected() override;
+    void on_websocket_text(const std::string &message) override;
+    void send_ocpp_text(const std::string &message) override;
 
-    bool request_matches_path_(const std::string &uri);
-    std::string websocket_accept_key_(const std::string &client_key);
-
-    // server
-    std::unique_ptr<socket::ListenSocket> server_;
-    uint16_t server_port_{9000};
-    std::string server_path_{"/"};
+    OcppServer server_;
+    OcppProtocol protocol_;
 
 };
 

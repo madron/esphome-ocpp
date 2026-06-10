@@ -1,14 +1,32 @@
 #pragma once
 
-// OcppComponent protocol member declarations. This file is included from
-// OcppComponent's protected section in ocpp.h so these remain class members.
+#include "esphome/components/json/json_util.h"
 
-    void handle_ws_text_(const std::string &message);
+#include <string>
+
+namespace esphome::ocpp {
+
+class OcppProtocolTransport {
+  public:
+    virtual ~OcppProtocolTransport() = default;
+
+    virtual void send_ocpp_text(const std::string &message) = 0;
+};
+
+class OcppProtocol {
+  public:
+    void set_transport(OcppProtocolTransport *transport) { this->transport_ = transport; }
+    void on_connected(const std::string &charge_point_id);
+    void on_disconnected();
+    void handle_text(const std::string &message);
+
+  protected:
     void handle_boot_notification_(const std::string &unique_id, JsonObject payload);
-    void send_ws_text_(const std::string &message);
+    void send_text_(const std::string &message);
     void send_ocpp_error_(const std::string &unique_id, const char *code, const char *description);
 
-    std::unique_ptr<socket::Socket> client_;
-    std::string rx_buffer_;
+    OcppProtocolTransport *transport_{nullptr};
     std::string charge_point_id_;
-    bool handshake_done_{false};
+};
+
+}  // namespace esphome::ocpp
