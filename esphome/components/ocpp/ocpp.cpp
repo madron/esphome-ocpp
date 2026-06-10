@@ -121,12 +121,12 @@ std::string header_value(const std::string &request, const char *name) {
 
 }  // namespace
 
-void OcppComponent::set_path(std::string path) {
+void OcppComponent::set_server_path(std::string path) {
   if (path.empty() || path[0] != '/')
     path.insert(path.begin(), '/');
   while (path.size() > 1 && path.back() == '/')
     path.pop_back();
-  this->path_ = std::move(path);
+  this->server_path_ = std::move(path);
 }
 
 void OcppComponent::setup() {
@@ -140,10 +140,10 @@ void OcppComponent::setup() {
   int enable = 1;
   this->server_->setsockopt(SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
   sockaddr_storage addr{};
-  socklen_t addr_len = socket::set_sockaddr_any(reinterpret_cast<sockaddr *>(&addr), sizeof(addr), this->port_);
+  socklen_t addr_len = socket::set_sockaddr_any(reinterpret_cast<sockaddr *>(&addr), sizeof(addr), this->server_port_);
   if (addr_len == 0 || this->server_->bind(reinterpret_cast<sockaddr *>(&addr), addr_len) != 0 ||
       this->server_->listen(1) != 0 || this->server_->setblocking(false) != 0) {
-    ESP_LOGE(TAG, "Could not start OCPP listener on port %u", this->port_);
+    ESP_LOGE(TAG, "Could not start OCPP listener on port %u", this->server_port_);
     this->mark_failed();
   }
 }
@@ -157,8 +157,7 @@ void OcppComponent::loop() {
 
 void OcppComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "OCPP server:");
-  ESP_LOGCONFIG(TAG, "  Listen: 0.0.0.0:%u%s", this->port_, this->path_.c_str());
-  ESP_LOGCONFIG(TAG, "  Implemented messages: BootNotification");
+  ESP_LOGCONFIG(TAG, "  Listen: 0.0.0.0:%u%s", this->server_port_, this->server_path_.c_str());
 }
 
 float OcppComponent::get_setup_priority() const { return setup_priority::WIFI - 1.0f; }
@@ -223,11 +222,11 @@ void OcppComponent::read_client_() {
 }
 
 bool OcppComponent::request_matches_path_(const std::string &uri) {
-  if (uri == this->path_) {
+  if (uri == this->server_path_) {
     this->charge_point_id_ = "";
     return true;
   }
-  std::string prefix = this->path_ + "/";
+  std::string prefix = this->server_path_ + "/";
   if (uri.rfind(prefix, 0) != 0)
     return false;
   this->charge_point_id_ = uri.substr(prefix.size());

@@ -48,6 +48,7 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
 
+    # server
     server = config[CONF_SERVER]
-    cg.add(var.set_port(server[CONF_PORT]))
-    cg.add(var.set_path(server[CONF_PATH]))
+    cg.add(var.set_server_port(server[CONF_PORT]))
+    cg.add(var.set_server_path(server[CONF_PATH]))

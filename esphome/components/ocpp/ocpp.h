@@ -13,13 +13,14 @@ class OcppComponent;
 
 class OcppComponent : public Component {
  public:
-  void set_port(uint16_t port) { this->port_ = port; }
-  void set_path(std::string path);
-
   void setup() override;
   void loop() override;
   void dump_config() override;
   float get_setup_priority() const override;
+
+  // server
+  void set_server_port(uint16_t port) { this->server_port_ = port; }
+  void set_server_path(std::string path);
 
  protected:
   void accept_client_();
@@ -32,9 +33,12 @@ class OcppComponent : public Component {
   bool request_matches_path_(const std::string &uri);
   std::string websocket_accept_key_(const std::string &client_key);
 
-  uint16_t port_{9000};
-  std::string path_{"/"};
   std::unique_ptr<socket::ListenSocket> server_;
+
+  // server
+  uint16_t server_port_{9000};
+  std::string server_path_{"/"};
+
 };
 
 }  // namespace esphome::ocpp
