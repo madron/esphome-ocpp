@@ -28,7 +28,7 @@ def _consume_ocpp_sockets(config):
 SERVER_SCHEMA = cv.Schema(
     {
         cv.Optional(CONF_PORT, default=9000): cv.port,
-        cv.Optional(CONF_PATH, default="/ocpp"): _validate_path,
+        cv.Optional(CONF_PATH, default="/"): _validate_path,
     }
 )
 

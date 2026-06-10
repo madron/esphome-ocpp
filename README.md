@@ -29,11 +29,10 @@ Example for a three-phase installation with one configured charger:
 
 ```yaml
 ocpp:
-  id: ocpp_server
+  id: ocpp_id
 
   server:
     port: 9000
-    path: /ocpp
 
   site:
     phases: 3
@@ -51,6 +50,12 @@ ocpp:
       phase_mapping: [L1, L2, L3]
       connectors:
         - id: 1
+```
+
+With the default server path `/`, configure the charger OCPP/WebSocket server URL as:
+
+```text
+ws://<esp-ip>:9000
 ```
 
 ### Units of Measure

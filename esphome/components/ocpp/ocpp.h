@@ -35,7 +35,7 @@ class OcppComponent : public Component {
   std::string websocket_accept_key_(const std::string &client_key);
 
   uint16_t port_{9000};
-  std::string path_{"/ocpp"};
+  std::string path_{"/"};
   std::unique_ptr<socket::ListenSocket> server_;
 };
 

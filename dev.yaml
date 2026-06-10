@@ -118,7 +118,7 @@ sensor:
 
 
 ocpp:
-  id: ocpp_server
+  id: ocpp_id
 
   # site:
   #   phases: 3
