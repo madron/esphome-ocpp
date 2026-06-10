@@ -36,8 +36,7 @@ CONF_AVAILABLE_CURRENT = "available_current"
 CONF_ALLOCATION = "allocation"
 CONF_ALLOCATED_CURRENT = "allocated_current"
 CONF_CURRENT_LIMIT = "current_limit"
-CONF_DRAWN_CURRENT = "used_current"
-CONF_DRAWN_CURRENT_SOURCE = "drawn_current_source"
+CONF_USED_CURRENT = "used_current"
 CONF_GRID = "grid"
 CONF_L1 = "l1"
 CONF_L2 = "l2"
@@ -85,19 +84,6 @@ CURRENT_SENSOR_SCHEMA = sensor.sensor_schema(
     state_class=STATE_CLASS_MEASUREMENT,
 )
 
-DRAWN_CURRENT_SOURCE_PHASE_SCHEMA = cv.Schema(
-    {
-        cv.Required(CONF_L1): cv.use_id(sensor.Sensor),
-        cv.Required(CONF_L2): cv.use_id(sensor.Sensor),
-        cv.Required(CONF_L3): cv.use_id(sensor.Sensor),
-    }
-)
-
-DRAWN_CURRENT_SOURCE_SCHEMA = cv.Any(
-    cv.use_id(sensor.Sensor), DRAWN_CURRENT_SOURCE_PHASE_SCHEMA
-)
-
-
 def _validate_path(value):
     value = cv.string(value)
     if not value.startswith("/"):
@@ -118,7 +104,7 @@ def _current_sensor_config(value):
     return CURRENT_SENSOR_SCHEMA(value)
 
 
-def _drawn_current_schema(value):
+def _used_current_schema(value):
     if not isinstance(value, Mapping):
         return _current_sensor_config(value)
 
@@ -137,10 +123,10 @@ def _drawn_current_schema(value):
     return validated
 
 
-DRAWN_CURRENT_SCHEMA = _drawn_current_schema
+USED_CURRENT_SCHEMA = _used_current_schema
 
 
-def _split_drawn_current_config(config):
+def _split_used_current_config(config):
     if not isinstance(config, Mapping):
         return config, {}
 
@@ -224,9 +210,9 @@ def _validate_site(value):
     power = grid.get(CONF_POWER, {})
     storage = value.get(CONF_STORAGE, {})
     storage_power = storage.get(CONF_POWER, {})
-    drawn_current = value.get(CONF_DRAWN_CURRENT, {})
-    if not isinstance(drawn_current, Mapping):
-        drawn_current = {}
+    used_current = value.get(CONF_USED_CURRENT, {})
+    if not isinstance(used_current, Mapping):
+        used_current = {}
     has_aggregate = CONF_AGGREGATE in power
     configured_phases = [phase for phase in PHASE_KEYS if phase in power]
     has_storage_aggregate = CONF_AGGREGATE in storage_power
@@ -235,7 +221,7 @@ def _validate_site(value):
     if phases == 1:
         if CONF_L2 in power or CONF_L3 in power:
             raise cv.Invalid("single-phase sites may only configure grid.power.l1")
-        if CONF_L2 in drawn_current or CONF_L3 in drawn_current:
+        if CONF_L2 in used_current or CONF_L3 in used_current:
             raise cv.Invalid("single-phase sites may only configure used_current.l1")
         if has_aggregate:
             raise cv.Invalid("single-phase sites should use grid.power.l1 instead of grid.power.aggregate")
@@ -368,7 +354,7 @@ SITE_SCHEMA = cv.All(
             cv.Required(CONF_VOLTAGE): cv.positive_float,
             cv.Optional(CONF_POLICY, default="normal"): cv.one_of("normal", "solar", lower=True),
             cv.Optional(CONF_SOLAR, default={}): SOLAR_SCHEMA,
-            cv.Optional(CONF_DRAWN_CURRENT): DRAWN_CURRENT_SCHEMA,
+            cv.Optional(CONF_USED_CURRENT): USED_CURRENT_SCHEMA,
             cv.Optional(CONF_GRID): GRID_SCHEMA,
             cv.Optional(CONF_STORAGE): STORAGE_SCHEMA,
         }
@@ -382,7 +368,7 @@ CONNECTOR_SCHEMA = cv.Schema(
         cv.Optional(CONF_MAX_CURRENT): cv.positive_float,
         cv.Optional(CONF_AVAILABLE_CURRENT): CURRENT_SENSOR_SCHEMA,
         cv.Optional(CONF_ALLOCATED_CURRENT): CURRENT_SENSOR_SCHEMA,
-        cv.Optional(CONF_DRAWN_CURRENT): DRAWN_CURRENT_SCHEMA,
+        cv.Optional(CONF_USED_CURRENT): USED_CURRENT_SCHEMA,
         cv.Optional(CONF_CURRENT): CURRENT_SENSOR_SCHEMA,
         cv.Optional(CONF_STATE): text_sensor.text_sensor_schema(),
         cv.Optional(CONF_POWER): sensor.sensor_schema(
@@ -416,8 +402,7 @@ CHARGER_SCHEMA = cv.Schema(
         cv.Required(CONF_MAX_CURRENT): cv.positive_float,
             cv.Required(CONF_PHASES): cv.one_of(1, 3, int=True),
             cv.Optional(CONF_PHASE_MAPPING): cv.All(cv.ensure_list(_phase_name), cv.Length(min=1, max=3)),
-        cv.Optional(CONF_DRAWN_CURRENT_SOURCE): DRAWN_CURRENT_SOURCE_SCHEMA,
-        cv.Optional(CONF_DRAWN_CURRENT): DRAWN_CURRENT_SCHEMA,
+        cv.Optional(CONF_USED_CURRENT): USED_CURRENT_SCHEMA,
         cv.Required(CONF_CONNECTORS): cv.All(cv.ensure_list(CONNECTOR_SCHEMA), cv.Length(min=1, max=1)),
     }
 )
@@ -491,15 +476,15 @@ async def to_code(config):
                         num, export_margin_power[CONF_INITIAL_VALUE]
                     )
                 )
-        if drawn_current_config := site.get(CONF_DRAWN_CURRENT):
-            scalar_config, phase_configs = _split_drawn_current_config(drawn_current_config)
+        if used_current_config := site.get(CONF_USED_CURRENT):
+            scalar_config, phase_configs = _split_used_current_config(used_current_config)
             if scalar_config:
                 sens = await sensor.new_sensor(scalar_config)
-                cg.add(var.set_site_drawn_current_max_sensor(sens))
+                cg.add(var.set_site_used_current_max_sensor(sens))
             for index, phase in enumerate(PHASE_KEYS):
                 if phase in phase_configs:
                     sens = await sensor.new_sensor(phase_configs[phase])
-                    cg.add(var.set_site_drawn_current_sensor(index, sens))
+                    cg.add(var.set_site_used_current_sensor(index, sens))
         if grid := site.get(CONF_GRID):
             cg.add(var.set_grid_max_power(grid[CONF_MAX_POWER]))
             if CONF_MAX_PHASE_IMBALANCE in grid:
@@ -552,28 +537,12 @@ async def to_code(config):
                     charger[CONF_CHARGE_POINT_ID], index, PHASE_TO_INDEX[site_phase]
                 )
             )
-        if drawn_current_source_config := charger.get(CONF_DRAWN_CURRENT_SOURCE):
-            if isinstance(drawn_current_source_config, dict):
-                for index, phase in enumerate(PHASE_KEYS):
-                    sens = await cg.get_variable(drawn_current_source_config[phase])
-                    cg.add(
-                        var.set_charger_drawn_current_source_phase_sensor(
-                            charger[CONF_CHARGE_POINT_ID], index, sens
-                        )
-                    )
-            else:
-                sens = await cg.get_variable(drawn_current_source_config)
-                cg.add(
-                    var.set_charger_drawn_current_source_sensor(
-                        charger[CONF_CHARGE_POINT_ID], sens
-                    )
-                )
-        if drawn_current_config := charger.get(CONF_DRAWN_CURRENT):
-            scalar_config, phase_configs = _split_drawn_current_config(drawn_current_config)
+        if used_current_config := charger.get(CONF_USED_CURRENT):
+            scalar_config, phase_configs = _split_used_current_config(used_current_config)
             if scalar_config:
                 sens = await sensor.new_sensor(scalar_config)
                 cg.add(
-                    var.set_charger_drawn_current_sensor(
+                    var.set_charger_used_current_sensor(
                         charger[CONF_CHARGE_POINT_ID], sens
                     )
                 )
@@ -581,7 +550,7 @@ async def to_code(config):
                 if phase in phase_configs:
                     sens = await sensor.new_sensor(phase_configs[phase])
                     cg.add(
-                        var.set_charger_drawn_current_sensor(
+                        var.set_charger_used_current_sensor(
                             charger[CONF_CHARGE_POINT_ID], index, sens
                         )
                     )
@@ -621,12 +590,12 @@ async def to_code(config):
                         charger[CONF_CHARGE_POINT_ID], connector[CONF_ID], sens
                     )
                 )
-            if drawn_current_config := connector.get(CONF_DRAWN_CURRENT):
-                scalar_config, phase_configs = _split_drawn_current_config(drawn_current_config)
+            if used_current_config := connector.get(CONF_USED_CURRENT):
+                scalar_config, phase_configs = _split_used_current_config(used_current_config)
                 if scalar_config:
                     sens = await sensor.new_sensor(scalar_config)
                     cg.add(
-                        var.set_connector_drawn_current_max_sensor(
+                        var.set_connector_used_current_max_sensor(
                             charger[CONF_CHARGE_POINT_ID], connector[CONF_ID], sens
                         )
                     )
@@ -634,7 +603,7 @@ async def to_code(config):
                     if phase in phase_configs:
                         sens = await sensor.new_sensor(phase_configs[phase])
                         cg.add(
-                            var.set_connector_drawn_current_sensor(
+                            var.set_connector_used_current_sensor(
                                 charger[CONF_CHARGE_POINT_ID], connector[CONF_ID], index, sens
                             )
                         )
