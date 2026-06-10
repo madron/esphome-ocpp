@@ -87,7 +87,6 @@ struct ConfiguredConnector {
   uint8_t id;
   float max_current;
   sensor::Sensor *current_sensor{nullptr};
-  sensor::Sensor *power_sensor{nullptr};
   text_sensor::TextSensor *state_sensor{nullptr};
   OcppCurrentLimitNumber *current_limit_number{nullptr};
   OcppConnectorEnabledSwitch *enabled_switch{nullptr};

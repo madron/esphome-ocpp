@@ -8,15 +8,12 @@ from esphome.const import (
     CONF_MAX_VALUE,
     CONF_MIN_VALUE,
     CONF_PORT,
-    CONF_POWER,
     CONF_RESTORE_VALUE,
     CONF_STATE,
     CONF_STEP,
     DEVICE_CLASS_CURRENT,
-    DEVICE_CLASS_POWER,
     STATE_CLASS_MEASUREMENT,
     UNIT_AMPERE,
-    UNIT_WATT,
 )
 
 DEPENDENCIES = ["network"]
@@ -165,12 +162,6 @@ CONNECTOR_SCHEMA = cv.Schema(
         cv.Optional(CONF_MAX_CURRENT): cv.positive_float,
         cv.Optional(CONF_CURRENT): CURRENT_SENSOR_SCHEMA,
         cv.Optional(CONF_STATE): text_sensor.text_sensor_schema(),
-        cv.Optional(CONF_POWER): sensor.sensor_schema(
-            unit_of_measurement=UNIT_WATT,
-            accuracy_decimals=0,
-            device_class=DEVICE_CLASS_POWER,
-            state_class=STATE_CLASS_MEASUREMENT,
-        ),
         cv.Optional(CONF_CURRENT_LIMIT): number.number_schema(
             OcppCurrentLimitNumber,
             unit_of_measurement=UNIT_AMPERE,
@@ -196,7 +187,7 @@ CHARGER_SCHEMA = cv.Schema(
         cv.Required(CONF_MAX_CURRENT): cv.positive_float,
             cv.Required(CONF_PHASES): cv.one_of(1, 3, int=True),
             cv.Optional(CONF_PHASE_MAPPING): cv.All(cv.ensure_list(_phase_name), cv.Length(min=1, max=3)),
-        cv.Required(CONF_CONNECTORS): cv.All(cv.ensure_list(CONNECTOR_SCHEMA), cv.Length(min=1, max=1)),
+        cv.Required(CONF_CONNECTORS): cv.All(cv.ensure_list(CONNECTOR_SCHEMA), cv.Length(min=1)),
     }
 )
 
@@ -259,13 +250,6 @@ async def to_code(config):
                 sens = await text_sensor.new_text_sensor(state_config)
                 cg.add(
                     var.set_connector_state_sensor(
-                        charger[CONF_CHARGE_POINT_ID], connector[CONF_ID], sens
-                    )
-                )
-            if power_config := connector.get(CONF_POWER):
-                sens = await sensor.new_sensor(power_config)
-                cg.add(
-                    var.set_connector_power_sensor(
                         charger[CONF_CHARGE_POINT_ID], connector[CONF_ID], sens
                     )
                 )

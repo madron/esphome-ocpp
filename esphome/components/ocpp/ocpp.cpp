@@ -217,14 +217,6 @@ void OcppServer::set_connector_current_sensor(std::string charge_point_id, uint8
   charger->connector.current_sensor = current_sensor;
 }
 
-void OcppServer::set_connector_power_sensor(std::string charge_point_id, uint8_t connector_id,
-                                            sensor::Sensor *power_sensor) {
-  auto *charger = this->find_charger_(charge_point_id);
-  if (charger == nullptr || !charger->has_connector || charger->connector.id != connector_id)
-    return;
-  charger->connector.power_sensor = power_sensor;
-}
-
 void OcppServer::set_connector_state_sensor(std::string charge_point_id, uint8_t connector_id,
                                             text_sensor::TextSensor *state_sensor) {
   auto *charger = this->find_charger_(charge_point_id);
@@ -937,8 +929,6 @@ void OcppServer::clear_transaction_(uint32_t transaction_id) {
   connector->latest_power_active_import = 0.0f;
   connector->has_latest_power_active_import = true;
   this->publish_current_if_configured_(connector);
-  if (connector->power_sensor != nullptr)
-    connector->power_sensor->publish_state(0.0f);
 }
 
 void OcppServer::send_preferred_current_limit_if_needed_(uint8_t connector_id) {
@@ -1432,9 +1422,6 @@ void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject p
       this->send_preferred_current_limit_if_needed_(connector->id);
     }
   }
-  if (connector != nullptr && power_updated && connector->power_sensor != nullptr)
-    connector->power_sensor->publish_state(connector->latest_power_active_import);
-
   std::string response = "[3,\"" + json_escape(unique_id) + "\",{}]";
   this->send_ws_text_(response);
 }

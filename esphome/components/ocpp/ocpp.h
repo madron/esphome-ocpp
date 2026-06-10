@@ -39,7 +39,6 @@ class OcppServer : public Component {
   void set_charger_phase_mapping(std::string charge_point_id, uint8_t charger_phase, uint8_t site_phase);
   void add_connector(std::string charge_point_id, uint8_t connector_id, float max_current);
   void set_connector_current_sensor(std::string charge_point_id, uint8_t connector_id, sensor::Sensor *current_sensor);
-  void set_connector_power_sensor(std::string charge_point_id, uint8_t connector_id, sensor::Sensor *power_sensor);
   void set_connector_state_sensor(std::string charge_point_id, uint8_t connector_id,
                                   text_sensor::TextSensor *state_sensor);
   void set_connector_current_limit_number(std::string charge_point_id, uint8_t connector_id,
