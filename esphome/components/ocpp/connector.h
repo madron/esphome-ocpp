@@ -18,7 +18,7 @@ class TextSensor;
 
 namespace esphome::ocpp {
 
-class OcppServer;
+class OcppComponent;
 class OcppCurrentLimitNumber;
 class OcppConnectorEnabledSwitch;
 class OcppConnectorButton;

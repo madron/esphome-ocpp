@@ -1,7 +1,7 @@
 #pragma once
 
-// OcppServer protocol member declarations. This file is included from
-// OcppServer's protected section in ocpp.h so these remain class members.
+// OcppComponent protocol member declarations. This file is included from
+// OcppComponent's protected section in ocpp.h so these remain class members.
 
 void handle_ws_text_(const std::string &message);
 void handle_boot_notification_(const std::string &unique_id, JsonObject payload);

@@ -123,7 +123,7 @@ std::string header_value(const std::string &request, const char *name) {
 
 }  // namespace
 
-void OcppServer::set_path(std::string path) {
+void OcppComponent::set_path(std::string path) {
   if (path.empty() || path[0] != '/')
     path.insert(path.begin(), '/');
   while (path.size() > 1 && path.back() == '/')
@@ -131,7 +131,7 @@ void OcppServer::set_path(std::string path) {
   this->path_ = std::move(path);
 }
 
-void OcppServer::setup() {
+void OcppComponent::setup() {
   this->server_ = socket::socket_ip_loop_monitored(SOCK_STREAM, 0);
   if (this->server_ == nullptr) {
     ESP_LOGE(TAG, "Could not create OCPP listen socket");
@@ -150,22 +150,22 @@ void OcppServer::setup() {
   }
 }
 
-void OcppServer::loop() {
+void OcppComponent::loop() {
   if (this->server_ != nullptr && this->server_->ready())
     this->accept_client_();
   if (this->client_ != nullptr && this->client_->ready())
     this->read_client_();
 }
 
-void OcppServer::dump_config() {
+void OcppComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "OCPP server:");
   ESP_LOGCONFIG(TAG, "  Listen: 0.0.0.0:%u%s", this->port_, this->path_.c_str());
   ESP_LOGCONFIG(TAG, "  Implemented messages: BootNotification");
 }
 
-float OcppServer::get_setup_priority() const { return setup_priority::WIFI - 1.0f; }
+float OcppComponent::get_setup_priority() const { return setup_priority::WIFI - 1.0f; }
 
-void OcppServer::accept_client_() {
+void OcppComponent::accept_client_() {
   sockaddr_storage addr{};
   socklen_t addr_len = sizeof(addr);
   auto client = this->server_->accept_loop_monitored(reinterpret_cast<sockaddr *>(&addr), &addr_len);
@@ -184,7 +184,7 @@ void OcppServer::accept_client_() {
   ESP_LOGI(TAG, "OCPP wallbox connected");
 }
 
-void OcppServer::close_client_() {
+void OcppComponent::close_client_() {
   if (this->client_ != nullptr)
     this->client_->close();
   this->client_.reset();
@@ -193,7 +193,7 @@ void OcppServer::close_client_() {
   this->charge_point_id_.clear();
 }
 
-void OcppServer::read_client_() {
+void OcppComponent::read_client_() {
   uint8_t buffer[512];
   while (true) {
     ssize_t read = this->client_->read(buffer, sizeof(buffer));
@@ -224,7 +224,7 @@ void OcppServer::read_client_() {
     this->handle_ws_frames_();
 }
 
-bool OcppServer::request_matches_path_(const std::string &uri) {
+bool OcppComponent::request_matches_path_(const std::string &uri) {
   if (uri == this->path_) {
     this->charge_point_id_ = "";
     return true;
@@ -236,7 +236,7 @@ bool OcppServer::request_matches_path_(const std::string &uri) {
   return true;
 }
 
-void OcppServer::handle_http_handshake_() {
+void OcppComponent::handle_http_handshake_() {
   size_t header_end = this->rx_buffer_.find("\r\n\r\n");
   if (header_end == std::string::npos)
     return;
@@ -268,12 +268,12 @@ void OcppServer::handle_http_handshake_() {
   ESP_LOGI(TAG, "OCPP WebSocket accepted for charge point '%s'", this->charge_point_id_.c_str());
 }
 
-std::string OcppServer::websocket_accept_key_(const std::string &client_key) {
+std::string OcppComponent::websocket_accept_key_(const std::string &client_key) {
   auto digest = sha1(client_key + WS_GUID);
   return base64_encode(digest.data(), digest.size());
 }
 
-void OcppServer::handle_ws_frames_() {
+void OcppComponent::handle_ws_frames_() {
   size_t frames_handled = 0;
   while (this->rx_buffer_.size() >= 2) {
     const uint8_t *data = reinterpret_cast<const uint8_t *>(this->rx_buffer_.data());

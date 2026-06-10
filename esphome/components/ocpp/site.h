@@ -7,7 +7,7 @@
 
 namespace esphome::ocpp {
 
-class OcppServer;
+class OcppComponent;
 
 struct ConfiguredSite {
   SiteLimitConfig limits;

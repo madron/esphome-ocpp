@@ -25,7 +25,7 @@ std::string json_escape(const std::string &value) {
 }  // namespace
 
 
-void OcppServer::handle_ws_text_(const std::string &message) {
+void OcppComponent::handle_ws_text_(const std::string &message) {
   auto doc = json::parse_json(message);
   if (doc.isNull() || doc.overflowed() || !doc.is<JsonArray>()) {
     ESP_LOGW(TAG, "Ignoring invalid OCPP JSON message: %s", message.c_str());
@@ -50,7 +50,7 @@ void OcppServer::handle_ws_text_(const std::string &message) {
   }
 }
 
-void OcppServer::handle_boot_notification_(const std::string &unique_id, JsonObject payload) {
+void OcppComponent::handle_boot_notification_(const std::string &unique_id, JsonObject payload) {
   const char *vendor = payload["chargePointVendor"] | "";
   const char *model = payload["chargePointModel"] | "";
   const char *serial = payload["chargePointSerialNumber"] | "";
@@ -64,7 +64,7 @@ void OcppServer::handle_boot_notification_(const std::string &unique_id, JsonObj
   this->send_ws_text_(response);
 }
 
-void OcppServer::send_ws_text_(const std::string &message) {
+void OcppComponent::send_ws_text_(const std::string &message) {
   if (this->client_ == nullptr)
     return;
   std::string frame;
@@ -80,7 +80,7 @@ void OcppServer::send_ws_text_(const std::string &message) {
   this->client_->write(frame.data(), frame.size());
 }
 
-void OcppServer::send_ocpp_error_(const std::string &unique_id, const char *code, const char *description) {
+void OcppComponent::send_ocpp_error_(const std::string &unique_id, const char *code, const char *description) {
   std::string response = "[4,\"" + json_escape(unique_id) + "\",\"" + code + "\",\"" + description + "\",{}]";
   this->send_ws_text_(response);
 }

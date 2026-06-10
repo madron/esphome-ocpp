@@ -11,9 +11,9 @@
 
 namespace esphome::ocpp {
 
-class OcppServer;
+class OcppComponent;
 
-class OcppServer : public Component {
+class OcppComponent : public Component {
  public:
   void set_port(uint16_t port) { this->port_ = port; }
   void set_path(std::string path);

@@ -9,7 +9,7 @@ CONF_SERVER = "server"
 CONF_PATH = "path"
 
 ocpp_ns = cg.esphome_ns.namespace("ocpp")
-OcppServer = ocpp_ns.class_("OcppServer", cg.Component)
+OcppComponent = ocpp_ns.class_("OcppComponent", cg.Component)
 
 def _validate_path(value):
     value = cv.string(value)
@@ -36,7 +36,7 @@ SERVER_SCHEMA = cv.Schema(
 CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
-            cv.GenerateID(): cv.declare_id(OcppServer),
+            cv.GenerateID(): cv.declare_id(OcppComponent),
             cv.Optional(CONF_SERVER, default={}): SERVER_SCHEMA,
         }
     ).extend(cv.COMPONENT_SCHEMA),
