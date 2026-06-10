@@ -164,38 +164,6 @@ bool parse_float(const char *value, float *out) {
 
 bool valid_current_import(float value) { return std::isfinite(value) && value >= 0.0f; }
 
-bool current_sensor_value(sensor::Sensor *sensor, float *out) {
-  if (sensor == nullptr || out == nullptr || !std::isfinite(sensor->state))
-    return false;
-  *out = std::max(sensor->state, 0.0f);
-  return true;
-}
-
-bool power_sensor_value(sensor::Sensor *sensor, float *out) {
-  if (sensor == nullptr || out == nullptr || !std::isfinite(sensor->state))
-    return false;
-  *out = sensor->state;
-  return true;
-}
-
-bool finite_sensor_value(sensor::Sensor *sensor, float *out) {
-  if (sensor == nullptr || out == nullptr || !std::isfinite(sensor->state))
-    return false;
-  *out = sensor->state;
-  return true;
-}
-
-uint32_t seconds_to_milliseconds(float seconds) {
-  if (!std::isfinite(seconds) || seconds <= 0.0f)
-    return 0;
-  const float milliseconds = seconds * 1000.0f;
-  if (milliseconds >= static_cast<float>(std::numeric_limits<uint32_t>::max()))
-    return std::numeric_limits<uint32_t>::max();
-  return static_cast<uint32_t>(milliseconds);
-}
-
-float milliseconds_to_seconds(uint32_t milliseconds) { return static_cast<float>(milliseconds) / 1000.0f; }
-
 }  // namespace
 
 void OcppServer::set_path(std::string path) {
@@ -210,96 +178,9 @@ void OcppServer::set_site(uint8_t phases, float voltage) {
   configure_site(&this->site_, phases, voltage);
 }
 
-void OcppServer::set_site_energy_policy(std::string policy) {
-  if (policy == "solar") {
-    this->site_.limits.energy_policy = SiteEnergyPolicy::SOLAR;
-  } else {
-    this->site_.limits.energy_policy = SiteEnergyPolicy::NORMAL;
-  }
-}
-
-void OcppServer::set_solar_export_margin_power(float export_margin_power) {
-  this->site_.limits.solar_export_margin_power = std::max(export_margin_power, 0.0f);
-  if (this->has_charger_ && this->charger_.has_connector) {
-    auto *connector = &this->charger_.connector;
-    const float previous_allocated_current = connector->allocated_current;
-    const bool allocation_updated = this->update_connector_allocation_(connector);
-    if (this->client_ != nullptr && this->handshake_done_ && connector->has_active_transaction && allocation_updated &&
-        connector->allocated_current != previous_allocated_current) {
-      connector->charging_profile_applied = false;
-      this->send_preferred_current_limit_if_needed_(connector->id);
-    }
-  }
-}
-
-void OcppServer::set_solar_export_margin_power_number(OcppSolarExportMarginNumber *number, float initial_value) {
-  if (number == nullptr)
-    return;
-  this->site_.solar_export_margin_power_number = number;
-  number->set_parent(this);
-  this->set_solar_export_margin_power(initial_value);
-  number->publish_state(this->site_.limits.solar_export_margin_power);
-}
-
-void OcppServer::set_allocation_settle_delay(float seconds) {
-  this->allocation_settle_delay_ms_ = seconds_to_milliseconds(seconds);
-}
-
-void OcppServer::set_allocation_settle_delay_per_amp(float seconds) {
-  this->allocation_settle_delay_per_amp_ms_ = seconds_to_milliseconds(seconds);
-}
-
-void OcppServer::set_allocation_settle_delay_number(OcppAllocationDelayNumber *number, float initial_value) {
-  if (number == nullptr)
-    return;
-  this->allocation_settle_delay_number_ = number;
-  number->set_parent(this, false);
-  this->set_allocation_settle_delay(initial_value);
-  number->publish_state(milliseconds_to_seconds(this->allocation_settle_delay_ms_));
-}
-
-void OcppServer::set_allocation_settle_delay_per_amp_number(OcppAllocationDelayNumber *number, float initial_value) {
-  if (number == nullptr)
-    return;
-  this->allocation_settle_delay_per_amp_number_ = number;
-  number->set_parent(this, true);
-  this->set_allocation_settle_delay_per_amp(initial_value);
-  number->publish_state(milliseconds_to_seconds(this->allocation_settle_delay_per_amp_ms_));
-}
-
-void OcppAllocationDelayNumber::control(float value) {
-  if (this->parent_ == nullptr)
-    return;
-  if (this->per_amp_)
-    this->parent_->set_allocation_settle_delay_per_amp(value);
-  else
-    this->parent_->set_allocation_settle_delay(value);
-  this->publish_state(value);
-}
-
 void OcppServer::set_storage_capacity(float capacity_kwh) {
   if (capacity_kwh > 0.0f)
     this->site_.limits.storage_capacity_kwh = capacity_kwh;
-}
-
-void OcppSolarExportMarginNumber::control(float value) {
-  if (this->parent_ == nullptr)
-    return;
-  const float safe_value = std::max(value, 0.0f);
-  this->parent_->set_solar_export_margin_power(safe_value);
-  this->publish_state(safe_value);
-}
-
-void OcppServer::set_grid_max_power(float max_power) {
-  this->site_.limits.grid_max_power = max_power;
-}
-
-void OcppServer::set_grid_max_phase_imbalance(float max_phase_imbalance) {
-  this->site_.limits.grid_max_phase_imbalance = max_phase_imbalance;
-}
-
-void OcppServer::set_grid_max_current(float max_current) {
-  this->site_.limits.grid_max_current = max_current;
 }
 
 void OcppServer::add_charger(std::string charge_point_id, float max_current, uint8_t phases) {
@@ -473,22 +354,9 @@ void OcppServer::loop() {
 void OcppServer::dump_config() {
   ESP_LOGCONFIG(TAG, "OCPP server:");
   ESP_LOGCONFIG(TAG, "  Listen: 0.0.0.0:%u%s", this->port_, this->path_.c_str());
-  ESP_LOGCONFIG(TAG,
-                "  Allocation: strategy=equal min_current=%.1f A settle_delay=%.1f s settle_delay_per_amp=%.1f s/A "
-                "log_decisions=%s",
-                this->allocation_min_current_, milliseconds_to_seconds(this->allocation_settle_delay_ms_),
-                milliseconds_to_seconds(this->allocation_settle_delay_per_amp_ms_),
-                YESNO(this->allocation_log_decisions_));
+  ESP_LOGCONFIG(TAG, "  Allocation: strategy=equal min_current=%.1f A log_decisions=%s",
+                this->allocation_min_current_, YESNO(this->allocation_log_decisions_));
   ESP_LOGCONFIG(TAG, "  Site: phases=%u voltage=%.1f V", this->site_.limits.phases, this->site_.limits.voltage);
-  ESP_LOGCONFIG(TAG, "    Policy=%s", this->site_.limits.energy_policy == SiteEnergyPolicy::SOLAR ? "solar" : "normal");
-  if (this->site_.limits.energy_policy == SiteEnergyPolicy::SOLAR)
-    ESP_LOGCONFIG(TAG, "    Solar export_margin_power=%.0f W", this->site_.limits.solar_export_margin_power);
-  if (this->site_.limits.grid_max_power.has_value())
-    ESP_LOGCONFIG(TAG, "    Grid max_power=%.0f W", this->site_.limits.grid_max_power.value());
-  if (this->site_.limits.grid_max_phase_imbalance.has_value())
-    ESP_LOGCONFIG(TAG, "    Grid max_phase_imbalance=%.0f W", this->site_.limits.grid_max_phase_imbalance.value());
-  if (this->site_.limits.grid_max_current.has_value())
-    ESP_LOGCONFIG(TAG, "    Grid max_current=%.1f A per phase", this->site_.limits.grid_max_current.value());
   if (this->site_.limits.storage_capacity_kwh.has_value())
     ESP_LOGCONFIG(TAG, "    Storage capacity=%.2f kWh", this->site_.limits.storage_capacity_kwh.value());
   ESP_LOGCONFIG(TAG, "  Configured charger: %s", this->has_charger_ ? this->charger_.charge_point_id.c_str() : "none");
@@ -870,7 +738,6 @@ void OcppServer::close_client_() {
   this->set_charging_profile_in_flight_ = false;
   this->pending_set_charging_profile_ = false;
   this->pending_allocation_evaluation_ = false;
-  this->allocation_evaluation_deferred_until_ = 0;
   this->clear_pending_calls_();
   this->clear_queued_ws_text_();
 }
@@ -957,99 +824,24 @@ void OcppServer::note_transaction_id_(uint32_t transaction_id) {
     this->next_transaction_id_ = transaction_id + 1;
 }
 
-SitePowerMeasurements OcppServer::site_power_measurements_() const {
-  SitePowerMeasurements measurements;
-  float power = 0.0f;
-  if (power_sensor_value(this->site_.grid_power_l1_sensor, &power))
-    measurements.grid_power_l1 = power;
-  if (power_sensor_value(this->site_.grid_power_l2_sensor, &power))
-    measurements.grid_power_l2 = power;
-  if (power_sensor_value(this->site_.grid_power_l3_sensor, &power))
-    measurements.grid_power_l3 = power;
-  if (power_sensor_value(this->site_.grid_power_aggregate_sensor, &power))
-    measurements.grid_power_aggregate = power;
-  if (power_sensor_value(this->site_.storage_power_l1_sensor, &power))
-    measurements.storage_power_l1 = power;
-  if (power_sensor_value(this->site_.storage_power_l2_sensor, &power))
-    measurements.storage_power_l2 = power;
-  if (power_sensor_value(this->site_.storage_power_l3_sensor, &power))
-    measurements.storage_power_l3 = power;
-  if (power_sensor_value(this->site_.storage_power_aggregate_sensor, &power))
-    measurements.storage_power_aggregate = power;
-  float value = 0.0f;
-  if (finite_sensor_value(this->site_.storage_soc_sensor, &value))
-    measurements.storage_soc = value;
-  if (finite_sensor_value(this->site_.storage_energy_sensor, &value))
-    measurements.storage_energy_kwh = value;
-  normalize_site_storage_state(this->site_.limits, &measurements);
-  return measurements;
-}
-
-float OcppServer::site_available_current_(const ConfiguredCharger &charger, const ConfiguredConnector *connector) const {
-  return site_load_available_current(this->site_.limits, this->site_power_measurements_(),
-                                     charger_site_load_phases(charger, connector))
-      .site_available;
-}
-
-uint8_t OcppServer::active_connector_count_(const ConfiguredConnector *prospective_connector) const {
-  if (!this->has_charger_ || !this->charger_.has_connector)
-    return 0;
-  if (!this->charger_.connector.has_active_transaction && prospective_connector != &this->charger_.connector)
-    return 0;
-  return 1;
-}
-
-float OcppServer::connector_current_for_allocation_(const ConfiguredConnector &connector) const {
-  if (!connector.has_active_transaction)
-    return 0.0f;
-  if (connector.has_session_current_import && std::isfinite(connector.latest_current_import))
-    return std::max(connector.latest_current_import, 0.0f);
-  return std::max(connector.allocated_current, 0.0f);
-}
-
 bool OcppServer::update_connector_allocation_(ConfiguredConnector *connector, bool include_connector_as_active) {
   if (connector == nullptr)
     return false;
   if (this->should_defer_connector_allocation_(connector, include_connector_as_active))
     return false;
 
-  float available_current = 0.0f;
-  float site_available_current = 0.0f;
-  float connector_current = 0.0f;
-  uint8_t active_connector_count = 0;
-  SiteLoadAvailableCurrent load_available;
-  if (this->has_charger_) {
-    const auto site_load_phases = charger_site_load_phases(this->charger_, connector);
-    load_available = site_load_available_current(this->site_.limits, this->site_power_measurements_(), site_load_phases);
-    site_available_current = load_available.site_available;
-    connector_current = this->connector_current_for_allocation_(*connector);
-    active_connector_count = this->active_connector_count_(include_connector_as_active ? connector : nullptr);
-    available_current = equal_available_current(site_available_current, connector_current, active_connector_count);
-  }
+  const float available_current = connector->max_current;
   const float previous_available_current = connector->available_current;
   const float previous_allocated_current = connector->allocated_current;
   const float preferred_limit = connector->has_preferred_current_limit ? connector->preferred_current_limit : NAN;
   update_connector_allocation(connector, available_current, this->allocation_min_current_);
   if (this->allocation_log_decisions_) {
-    if (this->site_.limits.energy_policy == SiteEnergyPolicy::SOLAR) {
-      ESP_LOGI(TAG,
-               "Allocation decision: connectorId=%u enabled=%s active=%s include_as_active=%s active_count=%u "
-               "grid_available=%.1f A solar_available=%.1f A site_available=%.1f A connector_current=%.1f A "
-               "available=%.1f->%.1f A preferred_limit=%.1f A allocated=%.1f->%.1f A",
-               connector->id, YESNO(connector->enabled), YESNO(connector->has_active_transaction),
-               YESNO(include_connector_as_active), active_connector_count, load_available.grid_available,
-               load_available.solar_available, site_available_current, connector_current, previous_available_current,
-               connector->available_current, preferred_limit, previous_allocated_current, connector->allocated_current);
-    } else {
-      ESP_LOGI(TAG,
-               "Allocation decision: connectorId=%u enabled=%s active=%s include_as_active=%s active_count=%u "
-               "grid_available=%.1f A site_available=%.1f A connector_current=%.1f A available=%.1f->%.1f A "
-               "preferred_limit=%.1f A allocated=%.1f->%.1f A",
-               connector->id, YESNO(connector->enabled), YESNO(connector->has_active_transaction),
-               YESNO(include_connector_as_active), active_connector_count, load_available.grid_available,
-               site_available_current, connector_current, previous_available_current, connector->available_current,
-               preferred_limit, previous_allocated_current, connector->allocated_current);
-    }
+    ESP_LOGI(TAG,
+             "Allocation decision: connectorId=%u enabled=%s active=%s include_as_active=%s "
+             "available=%.1f->%.1f A preferred_limit=%.1f A allocated=%.1f->%.1f A",
+             connector->id, YESNO(connector->enabled), YESNO(connector->has_active_transaction),
+             YESNO(include_connector_as_active), previous_available_current, connector->available_current,
+             preferred_limit, previous_allocated_current, connector->allocated_current);
   }
   return true;
 }
@@ -1057,33 +849,21 @@ bool OcppServer::update_connector_allocation_(ConfiguredConnector *connector, bo
 bool OcppServer::should_defer_connector_allocation_(ConfiguredConnector *connector, bool include_connector_as_active) {
   if (connector == nullptr || !connector->has_active_transaction)
     return false;
-  const uint32_t remaining_ms = this->allocation_evaluation_delay_remaining_ms_();
-  if (!this->set_charging_profile_in_flight_ && remaining_ms == 0)
+  if (!this->set_charging_profile_in_flight_)
     return false;
 
   this->pending_allocation_evaluation_ = true;
   this->pending_allocation_connector_id_ = connector->id;
   this->pending_allocation_include_connector_as_active_ = include_connector_as_active;
   if (this->allocation_log_decisions_) {
-    ESP_LOGI(TAG,
-             "Allocation decision deferred: connectorId=%u set_charging_profile_in_flight=%s remaining=%u ms",
-             connector->id, YESNO(this->set_charging_profile_in_flight_), remaining_ms);
+    ESP_LOGI(TAG, "Allocation decision deferred: connectorId=%u set_charging_profile_in_flight=%s", connector->id,
+             YESNO(this->set_charging_profile_in_flight_));
   }
   return true;
 }
 
-uint32_t OcppServer::allocation_evaluation_delay_remaining_ms_() const {
-  if (this->allocation_evaluation_deferred_until_ == 0)
-    return 0;
-  const uint32_t now = millis();
-  return static_cast<int32_t>(this->allocation_evaluation_deferred_until_ - now) > 0
-             ? this->allocation_evaluation_deferred_until_ - now
-             : 0;
-}
-
 void OcppServer::run_pending_allocation_evaluation_if_ready_() {
-  if (!this->pending_allocation_evaluation_ || this->set_charging_profile_in_flight_ ||
-      this->allocation_evaluation_delay_remaining_ms_() > 0)
+  if (!this->pending_allocation_evaluation_ || this->set_charging_profile_in_flight_)
     return;
 
   const uint8_t connector_id = this->pending_allocation_connector_id_;
@@ -1103,31 +883,7 @@ void OcppServer::run_pending_allocation_evaluation_if_ready_() {
   }
 }
 
-uint32_t OcppServer::allocation_settle_delay_for_current_ms_(float next_current_limit) const {
-  uint32_t delay_ms = this->allocation_settle_delay_ms_;
-  if (this->has_last_set_charging_profile_current_limit_) {
-    const float delta = std::fabs(next_current_limit - this->last_set_charging_profile_current_limit_);
-    const float proportional_ms = delta * static_cast<float>(this->allocation_settle_delay_per_amp_ms_);
-    if (proportional_ms >= static_cast<float>(std::numeric_limits<uint32_t>::max() - delay_ms))
-      delay_ms = std::numeric_limits<uint32_t>::max();
-    else
-      delay_ms += static_cast<uint32_t>(proportional_ms);
-  }
-  return delay_ms;
-}
-
-void OcppServer::note_set_charging_profile_accepted_(float current_limit) {
-  const uint32_t delay_ms = this->allocation_settle_delay_for_current_ms_(current_limit);
-  this->has_last_set_charging_profile_current_limit_ = true;
-  this->last_set_charging_profile_current_limit_ = current_limit;
-  if (delay_ms == 0)
-    return;
-  this->allocation_evaluation_deferred_until_ = millis() + delay_ms;
-  if (this->allocation_log_decisions_) {
-    ESP_LOGI(TAG, "Deferring allocation evaluation for %u ms after accepted SetChargingProfile %.1f A", delay_ms,
-             current_limit);
-  }
-}
+void OcppServer::note_set_charging_profile_accepted_(float current_limit) { (void) current_limit; }
 
 void OcppServer::reset_session_current_(ConfiguredConnector *connector) {
   reset_connector_session_current(connector);

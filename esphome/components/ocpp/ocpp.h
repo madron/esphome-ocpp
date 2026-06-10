@@ -19,7 +19,6 @@
 namespace esphome::ocpp {
 
 class OcppServer;
-class OcppAllocationDelayNumber;
 
 struct PendingOcppCall {
   bool active{false};
@@ -36,21 +35,7 @@ class OcppServer : public Component {
   void set_path(std::string path);
   void set_allocation_min_current(float min_current) { this->allocation_min_current_ = min_current; }
   void set_allocation_log_decisions(bool log_decisions) { this->allocation_log_decisions_ = log_decisions; }
-  void set_allocation_settle_delay(float seconds);
-  void set_allocation_settle_delay_per_amp(float seconds);
-  void set_allocation_settle_delay_number(OcppAllocationDelayNumber *number, float initial_value);
-  void set_allocation_settle_delay_per_amp_number(OcppAllocationDelayNumber *number, float initial_value);
   void set_site(uint8_t phases, float voltage);
-  void set_site_energy_policy(std::string policy);
-  void set_grid_max_power(float max_power);
-  void set_grid_max_phase_imbalance(float max_phase_imbalance);
-  void set_grid_max_current(float max_current);
-  void set_grid_power_l1_sensor(sensor::Sensor *sensor) { this->site_.grid_power_l1_sensor = sensor; }
-  void set_grid_power_l2_sensor(sensor::Sensor *sensor) { this->site_.grid_power_l2_sensor = sensor; }
-  void set_grid_power_l3_sensor(sensor::Sensor *sensor) { this->site_.grid_power_l3_sensor = sensor; }
-  void set_grid_power_aggregate_sensor(sensor::Sensor *sensor) { this->site_.grid_power_aggregate_sensor = sensor; }
-  void set_solar_export_margin_power(float export_margin_power);
-  void set_solar_export_margin_power_number(OcppSolarExportMarginNumber *number, float initial_value);
   void set_storage_capacity(float capacity_kwh);
   void set_storage_power_l1_sensor(sensor::Sensor *sensor) { this->site_.storage_power_l1_sensor = sensor; }
   void set_storage_power_l2_sensor(sensor::Sensor *sensor) { this->site_.storage_power_l2_sensor = sensor; }
@@ -136,16 +121,10 @@ class OcppServer : public Component {
   ConfiguredConnector *find_active_transaction_connector_();
   ConfiguredConnector *find_transaction_connector_(uint32_t transaction_id);
   void note_transaction_id_(uint32_t transaction_id);
-  SitePowerMeasurements site_power_measurements_() const;
-  float site_available_current_(const ConfiguredCharger &charger, const ConfiguredConnector *connector = nullptr) const;
-  uint8_t active_connector_count_(const ConfiguredConnector *prospective_connector = nullptr) const;
-  float connector_current_for_allocation_(const ConfiguredConnector &connector) const;
   bool update_connector_allocation_(ConfiguredConnector *connector, bool include_connector_as_active = false);
   bool should_defer_connector_allocation_(ConfiguredConnector *connector, bool include_connector_as_active);
-  uint32_t allocation_evaluation_delay_remaining_ms_() const;
   void run_pending_allocation_evaluation_if_ready_();
   void note_set_charging_profile_accepted_(float current_limit);
-  uint32_t allocation_settle_delay_for_current_ms_(float next_current_limit) const;
   void reset_session_current_(ConfiguredConnector *connector);
   void publish_current_if_configured_(ConfiguredConnector *connector);
   void publish_connector_state_if_configured_(ConfiguredConnector *connector);
@@ -197,34 +176,13 @@ class OcppServer : public Component {
   bool pending_allocation_evaluation_{false};
   uint8_t pending_allocation_connector_id_{0};
   bool pending_allocation_include_connector_as_active_{false};
-  bool has_last_set_charging_profile_current_limit_{false};
-  float last_set_charging_profile_current_limit_{0.0f};
-  uint32_t allocation_evaluation_deferred_until_{0};
-  uint32_t allocation_settle_delay_ms_{0};
-  uint32_t allocation_settle_delay_per_amp_ms_{0};
   bool allocation_log_decisions_{false};
-  OcppAllocationDelayNumber *allocation_settle_delay_number_{nullptr};
-  OcppAllocationDelayNumber *allocation_settle_delay_per_amp_number_{nullptr};
   std::array<PendingOcppCall, 4> pending_calls_{};
   std::array<std::string, 4> tx_queue_{};
   uint8_t tx_queue_head_{0};
   uint8_t tx_queue_count_{0};
   uint32_t next_message_id_{1};
   uint32_t next_transaction_id_{1};
-};
-
-class OcppAllocationDelayNumber : public number::Number {
- public:
-  void set_parent(OcppServer *parent, bool per_amp) {
-    this->parent_ = parent;
-    this->per_amp_ = per_amp;
-  }
-
- protected:
-  void control(float value) override;
-
-  OcppServer *parent_{nullptr};
-  bool per_amp_{false};
 };
 
 }  // namespace esphome::ocpp
