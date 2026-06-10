@@ -3,7 +3,6 @@
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
-#include <array>
 #include <cerrno>
 #include <cctype>
 #include <cstring>
@@ -16,71 +15,6 @@ static const char *const TAG = "ocpp";
 static constexpr size_t MAX_RX_BUFFER = 4096;
 static constexpr size_t MAX_WS_PAYLOAD = 2048;
 static constexpr size_t MAX_WS_FRAMES_PER_LOOP = 1;
-static constexpr const char *WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-
-uint32_t rol(uint32_t value, uint8_t bits) { return (value << bits) | (value >> (32 - bits)); }
-
-std::array<uint8_t, 20> sha1(const std::string &input) {
-  uint64_t bit_len = static_cast<uint64_t>(input.size()) * 8;
-  std::string data(input);
-  data.push_back(static_cast<char>(0x80));
-  while ((data.size() % 64) != 56)
-    data.push_back(0);
-  for (int i = 7; i >= 0; i--)
-    data.push_back(static_cast<char>((bit_len >> (i * 8)) & 0xFF));
-
-  uint32_t h0 = 0x67452301, h1 = 0xEFCDAB89, h2 = 0x98BADCFE, h3 = 0x10325476, h4 = 0xC3D2E1F0;
-  for (size_t chunk = 0; chunk < data.size(); chunk += 64) {
-    uint32_t w[80];
-    for (size_t i = 0; i < 16; i++) {
-      size_t j = chunk + i * 4;
-      w[i] = (uint32_t(static_cast<uint8_t>(data[j])) << 24) |
-             (uint32_t(static_cast<uint8_t>(data[j + 1])) << 16) |
-             (uint32_t(static_cast<uint8_t>(data[j + 2])) << 8) | uint32_t(static_cast<uint8_t>(data[j + 3]));
-    }
-    for (size_t i = 16; i < 80; i++)
-      w[i] = rol(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
-
-    uint32_t a = h0, b = h1, c = h2, d = h3, e = h4;
-    for (size_t i = 0; i < 80; i++) {
-      uint32_t f, k;
-      if (i < 20) {
-        f = (b & c) | ((~b) & d);
-        k = 0x5A827999;
-      } else if (i < 40) {
-        f = b ^ c ^ d;
-        k = 0x6ED9EBA1;
-      } else if (i < 60) {
-        f = (b & c) | (b & d) | (c & d);
-        k = 0x8F1BBCDC;
-      } else {
-        f = b ^ c ^ d;
-        k = 0xCA62C1D6;
-      }
-      uint32_t temp = rol(a, 5) + f + e + k + w[i];
-      e = d;
-      d = c;
-      c = rol(b, 30);
-      b = a;
-      a = temp;
-    }
-    h0 += a;
-    h1 += b;
-    h2 += c;
-    h3 += d;
-    h4 += e;
-  }
-
-  std::array<uint8_t, 20> out{};
-  uint32_t h[5] = {h0, h1, h2, h3, h4};
-  for (size_t i = 0; i < 5; i++) {
-    out[i * 4] = h[i] >> 24;
-    out[i * 4 + 1] = h[i] >> 16;
-    out[i * 4 + 2] = h[i] >> 8;
-    out[i * 4 + 3] = h[i];
-  }
-  return out;
-}
 
 bool equals_ignore_case(const std::string &a, const char *b) {
   size_t len = std::strlen(b);
@@ -263,11 +197,6 @@ void OcppComponent::handle_http_handshake_() {
   this->client_->write(response.data(), response.size());
   this->handshake_done_ = true;
   ESP_LOGI(TAG, "OCPP WebSocket accepted for charge point '%s'", this->charge_point_id_.c_str());
-}
-
-std::string OcppComponent::websocket_accept_key_(const std::string &client_key) {
-  auto digest = sha1(client_key + WS_GUID);
-  return base64_encode(digest.data(), digest.size());
 }
 
 void OcppComponent::handle_ws_frames_() {
