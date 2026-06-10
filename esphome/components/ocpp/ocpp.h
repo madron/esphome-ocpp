@@ -45,20 +45,9 @@ class OcppServer : public Component {
   void dump_config() override;
   float get_setup_priority() const override;
 
-  void disconnect();
-  void remote_start(uint8_t connector_id);
-  void remote_stop();
-  void remote_stop_connector(uint8_t connector_id);
-  void remote_stop(uint32_t transaction_id);
   void set_current_limit(uint8_t connector_id, float current_limit);
   void set_connector_enabled(uint8_t connector_id, bool enabled);
-  bool is_connector_enabled(uint8_t connector_id) const;
   void restart_connector_session(uint8_t connector_id);
-  bool has_latest_current_import(uint8_t connector_id) const;
-  bool has_session_current_import(uint8_t connector_id) const;
-  bool has_latest_power_active_import(uint8_t connector_id) const;
-  float get_latest_current_import(uint8_t connector_id) const;
-  float get_latest_power_active_import(uint8_t connector_id) const;
 
  protected:
   void accept_client_();
@@ -73,10 +62,7 @@ class OcppServer : public Component {
   const ConfiguredCharger *find_charger_(const std::string &charge_point_id) const;
   ConfiguredConnector *find_connector_(int connector_id);
   const ConfiguredConnector *find_connector_(int connector_id) const;
-  bool update_connector_allocation_(ConfiguredConnector *connector, bool include_connector_as_active = false);
-  bool should_defer_connector_allocation_(ConfiguredConnector *connector, bool include_connector_as_active);
-  void reset_session_current_(ConfiguredConnector *connector);
-  void publish_current_if_configured_(ConfiguredConnector *connector);
+  bool update_connector_allocation_(ConfiguredConnector *connector);
   void publish_connector_state_if_configured_(ConfiguredConnector *connector);
   std::string websocket_accept_key_(const std::string &client_key);
 

@@ -2,7 +2,6 @@
 
 #ifdef USE_OCPP
 
-#include "esphome/core/alloc_helpers.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
@@ -10,11 +9,7 @@
 #include <array>
 #include <cerrno>
 #include <cctype>
-#include <cmath>
-#include <cstdio>
-#include <cstdlib>
 #include <cstring>
-#include <limits>
 #include <utility>
 
 namespace esphome::ocpp {
@@ -25,18 +20,6 @@ static constexpr size_t MAX_RX_BUFFER = 4096;
 static constexpr size_t MAX_WS_PAYLOAD = 2048;
 static constexpr size_t MAX_WS_FRAMES_PER_LOOP = 1;
 static constexpr const char *WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-
-std::array<bool, 3> charger_site_load_phases(const ConfiguredCharger &charger, const ConfiguredConnector *connector) {
-  const auto charger_load_phases = charger_effective_load_phases(charger, connector);
-  std::array<bool, 3> site_load_phases{};
-  for (uint8_t i = 0; i < charger_load_phases.size(); i++) {
-    if (!charger_load_phases[i])
-      continue;
-    const uint8_t site_phase = charger.phase_mapping[i] < site_load_phases.size() ? charger.phase_mapping[i] : 0;
-    site_load_phases[site_phase] = true;
-  }
-  return site_load_phases;
-}
 
 uint32_t rol(uint32_t value, uint8_t bits) { return (value << bits) | (value >> (32 - bits)); }
 
@@ -244,31 +227,6 @@ void OcppServer::set_connector_restart_button(std::string charge_point_id, uint8
   restart_button->set_parent(this, connector_id);
 }
 
-bool OcppServer::has_latest_current_import(uint8_t connector_id) const {
-  const auto *connector = this->find_connector_(connector_id);
-  return connector != nullptr && connector->has_latest_current_import;
-}
-
-bool OcppServer::has_session_current_import(uint8_t connector_id) const {
-  const auto *connector = this->find_connector_(connector_id);
-  return connector != nullptr && connector->has_session_current_import;
-}
-
-bool OcppServer::has_latest_power_active_import(uint8_t connector_id) const {
-  const auto *connector = this->find_connector_(connector_id);
-  return connector != nullptr && connector->has_latest_power_active_import;
-}
-
-float OcppServer::get_latest_current_import(uint8_t connector_id) const {
-  const auto *connector = this->find_connector_(connector_id);
-  return connector != nullptr ? connector->latest_current_import : 0.0f;
-}
-
-float OcppServer::get_latest_power_active_import(uint8_t connector_id) const {
-  const auto *connector = this->find_connector_(connector_id);
-  return connector != nullptr ? connector->latest_power_active_import : 0.0f;
-}
-
 void OcppServer::setup() {
   this->server_ = socket::socket_ip_loop_monitored(SOCK_STREAM, 0);
   if (this->server_ == nullptr) {
@@ -323,33 +281,6 @@ void OcppServer::dump_config() {
 }
 
 float OcppServer::get_setup_priority() const { return setup_priority::WIFI - 1.0f; }
-
-void OcppServer::disconnect() {
-  if (this->client_ == nullptr) {
-    ESP_LOGI(TAG, "No OCPP wallbox connection to disconnect");
-    return;
-  }
-  ESP_LOGI(TAG, "Disconnecting OCPP wallbox '%s' on request", this->charge_point_id_.c_str());
-  this->close_client_();
-}
-
-void OcppServer::remote_start(uint8_t connector_id) {
-  ESP_LOGW(TAG, "Remote start is not supported; only BootNotification is implemented (connectorId=%u)", connector_id);
-}
-
-void OcppServer::remote_stop() {
-  ESP_LOGW(TAG, "Remote stop is not supported; only BootNotification is implemented");
-}
-
-void OcppServer::remote_stop_connector(uint8_t connector_id) {
-  ESP_LOGW(TAG, "Remote stop is not supported; only BootNotification is implemented (connectorId=%u)",
-           connector_id);
-}
-
-void OcppServer::remote_stop(uint32_t transaction_id) {
-  ESP_LOGW(TAG, "Remote stop is not supported; only BootNotification is implemented (transactionId=%u)",
-           transaction_id);
-}
 
 void OcppServer::set_current_limit(uint8_t connector_id, float current_limit) {
   if (current_limit <= 0) {
@@ -408,11 +339,6 @@ void OcppServer::set_connector_enabled(uint8_t connector_id, bool enabled) {
   ESP_LOGI(TAG, "Stored connector %u as %s; connector control OCPP messages are not supported", connector_id,
            enabled ? "enabled" : "disabled");
   (void) allocation_updated;
-}
-
-bool OcppServer::is_connector_enabled(uint8_t connector_id) const {
-  const auto *connector = this->find_connector_(connector_id);
-  return connector == nullptr || connector->enabled;
 }
 
 void OcppServer::restart_connector_session(uint8_t connector_id) {
@@ -517,30 +443,13 @@ const ConfiguredConnector *OcppServer::find_connector_(int connector_id) const {
   return find_configured_connector(charger, connector_id);
 }
 
-bool OcppServer::update_connector_allocation_(ConfiguredConnector *connector, bool include_connector_as_active) {
+bool OcppServer::update_connector_allocation_(ConfiguredConnector *connector) {
   if (connector == nullptr)
-    return false;
-  if (this->should_defer_connector_allocation_(connector, include_connector_as_active))
     return false;
 
   const float available_current = connector->max_current;
   update_connector_allocation(connector, available_current, this->allocation_min_current_);
   return true;
-}
-
-bool OcppServer::should_defer_connector_allocation_(ConfiguredConnector *connector, bool include_connector_as_active) {
-  (void) connector;
-  (void) include_connector_as_active;
-  return false;
-}
-
-void OcppServer::reset_session_current_(ConfiguredConnector *connector) {
-  reset_connector_session_current(connector);
-}
-
-void OcppServer::publish_current_if_configured_(ConfiguredConnector *connector) {
-  if (connector != nullptr && connector->current_sensor != nullptr)
-    connector->current_sensor->publish_state(connector->latest_current_import);
 }
 
 void OcppServer::publish_connector_state_if_configured_(ConfiguredConnector *connector) {
