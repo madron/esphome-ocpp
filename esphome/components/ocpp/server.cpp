@@ -225,6 +225,10 @@ bool OcppServer::request_matches_path_(const std::string &uri) {
     this->connection_id_ = "";
     return true;
   }
+  if (this->server_path_ == "/" && uri.rfind("/", 0) == 0) {
+    this->connection_id_ = uri.substr(1);
+    return true;
+  }
   std::string prefix = this->server_path_ + "/";
   if (uri.rfind(prefix, 0) != 0)
     return false;
@@ -248,6 +252,8 @@ void OcppServer::handle_http_handshake_() {
 
   std::string key = header_value(request, "Sec-WebSocket-Key");
   if (request.rfind("GET ", 0) != 0 || key.empty() || !this->request_matches_path_(uri)) {
+    ESP_LOGW(TAG, "Rejecting WebSocket handshake: uri='%s' configured_path='%s' has_key=%s", uri.c_str(),
+             this->server_path_.c_str(), YESNO(!key.empty()));
     static constexpr const char *BAD_REQUEST = "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n";
     this->client_->write(BAD_REQUEST, std::strlen(BAD_REQUEST));
     this->close_client_();
