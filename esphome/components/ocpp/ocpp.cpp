@@ -21,7 +21,6 @@ namespace esphome::ocpp {
 namespace {
 
 static const char *const TAG = "ocpp";
-static const char *const REMOTE_START_ID_TAG = "esphome-ocpp";
 static constexpr size_t MAX_RX_BUFFER = 4096;
 static constexpr size_t MAX_WS_PAYLOAD = 2048;
 static constexpr size_t MAX_WS_FRAMES_PER_LOOP = 1;
@@ -304,14 +303,8 @@ void OcppServer::setup() {
 void OcppServer::loop() {
   if (this->server_ != nullptr && this->server_->ready())
     this->accept_client_();
-  if (this->flush_queued_ws_text_())
-    return;
   if (this->client_ != nullptr && this->client_->ready())
     this->read_client_();
-  this->send_pending_remote_stop_if_ready_();
-  this->send_pending_remote_start_if_ready_();
-  this->send_pending_set_charging_profile_if_ready_();
-  this->run_pending_allocation_evaluation_if_ready_();
 }
 
 void OcppServer::dump_config() {
@@ -326,9 +319,7 @@ void OcppServer::dump_config() {
     ESP_LOGCONFIG(TAG, "    Connector %u max_current=%.1f A", this->charger_.connector.id,
                   this->charger_.connector.max_current);
   }
-  ESP_LOGCONFIG(TAG,
-                "  Implemented messages: BootNotification, Heartbeat, Authorize, StatusNotification, "
-                "StartTransaction, StopTransaction, MeterValues");
+  ESP_LOGCONFIG(TAG, "  Implemented messages: BootNotification");
 }
 
 float OcppServer::get_setup_priority() const { return setup_priority::WIFI - 1.0f; }
@@ -343,62 +334,38 @@ void OcppServer::disconnect() {
 }
 
 void OcppServer::remote_start(uint8_t connector_id) {
-  auto *connector = this->find_connector_(connector_id);
-  if (connector != nullptr) {
-    if (!this->update_connector_allocation_(connector, true))
-      return;
-    if (connector->allocated_current <= 0.0f) {
-      ESP_LOGI(TAG, "Not starting connector session: connectorId=%u allocated_current=0.0 A", connector_id);
-      return;
-    }
-    this->remote_start_(connector_id, REMOTE_START_ID_TAG, true, connector->allocated_current);
-    return;
-  }
-  this->remote_start_(connector_id, REMOTE_START_ID_TAG, false, 0.0f);
+  ESP_LOGW(TAG, "Remote start is not supported; only BootNotification is implemented (connectorId=%u)", connector_id);
 }
 
 void OcppServer::remote_stop() {
-  auto *connector = this->find_active_transaction_connector_();
-  if (connector == nullptr) {
-    ESP_LOGW(TAG, "Cannot send RemoteStopTransaction; no connector has a known active transaction");
-    return;
-  }
-  this->remote_stop(connector->active_transaction_id);
+  ESP_LOGW(TAG, "Remote stop is not supported; only BootNotification is implemented");
 }
 
 void OcppServer::remote_stop_connector(uint8_t connector_id) {
-  auto *connector = this->find_connector_(connector_id);
-  if (connector == nullptr || !connector->has_active_transaction) {
-    ESP_LOGW(TAG, "Cannot send RemoteStopTransaction; connector %u has no known active transaction", connector_id);
-    return;
-  }
-  this->remote_stop(connector->active_transaction_id);
+  ESP_LOGW(TAG, "Remote stop is not supported; only BootNotification is implemented (connectorId=%u)",
+           connector_id);
 }
 
 void OcppServer::remote_stop(uint32_t transaction_id) {
-  if (this->client_ == nullptr || !this->handshake_done_) {
-    ESP_LOGW(TAG, "Cannot send RemoteStopTransaction; no OCPP wallbox is connected");
-    return;
-  }
-
-  this->request_remote_stop_(transaction_id);
+  ESP_LOGW(TAG, "Remote stop is not supported; only BootNotification is implemented (transactionId=%u)",
+           transaction_id);
 }
 
 void OcppServer::set_current_limit(uint8_t connector_id, float current_limit) {
   if (current_limit <= 0) {
-    ESP_LOGW(TAG, "Cannot send SetChargingProfile with non-positive current limit %.1f A", current_limit);
+    ESP_LOGW(TAG, "Ignoring non-positive current limit %.1f A", current_limit);
     return;
   }
 
   float limit = current_limit;
   auto *connector = this->find_connector_(connector_id);
   if (this->has_charger_ && connector == nullptr) {
-    ESP_LOGW(TAG, "Cannot send SetChargingProfile; connector %u is not configured for charge point '%s'", connector_id,
+    ESP_LOGW(TAG, "Cannot store current limit; connector %u is not configured for charge point '%s'", connector_id,
              this->charge_point_id_.c_str());
     return;
   }
   if (connector != nullptr && limit > connector->max_current) {
-    ESP_LOGW(TAG, "Clamping SetChargingProfile current limit %.1f A to configured connector maximum %.1f A", limit,
+    ESP_LOGW(TAG, "Clamping stored current limit %.1f A to configured connector maximum %.1f A", limit,
              connector->max_current);
     limit = connector->max_current;
   }
@@ -413,29 +380,8 @@ void OcppServer::set_current_limit(uint8_t connector_id, float current_limit) {
     if (!allocation_updated)
       return;
   }
-
-  if (this->client_ == nullptr || !this->handshake_done_) {
-    ESP_LOGI(TAG, "Stored current limit %.1f A for connector %u; no OCPP wallbox is connected", limit, connector_id);
-    return;
-  }
-  if (connector == nullptr || !connector->has_active_transaction) {
-    ESP_LOGI(TAG, "Stored current limit %.1f A for connector %u; no active transaction ID is known yet", limit,
-             connector_id);
-    return;
-  }
-
-  if (!connector->enabled) {
-    ESP_LOGI(TAG, "Stored current limit %.1f A for disabled connector %u", limit, connector_id);
-    return;
-  }
-
-  if (connector->allocated_current <= 0.0f) {
-    ESP_LOGI(TAG, "Stopping connector %u because allocated_current=0.0 A", connector_id);
-    this->remote_stop(connector->active_transaction_id);
-    return;
-  }
-
-  this->request_set_charging_profile_(connector_id, connector->active_transaction_id, connector->allocated_current);
+  ESP_LOGI(TAG, "Stored current limit %.1f A for connector %u; current-limit OCPP messages are not supported", limit,
+           connector_id);
 }
 
 void OcppServer::set_connector_enabled(uint8_t connector_id, bool enabled) {
@@ -459,34 +405,9 @@ void OcppServer::set_connector_enabled(uint8_t connector_id, bool enabled) {
              enabled ? "enabled" : "disabled");
     return;
   }
-  if (!enabled) {
-    this->pending_session_restart_connector_id_ = 0;
-    if (connector->has_active_transaction) {
-      this->remote_stop(connector->active_transaction_id);
-    } else {
-      ESP_LOGI(TAG, "Stored connector %u as disabled; no active transaction ID is known yet", connector_id);
-    }
-    return;
-  }
-
-  if (!allocation_updated)
-    return;
-
-  if (connector->has_active_transaction) {
-    if (connector->allocated_current <= 0.0f) {
-      ESP_LOGI(TAG, "Stopping connector %u because allocated_current=0.0 A", connector_id);
-      this->remote_stop(connector->active_transaction_id);
-      return;
-    }
-    ESP_LOGI(TAG, "Stored connector %u as enabled; transaction already active", connector_id);
-    this->request_set_charging_profile_(connector_id, connector->active_transaction_id, connector->allocated_current);
-    return;
-  }
-  if (connector->allocated_current <= 0.0f) {
-    ESP_LOGI(TAG, "Not starting connector session: connectorId=%u allocated_current=0.0 A", connector_id);
-    return;
-  }
-  this->remote_start(connector_id);
+  ESP_LOGI(TAG, "Stored connector %u as %s; connector control OCPP messages are not supported", connector_id,
+           enabled ? "enabled" : "disabled");
+  (void) allocation_updated;
 }
 
 bool OcppServer::is_connector_enabled(uint8_t connector_id) const {
@@ -495,25 +416,8 @@ bool OcppServer::is_connector_enabled(uint8_t connector_id) const {
 }
 
 void OcppServer::restart_connector_session(uint8_t connector_id) {
-  auto *connector = this->find_connector_(connector_id);
-  if (this->has_charger_ && connector == nullptr) {
-    ESP_LOGW(TAG, "Cannot restart connector session; connector %u is not configured for charge point '%s'", connector_id,
-             this->charge_point_id_.c_str());
-    return;
-  }
-  if (connector != nullptr && connector->has_active_transaction) {
-    ESP_LOGI(TAG, "Restarting connector session: connectorId=%u transactionId=%u", connector_id,
-             connector->active_transaction_id);
-    this->pending_session_restart_connector_id_ = connector->enabled ? connector_id : 0;
-    this->remote_stop(connector->active_transaction_id);
-    return;
-  }
-  if (connector != nullptr && !connector->enabled) {
-    ESP_LOGI(TAG, "Not starting connector session: connectorId=%u is disabled", connector_id);
-    return;
-  }
-  ESP_LOGI(TAG, "Starting connector session: connectorId=%u; no active transaction ID is known", connector_id);
-  this->remote_start(connector_id);
+  ESP_LOGW(TAG, "Connector session restart is not supported; only BootNotification is implemented (connectorId=%u)",
+           connector_id);
 }
 
 void OcppServer::accept_client_() {
@@ -542,23 +446,6 @@ void OcppServer::close_client_() {
   this->rx_buffer_.clear();
   this->handshake_done_ = false;
   this->charge_point_id_.clear();
-  this->pending_profile_connector_id_ = 0;
-  this->pending_session_restart_connector_id_ = 0;
-  this->pending_profile_current_limit_ = 0.0f;
-  this->remote_start_in_flight_ = false;
-  this->remote_start_in_flight_connector_id_ = 0;
-  this->remote_start_in_flight_id_tag_.clear();
-  this->remote_start_in_flight_use_current_limit_ = false;
-  this->remote_start_in_flight_current_limit_ = 0.0f;
-  this->pending_remote_start_ = false;
-  this->remote_stop_in_flight_ = false;
-  this->remote_stop_in_flight_transaction_id_ = 0;
-  this->pending_remote_stop_ = false;
-  this->set_charging_profile_in_flight_ = false;
-  this->pending_set_charging_profile_ = false;
-  this->pending_allocation_evaluation_ = false;
-  this->clear_pending_calls_();
-  this->clear_queued_ws_text_();
 }
 
 void OcppServer::read_client_() {
@@ -630,19 +517,6 @@ const ConfiguredConnector *OcppServer::find_connector_(int connector_id) const {
   return find_configured_connector(charger, connector_id);
 }
 
-ConfiguredConnector *OcppServer::find_active_transaction_connector_() {
-  return this->has_charger_ ? find_active_transaction_connector(&this->charger_) : nullptr;
-}
-
-ConfiguredConnector *OcppServer::find_transaction_connector_(uint32_t transaction_id) {
-  return this->has_charger_ ? find_transaction_connector(&this->charger_, transaction_id) : nullptr;
-}
-
-void OcppServer::note_transaction_id_(uint32_t transaction_id) {
-  if (this->next_transaction_id_ <= transaction_id)
-    this->next_transaction_id_ = transaction_id + 1;
-}
-
 bool OcppServer::update_connector_allocation_(ConfiguredConnector *connector, bool include_connector_as_active) {
   if (connector == nullptr)
     return false;
@@ -655,39 +529,10 @@ bool OcppServer::update_connector_allocation_(ConfiguredConnector *connector, bo
 }
 
 bool OcppServer::should_defer_connector_allocation_(ConfiguredConnector *connector, bool include_connector_as_active) {
-  if (connector == nullptr || !connector->has_active_transaction)
-    return false;
-  if (!this->set_charging_profile_in_flight_)
-    return false;
-
-  this->pending_allocation_evaluation_ = true;
-  this->pending_allocation_connector_id_ = connector->id;
-  this->pending_allocation_include_connector_as_active_ = include_connector_as_active;
-  return true;
+  (void) connector;
+  (void) include_connector_as_active;
+  return false;
 }
-
-void OcppServer::run_pending_allocation_evaluation_if_ready_() {
-  if (!this->pending_allocation_evaluation_ || this->set_charging_profile_in_flight_)
-    return;
-
-  const uint8_t connector_id = this->pending_allocation_connector_id_;
-  const bool include_connector_as_active = this->pending_allocation_include_connector_as_active_;
-  this->pending_allocation_evaluation_ = false;
-  auto *connector = this->find_connector_(connector_id);
-  if (connector == nullptr)
-    return;
-
-  const float previous_allocated_current = connector->allocated_current;
-  if (!this->update_connector_allocation_(connector, include_connector_as_active))
-    return;
-  if (this->client_ != nullptr && this->handshake_done_ && connector->has_active_transaction &&
-      connector->allocated_current != previous_allocated_current) {
-    connector->charging_profile_applied = false;
-    this->send_preferred_current_limit_if_needed_(connector->id);
-  }
-}
-
-void OcppServer::note_set_charging_profile_accepted_(float current_limit) { (void) current_limit; }
 
 void OcppServer::reset_session_current_(ConfiguredConnector *connector) {
   reset_connector_session_current(connector);
@@ -701,89 +546,6 @@ void OcppServer::publish_current_if_configured_(ConfiguredConnector *connector) 
 void OcppServer::publish_connector_state_if_configured_(ConfiguredConnector *connector) {
   if (connector != nullptr && connector->state_sensor != nullptr)
     connector->state_sensor->publish_state(connector->state);
-}
-
-void OcppServer::mark_transaction_started_(uint8_t connector_id, uint32_t transaction_id, const char *id_tag) {
-  auto *connector = this->find_connector_(connector_id);
-  if (connector == nullptr)
-    return;
-  if (connector->has_active_transaction && connector->active_transaction_id != transaction_id) {
-    ESP_LOGW(TAG, "Replacing active transaction state: connectorId=%u oldTransactionId=%u newTransactionId=%u",
-             connector_id, connector->active_transaction_id, transaction_id);
-  }
-  connector->has_active_transaction = true;
-  connector->active_transaction_id = transaction_id;
-  connector->active_id_tag = id_tag == nullptr ? "" : id_tag;
-  this->reset_session_current_(connector);
-  this->publish_current_if_configured_(connector);
-  this->note_transaction_id_(transaction_id);
-}
-
-void OcppServer::recover_transaction_from_meter_values_(uint8_t connector_id, uint32_t transaction_id) {
-  auto *connector = this->find_connector_(connector_id);
-  if (connector == nullptr)
-    return;
-  if (connector->has_active_transaction) {
-    if (connector->active_transaction_id == transaction_id)
-      return;
-    ESP_LOGW(TAG,
-             "MeterValues referenced transactionId=%u for connectorId=%u, but transactionId=%u was tracked; replacing",
-             transaction_id, connector_id, connector->active_transaction_id);
-  } else {
-    ESP_LOGI(TAG, "Recovered active transaction from MeterValues: charge_point='%s' connectorId=%u transactionId=%u",
-             this->charge_point_id_.c_str(), connector_id, transaction_id);
-  }
-  connector->has_active_transaction = true;
-  connector->active_transaction_id = transaction_id;
-  connector->active_id_tag.clear();
-  this->reset_session_current_(connector);
-  this->publish_current_if_configured_(connector);
-  this->note_transaction_id_(transaction_id);
-  if (connector->is_charging)
-    this->send_preferred_current_limit_if_needed_(connector_id);
-}
-
-void OcppServer::clear_transaction_(uint32_t transaction_id) {
-  auto *connector = this->find_transaction_connector_(transaction_id);
-  if (connector == nullptr) {
-    ESP_LOGD(TAG, "StopTransaction referenced untracked transactionId=%u", transaction_id);
-    return;
-  }
-  ESP_LOGI(TAG, "Cleared active transaction: charge_point='%s' connectorId=%u transactionId=%u",
-           this->charge_point_id_.c_str(), connector->id, transaction_id);
-  connector->has_active_transaction = false;
-  connector->active_transaction_id = 0;
-  connector->active_id_tag.clear();
-  connector->is_charging = false;
-  connector->charging_profile_applied = false;
-  if (this->pending_remote_stop_ && this->pending_remote_stop_transaction_id_ == transaction_id)
-    this->pending_remote_stop_ = false;
-  if (this->pending_set_charging_profile_ && this->pending_set_charging_profile_transaction_id_ == transaction_id)
-    this->pending_set_charging_profile_ = false;
-  this->reset_session_current_(connector);
-  connector->latest_power_active_import = 0.0f;
-  connector->has_latest_power_active_import = true;
-  this->publish_current_if_configured_(connector);
-}
-
-void OcppServer::send_preferred_current_limit_if_needed_(uint8_t connector_id) {
-  auto *connector = this->find_connector_(connector_id);
-  if (connector == nullptr || connector->charging_profile_applied)
-    return;
-  if (!this->update_connector_allocation_(connector))
-    return;
-  if (!connector->enabled)
-    return;
-  if (!connector->has_active_transaction) {
-    ESP_LOGD(TAG, "Deferring SetChargingProfile for connectorId=%u; no active transaction ID is known yet", connector_id);
-    return;
-  }
-  if (connector->allocated_current <= 0.0f) {
-    ESP_LOGI(TAG, "Stopping connector %u because allocated_current=0.0 A", connector_id);
-    this->remote_stop(connector->active_transaction_id);
-    return;
-  }
-  this->request_set_charging_profile_(connector_id, connector->active_transaction_id, connector->allocated_current);
 }
 
 void OcppServer::handle_http_handshake_() {

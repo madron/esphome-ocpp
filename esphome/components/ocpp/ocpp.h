@@ -73,20 +73,11 @@ class OcppServer : public Component {
   const ConfiguredCharger *find_charger_(const std::string &charge_point_id) const;
   ConfiguredConnector *find_connector_(int connector_id);
   const ConfiguredConnector *find_connector_(int connector_id) const;
-  ConfiguredConnector *find_active_transaction_connector_();
-  ConfiguredConnector *find_transaction_connector_(uint32_t transaction_id);
-  void note_transaction_id_(uint32_t transaction_id);
   bool update_connector_allocation_(ConfiguredConnector *connector, bool include_connector_as_active = false);
   bool should_defer_connector_allocation_(ConfiguredConnector *connector, bool include_connector_as_active);
-  void run_pending_allocation_evaluation_if_ready_();
-  void note_set_charging_profile_accepted_(float current_limit);
   void reset_session_current_(ConfiguredConnector *connector);
   void publish_current_if_configured_(ConfiguredConnector *connector);
   void publish_connector_state_if_configured_(ConfiguredConnector *connector);
-  void mark_transaction_started_(uint8_t connector_id, uint32_t transaction_id, const char *id_tag);
-  void recover_transaction_from_meter_values_(uint8_t connector_id, uint32_t transaction_id);
-  void clear_transaction_(uint32_t transaction_id);
-  void send_preferred_current_limit_if_needed_(uint8_t connector_id);
   std::string websocket_accept_key_(const std::string &client_key);
 
   uint16_t port_{9000};
@@ -96,9 +87,6 @@ class OcppServer : public Component {
   ConfiguredCharger charger_;
   bool has_charger_{false};
   std::unique_ptr<socket::ListenSocket> server_;
-  bool pending_allocation_evaluation_{false};
-  uint8_t pending_allocation_connector_id_{0};
-  bool pending_allocation_include_connector_as_active_{false};
 };
 
 }  // namespace esphome::ocpp
