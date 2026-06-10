@@ -89,7 +89,6 @@ std::string json_escape(const std::string &value) {
 
 }  // namespace
 
-
 void OcppComponent::handle_ws_text_(const std::string &message) {
   auto doc = json::parse_json(message);
   if (doc.isNull() || doc.overflowed() || !doc.is<JsonArray>()) {

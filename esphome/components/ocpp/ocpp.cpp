@@ -52,7 +52,6 @@ std::string header_value(const std::string &request, const char *name) {
   return "";
 }
 
-
 }  // namespace
 
 void OcppComponent::set_server_path(std::string path) {
