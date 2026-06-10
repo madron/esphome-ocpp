@@ -81,8 +81,8 @@ inline float grid_available_current_for_load(const GridLimitConfig &config, cons
     for (uint8_t i = 0; i < active_phases; i++) {
       if (!used_phases[i])
         continue;
-      const float used_current = power[i] / config.voltage;
-      available_current = std::min(available_current, grid_clamp_non_negative(config.max_current.value() - used_current));
+      const float grid_current = power[i] / config.voltage;
+      available_current = std::min(available_current, grid_clamp_non_negative(config.max_current.value() - grid_current));
     }
   }
 

@@ -185,14 +185,6 @@ bool finite_sensor_value(sensor::Sensor *sensor, float *out) {
   return true;
 }
 
-bool used_current_changed(const std::array<float, 3> &a, const std::array<float, 3> &b) {
-  for (uint8_t i = 0; i < a.size(); i++) {
-    if (a[i] != b[i])
-      return true;
-  }
-  return false;
-}
-
 uint32_t seconds_to_milliseconds(float seconds) {
   if (!std::isfinite(seconds) || seconds <= 0.0f)
     return 0;
@@ -203,18 +195,6 @@ uint32_t seconds_to_milliseconds(float seconds) {
 }
 
 float milliseconds_to_seconds(uint32_t milliseconds) { return static_cast<float>(milliseconds) / 1000.0f; }
-
-int phase_index(const char *phase) {
-  if (phase == nullptr || phase[0] == '\0')
-    return -1;
-  if (std::strcmp(phase, "L1") == 0 || std::strcmp(phase, "L1-N") == 0)
-    return 0;
-  if (std::strcmp(phase, "L2") == 0 || std::strcmp(phase, "L2-N") == 0)
-    return 1;
-  if (std::strcmp(phase, "L3") == 0 || std::strcmp(phase, "L3-N") == 0)
-    return 2;
-  return -1;
-}
 
 }  // namespace
 
@@ -244,8 +224,6 @@ void OcppServer::set_solar_export_margin_power(float export_margin_power) {
     auto *connector = &this->charger_.connector;
     const float previous_allocated_current = connector->allocated_current;
     const bool allocation_updated = this->update_connector_allocation_(connector);
-    if (allocation_updated)
-      this->publish_connector_allocation_if_configured_(connector);
     if (this->client_ != nullptr && this->handshake_done_ && connector->has_active_transaction && allocation_updated &&
         connector->allocated_current != previous_allocated_current) {
       connector->charging_profile_applied = false;
@@ -324,12 +302,6 @@ void OcppServer::set_grid_max_current(float max_current) {
   this->site_.limits.grid_max_current = max_current;
 }
 
-void OcppServer::set_site_used_current_sensor(uint8_t phase, sensor::Sensor *used_current_sensor) {
-  if (phase >= this->site_.used_current_sensors.size())
-    return;
-  this->site_.used_current_sensors[phase] = used_current_sensor;
-}
-
 void OcppServer::add_charger(std::string charge_point_id, float max_current, uint8_t phases) {
   if (this->has_charger_ && charger_has_charge_point_id(this->charger_, charge_point_id)) {
     this->charger_.max_current = max_current;
@@ -347,21 +319,6 @@ void OcppServer::set_charger_phase_mapping(std::string charge_point_id, uint8_t 
   charger->phase_mapping[charger_phase] = site_phase;
 }
 
-void OcppServer::set_charger_used_current_sensor(std::string charge_point_id, sensor::Sensor *used_current_sensor) {
-  auto *charger = this->find_charger_(charge_point_id);
-  if (charger == nullptr)
-    return;
-  charger->used_current_sensor = used_current_sensor;
-}
-
-void OcppServer::set_charger_used_current_sensor(std::string charge_point_id, uint8_t phase,
-                                                 sensor::Sensor *used_current_sensor) {
-  auto *charger = this->find_charger_(charge_point_id);
-  if (charger == nullptr || phase >= charger->used_current_sensors.size())
-    return;
-  charger->used_current_sensors[phase] = used_current_sensor;
-}
-
 void OcppServer::add_connector(std::string charge_point_id, uint8_t connector_id, float max_current) {
   auto *charger = this->find_charger_(charge_point_id);
   if (charger == nullptr) {
@@ -374,38 +331,6 @@ void OcppServer::add_connector(std::string charge_point_id, uint8_t connector_id
                                            effective_connector_max_current(charger->max_current, max_current)};
   this->update_connector_allocation_(&charger->connector);
   charger->has_connector = true;
-}
-
-void OcppServer::set_connector_available_current_sensor(std::string charge_point_id, uint8_t connector_id,
-                                                        sensor::Sensor *available_current_sensor) {
-  auto *charger = this->find_charger_(charge_point_id);
-  if (charger == nullptr || !charger->has_connector || charger->connector.id != connector_id)
-    return;
-  charger->connector.available_current_sensor = available_current_sensor;
-}
-
-void OcppServer::set_connector_allocated_current_sensor(std::string charge_point_id, uint8_t connector_id,
-                                                        sensor::Sensor *allocated_current_sensor) {
-  auto *charger = this->find_charger_(charge_point_id);
-  if (charger == nullptr || !charger->has_connector || charger->connector.id != connector_id)
-    return;
-  charger->connector.allocated_current_sensor = allocated_current_sensor;
-}
-
-void OcppServer::set_connector_used_current_max_sensor(std::string charge_point_id, uint8_t connector_id,
-                                                       sensor::Sensor *used_current_sensor) {
-  auto *charger = this->find_charger_(charge_point_id);
-  if (charger == nullptr || !charger->has_connector || charger->connector.id != connector_id)
-    return;
-  charger->connector.used_current_sensor = used_current_sensor;
-}
-
-void OcppServer::set_connector_used_current_sensor(std::string charge_point_id, uint8_t connector_id, uint8_t phase,
-                                                   sensor::Sensor *used_current_sensor) {
-  auto *charger = this->find_charger_(charge_point_id);
-  if (charger == nullptr || !charger->has_connector || charger->connector.id != connector_id || phase >= 3)
-    return;
-  charger->connector.used_current_sensors[phase] = used_current_sensor;
 }
 
 void OcppServer::set_connector_current_sensor(std::string charge_point_id, uint8_t connector_id,
@@ -442,7 +367,6 @@ void OcppServer::set_connector_current_limit_number(std::string charge_point_id,
   charger->connector.preferred_current_limit = initial_limit;
   charger->connector.has_preferred_current_limit = true;
   this->update_connector_allocation_(&charger->connector);
-  this->publish_connector_allocation_if_configured_(&charger->connector);
   current_limit_number->set_parent(this, connector_id);
 }
 
@@ -457,7 +381,6 @@ void OcppServer::apply_connector_current_limit_restore(uint8_t connector_id, flo
   connector->has_preferred_current_limit = true;
   connector->charging_profile_applied = false;
   this->update_connector_allocation_(connector);
-  this->publish_connector_allocation_if_configured_(connector);
 }
 
 void OcppServer::set_connector_enabled_switch(std::string charge_point_id, uint8_t connector_id,
@@ -498,11 +421,6 @@ float OcppServer::get_latest_current_import(uint8_t connector_id) const {
   return connector != nullptr ? connector->latest_current_import : 0.0f;
 }
 
-float OcppServer::get_effective_used_current(uint8_t connector_id) const {
-  const auto *connector = this->find_connector_(connector_id);
-  return connector != nullptr ? this->effective_used_current_(*connector) : 0.0f;
-}
-
 float OcppServer::get_latest_power_active_import(uint8_t connector_id) const {
   const auto *connector = this->find_connector_(connector_id);
   return connector != nullptr ? connector->latest_power_active_import : 0.0f;
@@ -530,18 +448,10 @@ void OcppServer::setup() {
       this->charger_.connector.has_preferred_current_limit) {
     this->charger_.connector.current_limit_number->publish_state(this->charger_.connector.preferred_current_limit);
   }
-  if (this->has_charger_) {
-    this->update_charger_used_current_(&this->charger_);
-    this->publish_charger_used_current_if_configured_(&this->charger_);
-  }
-  this->update_site_used_current_();
-  this->publish_site_used_current_if_configured_();
   if (this->has_charger_ && this->charger_.has_connector) {
     auto *connector = &this->charger_.connector;
     this->update_connector_allocation_(connector);
-    this->publish_connector_allocation_if_configured_(connector);
     this->publish_connector_state_if_configured_(connector);
-    this->publish_used_current_if_configured_(connector);
     if (connector->enabled_switch != nullptr)
       connector->enabled_switch->publish_state(connector->enabled);
   }
@@ -558,9 +468,6 @@ void OcppServer::loop() {
   this->send_pending_remote_start_if_ready_();
   this->send_pending_set_charging_profile_if_ready_();
   this->run_pending_allocation_evaluation_if_ready_();
-  if (this->has_charger_)
-    this->update_and_publish_charger_used_current_if_configured_(&this->charger_);
-  this->update_and_publish_site_used_current_if_configured_();
 }
 
 void OcppServer::dump_config() {
@@ -612,7 +519,6 @@ void OcppServer::remote_start(uint8_t connector_id) {
   if (connector != nullptr) {
     if (!this->update_connector_allocation_(connector, true))
       return;
-    this->publish_connector_allocation_if_configured_(connector);
     if (connector->allocated_current <= 0.0f) {
       ESP_LOGI(TAG, "Not starting connector session: connectorId=%u allocated_current=0.0 A", connector_id);
       return;
@@ -815,8 +721,6 @@ void OcppServer::set_current_limit(uint8_t connector_id, float current_limit) {
     connector->has_preferred_current_limit = true;
     connector->charging_profile_applied = false;
     const bool allocation_updated = this->update_connector_allocation_(connector);
-    if (allocation_updated)
-      this->publish_connector_allocation_if_configured_(connector);
     if (connector->current_limit_number != nullptr)
       connector->current_limit_number->publish_state(limit);
     if (!allocation_updated)
@@ -860,8 +764,6 @@ void OcppServer::set_connector_enabled(uint8_t connector_id, bool enabled) {
   connector->enabled = enabled;
   connector->charging_profile_applied = false;
   const bool allocation_updated = this->update_connector_allocation_(connector);
-  if (allocation_updated)
-    this->publish_connector_allocation_if_configured_(connector);
   if (connector->enabled_switch != nullptr)
     connector->enabled_switch->publish_state(enabled);
 
@@ -1100,7 +1002,9 @@ uint8_t OcppServer::active_connector_count_(const ConfiguredConnector *prospecti
 float OcppServer::connector_current_for_allocation_(const ConfiguredConnector &connector) const {
   if (!connector.has_active_transaction)
     return 0.0f;
-  return this->effective_used_current_(connector);
+  if (connector.has_session_current_import && std::isfinite(connector.latest_current_import))
+    return std::max(connector.latest_current_import, 0.0f);
+  return std::max(connector.allocated_current, 0.0f);
 }
 
 bool OcppServer::update_connector_allocation_(ConfiguredConnector *connector, bool include_connector_as_active) {
@@ -1192,7 +1096,6 @@ void OcppServer::run_pending_allocation_evaluation_if_ready_() {
   const float previous_allocated_current = connector->allocated_current;
   if (!this->update_connector_allocation_(connector, include_connector_as_active))
     return;
-  this->publish_connector_allocation_if_configured_(connector);
   if (this->client_ != nullptr && this->handshake_done_ && connector->has_active_transaction &&
       connector->allocated_current != previous_allocated_current) {
     connector->charging_profile_applied = false;
@@ -1226,64 +1129,6 @@ void OcppServer::note_set_charging_profile_accepted_(float current_limit) {
   }
 }
 
-void OcppServer::publish_connector_allocation_if_configured_(ConfiguredConnector *connector) {
-  this->publish_available_current_if_configured_(connector);
-  this->publish_allocated_current_if_configured_(connector);
-}
-
-void OcppServer::publish_available_current_if_configured_(ConfiguredConnector *connector) {
-  if (connector != nullptr && connector->available_current_sensor != nullptr)
-    connector->available_current_sensor->publish_state(connector->available_current);
-}
-
-void OcppServer::publish_allocated_current_if_configured_(ConfiguredConnector *connector) {
-  if (connector != nullptr && connector->allocated_current_sensor != nullptr)
-    connector->allocated_current_sensor->publish_state(connector->allocated_current);
-}
-
-bool OcppServer::update_charger_used_current_(ConfiguredCharger *charger) {
-  if (charger == nullptr)
-    return false;
-
-  const auto used_current = charger_used_current_from_connectors(*charger);
-  const bool phase_specific = charger->has_connector && charger->connector.has_phase_specific_current_import;
-  const bool changed = used_current_changed(charger->latest_used_current, used_current) ||
-                       charger->latest_used_current_phase_specific != phase_specific;
-  charger->latest_used_current = used_current;
-  charger->latest_used_current_phase_specific = phase_specific;
-  return changed;
-}
-
-void OcppServer::update_and_publish_charger_used_current_if_configured_(ConfiguredCharger *charger) {
-  if (this->update_charger_used_current_(charger))
-    this->publish_charger_used_current_if_configured_(charger);
-}
-
-void OcppServer::publish_charger_used_current_if_configured_(ConfiguredCharger *charger) {
-  if (charger != nullptr && charger->used_current_sensor != nullptr)
-    charger->used_current_sensor->publish_state(this->used_current_max_(*charger));
-  if (charger == nullptr)
-    return;
-  const uint8_t active_phases = charger->phases == 3 ? 3 : 1;
-  for (uint8_t i = 0; i < active_phases; i++) {
-    if (charger->used_current_sensors[i] != nullptr)
-      charger->used_current_sensors[i]->publish_state(charger->latest_used_current[i]);
-  }
-}
-
-bool OcppServer::update_site_used_current_() {
-  return update_site_used_current(&this->site_, this->has_charger_ ? &this->charger_ : nullptr);
-}
-
-void OcppServer::update_and_publish_site_used_current_if_configured_() {
-  if (this->update_site_used_current_())
-    this->publish_site_used_current_if_configured_();
-}
-
-void OcppServer::publish_site_used_current_if_configured_() {
-  publish_site_used_current_if_configured(&this->site_);
-}
-
 void OcppServer::reset_session_current_(ConfiguredConnector *connector) {
   reset_connector_session_current(connector);
 }
@@ -1296,33 +1141,6 @@ void OcppServer::publish_current_if_configured_(ConfiguredConnector *connector) 
 void OcppServer::publish_connector_state_if_configured_(ConfiguredConnector *connector) {
   if (connector != nullptr && connector->state_sensor != nullptr)
     connector->state_sensor->publish_state(connector->state);
-}
-
-void OcppServer::publish_used_current_if_configured_(ConfiguredConnector *connector) {
-  if (connector == nullptr)
-    return;
-  if (connector->used_current_sensor != nullptr)
-    connector->used_current_sensor->publish_state(this->used_current_max_(*connector));
-  for (uint8_t i = 0; i < connector->used_current_sensors.size(); i++) {
-    if (connector->used_current_sensors[i] != nullptr)
-      connector->used_current_sensors[i]->publish_state(connector->latest_used_current[i]);
-  }
-  if (this->has_charger_ && connector == &this->charger_.connector) {
-    this->update_and_publish_charger_used_current_if_configured_(&this->charger_);
-    this->update_and_publish_site_used_current_if_configured_();
-  }
-}
-
-float OcppServer::used_current_max_(const ConfiguredCharger &charger) const {
-  return charger_used_current_max(charger);
-}
-
-float OcppServer::used_current_max_(const ConfiguredConnector &connector) const {
-  return connector_used_current_max(connector);
-}
-
-float OcppServer::effective_used_current_(const ConfiguredConnector &connector) const {
-  return effective_connector_used_current(connector);
 }
 
 void OcppServer::mark_transaction_started_(uint8_t connector_id, uint32_t transaction_id, const char *id_tag) {
@@ -1338,7 +1156,6 @@ void OcppServer::mark_transaction_started_(uint8_t connector_id, uint32_t transa
   connector->active_id_tag = id_tag == nullptr ? "" : id_tag;
   this->reset_session_current_(connector);
   this->publish_current_if_configured_(connector);
-  this->publish_used_current_if_configured_(connector);
   this->note_transaction_id_(transaction_id);
 }
 
@@ -1361,7 +1178,6 @@ void OcppServer::recover_transaction_from_meter_values_(uint8_t connector_id, ui
   connector->active_id_tag.clear();
   this->reset_session_current_(connector);
   this->publish_current_if_configured_(connector);
-  this->publish_used_current_if_configured_(connector);
   this->note_transaction_id_(transaction_id);
   if (connector->is_charging)
     this->send_preferred_current_limit_if_needed_(connector_id);
@@ -1388,7 +1204,6 @@ void OcppServer::clear_transaction_(uint32_t transaction_id) {
   connector->latest_power_active_import = 0.0f;
   connector->has_latest_power_active_import = true;
   this->publish_current_if_configured_(connector);
-  this->publish_used_current_if_configured_(connector);
   if (connector->power_sensor != nullptr)
     connector->power_sensor->publish_state(0.0f);
 }
@@ -1399,7 +1214,6 @@ void OcppServer::send_preferred_current_limit_if_needed_(uint8_t connector_id) {
     return;
   if (!this->update_connector_allocation_(connector))
     return;
-  this->publish_connector_allocation_if_configured_(connector);
   if (!connector->enabled)
     return;
   if (!connector->has_active_transaction) {
@@ -1682,7 +1496,6 @@ void OcppServer::handle_status_notification_(const std::string &unique_id, JsonO
     if (started_charging || stopped_charging) {
       this->reset_session_current_(connector);
       this->publish_current_if_configured_(connector);
-      this->publish_used_current_if_configured_(connector);
     }
     if (!is_charging)
       connector->charging_profile_applied = false;
@@ -1730,8 +1543,6 @@ void OcppServer::handle_start_transaction_(const std::string &unique_id, JsonObj
   auto *started_connector = this->find_connector_(connector_id);
   if (started_connector != nullptr) {
     const bool allocation_updated = this->update_connector_allocation_(started_connector);
-    if (allocation_updated)
-      this->publish_connector_allocation_if_configured_(started_connector);
     if (!started_connector->enabled) {
       ESP_LOGI(TAG, "Stopping transaction %u because connector %d is disabled", transaction_id, connector_id);
       this->remote_stop(transaction_id);
@@ -1801,11 +1612,7 @@ void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject p
   int connector_id = payload["connectorId"] | -1;
   int transaction_id = payload["transactionId"] | -1;
   auto *connector = this->find_connector_(connector_id);
-  uint8_t connector_phases = 3;
-  if (this->has_charger_ && connector == &this->charger_.connector)
-    connector_phases = this->charger_.phases;
   bool current_updated = false;
-  bool used_current_updated = false;
   bool power_updated = false;
   if (transaction_id >= 0) {
     this->note_transaction_id_(static_cast<uint32_t>(transaction_id));
@@ -1845,32 +1652,12 @@ void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject p
               connector->latest_current_import = parsed_value;
               connector->has_latest_current_import = true;
               connector->has_session_current_import = connector->is_charging;
-              if (connector->is_charging) {
-                const auto previous_used_current = connector->latest_used_current;
-                const bool previous_phase_specific = connector->has_phase_specific_current_import;
-                int current_phase = phase_index(phase);
-                if (current_phase >= 0 && current_phase < connector_phases) {
-                  if (!connector->has_phase_specific_current_import)
-                    connector->latest_used_current = {};
-                  connector->has_phase_specific_current_import = true;
-                  connector->latest_used_current[current_phase] = parsed_value;
-                } else if (phase[0] == '\0') {
-                  connector->has_phase_specific_current_import = false;
-                  for (uint8_t i = 0; i < connector->latest_used_current.size(); i++)
-                    connector->latest_used_current[i] = i < connector_phases ? parsed_value : 0.0f;
-                } else {
-                  ESP_LOGV(TAG, "Ignoring Current.Import phase '%s' for used_current sensors", phase);
-                }
-                used_current_updated = used_current_updated ||
-                                       previous_phase_specific != connector->has_phase_specific_current_import ||
-                                       used_current_changed(previous_used_current, connector->latest_used_current);
-              }
               if (first_session_current) {
                 ESP_LOGI(TAG, "Current.Import available for active session: charge_point='%s' connectorId=%d",
                          this->charge_point_id_.c_str(), connector_id);
               }
               if (!connector->is_charging)
-                ESP_LOGV(TAG, "Ignoring Current.Import as active used current because connectorId=%d is not charging",
+                ESP_LOGV(TAG, "Ignoring Current.Import for allocation because connectorId=%d is not charging",
                          connector_id);
             } else if (!valid_current_import(parsed_value)) {
               ESP_LOGW(TAG, "Ignoring invalid Current.Import %.3f A for connectorId=%d", parsed_value, connector_id);
@@ -1903,12 +1690,9 @@ void OcppServer::handle_meter_values_(const std::string &unique_id, JsonObject p
   }
   if (connector != nullptr && current_updated && connector->current_sensor != nullptr)
     connector->current_sensor->publish_state(connector->latest_current_import);
-  if (connector != nullptr && used_current_updated) {
-    this->publish_used_current_if_configured_(connector);
+  if (connector != nullptr && current_updated && connector->has_active_transaction) {
     const float previous_allocated_current = connector->allocated_current;
     const bool allocation_updated = this->update_connector_allocation_(connector);
-    if (allocation_updated)
-      this->publish_connector_allocation_if_configured_(connector);
     if (this->client_ != nullptr && this->handshake_done_ && connector->has_active_transaction &&
         allocation_updated && connector->allocated_current != previous_allocated_current) {
       connector->charging_profile_applied = false;

@@ -122,11 +122,6 @@ ocpp:
   site:
     phases: 3
     voltage: 230
-    used_current:
-      name: site_used_current
-      l1: site_used_current_l1
-      l2: site_used_current_l2
-      l3: site_used_current_l3
   allocation:
     strategy: equal
     min_current: 6
@@ -136,11 +131,6 @@ ocpp:
       charge_point_id: A99999
       max_current: 32
       phases: 3
-      used_current:
-        name: charger_used_current
-        l1: charger_used_current_l1
-        l2: charger_used_current_l2
-        l3: charger_used_current_l3
       connectors:
         - id: 1
           current_limit:
@@ -151,8 +141,3 @@ ocpp:
             step: 1
           state:
             name: connector_state
-          used_current:
-            name: connector_used_current
-            l1: connector_used_current_l1
-            l2: connector_used_current_l2
-            l3: connector_used_current_l3

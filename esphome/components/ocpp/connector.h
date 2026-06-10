@@ -83,20 +83,9 @@ class OcppCurrentLimitNumber : public number::Number, public Component {
 };
 #endif
 
-struct ConnectorCurrentState {
-  bool is_charging{false};
-  bool has_measured_used_current{false};
-  float measured_used_current{0.0f};
-  float allocated_current{0.0f};
-};
-
 struct ConfiguredConnector {
   uint8_t id;
   float max_current;
-  sensor::Sensor *available_current_sensor{nullptr};
-  sensor::Sensor *allocated_current_sensor{nullptr};
-  sensor::Sensor *used_current_sensor{nullptr};
-  std::array<sensor::Sensor *, 3> used_current_sensors{};
   sensor::Sensor *current_sensor{nullptr};
   sensor::Sensor *power_sensor{nullptr};
   text_sensor::TextSensor *state_sensor{nullptr};
@@ -114,12 +103,10 @@ struct ConfiguredConnector {
   bool has_latest_current_import{false};
   bool has_latest_power_active_import{false};
   bool has_session_current_import{false};
-  bool has_phase_specific_current_import{false};
   std::string state{"unplugged"};
   float available_current{0.0f};
   float allocated_current{0.0f};
   float latest_current_import{0.0f};
-  std::array<float, 3> latest_used_current{};
   float latest_power_active_import{0.0f};
 };
 
@@ -128,9 +115,6 @@ float effective_allocated_current(float available_current, float max_current, fl
 float effective_allocated_current(float available_current, float min_current);
 float equal_available_current(float site_available_current, float connector_current, uint8_t active_connector_count);
 const char *connector_state_from_ocpp_status(const char *status);
-float effective_connector_used_current(const ConnectorCurrentState &state);
-float effective_connector_used_current(const ConfiguredConnector &connector);
-float connector_used_current_max(const ConfiguredConnector &connector);
 void reset_connector_session_current(ConfiguredConnector *connector);
 void update_connector_allocation(ConfiguredConnector *connector, float available_current, float min_current);
 

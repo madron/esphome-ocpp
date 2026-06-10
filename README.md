@@ -51,10 +51,6 @@ allocation:
       max_current: 32
       phases: 3
       phase_mapping: [L1, L2, L3]
-      used_current:
-        l1: garage_left_current_l1
-        l2: garage_left_current_l2
-        l3: garage_left_current_l3
       connectors:
         - id: 1
 ```

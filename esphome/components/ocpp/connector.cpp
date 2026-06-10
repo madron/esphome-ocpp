@@ -62,34 +62,12 @@ const char *connector_state_from_ocpp_status(const char *status) {
   return "unknown";
 }
 
-float effective_connector_used_current(const ConnectorCurrentState &state) {
-  if (!state.is_charging)
-    return 0.0f;
-  if (state.has_measured_used_current)
-    return clamp_finite_non_negative(state.measured_used_current);
-  return clamp_finite_non_negative(state.allocated_current);
-}
-
-float effective_connector_used_current(const ConfiguredConnector &connector) {
-  return effective_connector_used_current(ConnectorCurrentState{connector.is_charging,
-                                                               connector.has_session_current_import,
-                                                               connector_used_current_max(connector),
-                                                               connector.allocated_current});
-}
-
-float connector_used_current_max(const ConfiguredConnector &connector) {
-  return std::max(connector.latest_used_current[0],
-                  std::max(connector.latest_used_current[1], connector.latest_used_current[2]));
-}
-
 void reset_connector_session_current(ConfiguredConnector *connector) {
   if (connector == nullptr)
     return;
   connector->has_session_current_import = false;
   connector->has_latest_current_import = false;
-  connector->has_phase_specific_current_import = false;
   connector->latest_current_import = 0.0f;
-  connector->latest_used_current = {};
 }
 
 void update_connector_allocation(ConfiguredConnector *connector, float available_current, float min_current) {
