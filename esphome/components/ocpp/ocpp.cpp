@@ -5,7 +5,6 @@
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
-#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <cctype>
@@ -132,101 +131,6 @@ void OcppServer::set_path(std::string path) {
   this->path_ = std::move(path);
 }
 
-void OcppServer::set_site(uint8_t phases, float voltage) {
-  configure_site(&this->site_, phases, voltage);
-}
-
-void OcppServer::add_charger(std::string charge_point_id, float max_current, uint8_t phases) {
-  if (this->has_charger_ && charger_has_charge_point_id(this->charger_, charge_point_id)) {
-    this->charger_.max_current = max_current;
-    this->charger_.phases = phases == 3 ? 3 : 1;
-    return;
-  }
-  configure_charger(&this->charger_, std::move(charge_point_id), max_current, phases);
-  this->has_charger_ = true;
-}
-
-void OcppServer::set_charger_phase_mapping(std::string charge_point_id, uint8_t charger_phase, uint8_t site_phase) {
-  auto *charger = this->find_charger_(charge_point_id);
-  if (charger == nullptr || charger_phase >= 3 || site_phase >= 3)
-    return;
-  charger->phase_mapping[charger_phase] = site_phase;
-}
-
-void OcppServer::add_connector(std::string charge_point_id, uint8_t connector_id, float max_current) {
-  auto *charger = this->find_charger_(charge_point_id);
-  if (charger == nullptr) {
-    this->add_charger(charge_point_id, max_current);
-    charger = this->find_charger_(charge_point_id);
-  }
-  if (charger == nullptr)
-    return;
-  charger->connector = ConfiguredConnector{connector_id,
-                                           effective_connector_max_current(charger->max_current, max_current)};
-  this->update_connector_allocation_(&charger->connector);
-  charger->has_connector = true;
-}
-
-void OcppServer::set_connector_current_sensor(std::string charge_point_id, uint8_t connector_id,
-                                              sensor::Sensor *current_sensor) {
-  auto *charger = this->find_charger_(charge_point_id);
-  if (charger == nullptr || !charger->has_connector || charger->connector.id != connector_id)
-    return;
-  charger->connector.current_sensor = current_sensor;
-}
-
-void OcppServer::set_connector_state_sensor(std::string charge_point_id, uint8_t connector_id,
-                                            text_sensor::TextSensor *state_sensor) {
-  auto *charger = this->find_charger_(charge_point_id);
-  if (charger == nullptr || !charger->has_connector || charger->connector.id != connector_id)
-    return;
-  charger->connector.state_sensor = state_sensor;
-}
-
-void OcppServer::set_connector_current_limit_number(std::string charge_point_id, uint8_t connector_id,
-                                                    OcppCurrentLimitNumber *current_limit_number,
-                                                    float initial_limit) {
-  auto *charger = this->find_charger_(charge_point_id);
-  if (charger == nullptr || !charger->has_connector || charger->connector.id != connector_id)
-    return;
-  charger->connector.current_limit_number = current_limit_number;
-  charger->connector.preferred_current_limit = initial_limit;
-  charger->connector.has_preferred_current_limit = true;
-  this->update_connector_allocation_(&charger->connector);
-  current_limit_number->set_parent(this, connector_id);
-}
-
-void OcppServer::apply_connector_current_limit_restore(uint8_t connector_id, float current_limit) {
-  auto *connector = this->find_connector_(connector_id);
-  if (connector == nullptr)
-    return;
-  const float limit = std::min(current_limit, connector->max_current);
-  if (limit <= 0.0f)
-    return;
-  connector->preferred_current_limit = limit;
-  connector->has_preferred_current_limit = true;
-  connector->charging_profile_applied = false;
-  this->update_connector_allocation_(connector);
-}
-
-void OcppServer::set_connector_enabled_switch(std::string charge_point_id, uint8_t connector_id,
-                                              OcppConnectorEnabledSwitch *enabled_switch) {
-  auto *charger = this->find_charger_(charge_point_id);
-  if (charger == nullptr || !charger->has_connector || charger->connector.id != connector_id)
-    return;
-  charger->connector.enabled_switch = enabled_switch;
-  enabled_switch->set_parent(this, connector_id);
-}
-
-void OcppServer::set_connector_restart_button(std::string charge_point_id, uint8_t connector_id,
-                                              OcppConnectorButton *restart_button) {
-  auto *charger = this->find_charger_(charge_point_id);
-  if (charger == nullptr || !charger->has_connector || charger->connector.id != connector_id)
-    return;
-  charger->connector.restart_button = restart_button;
-  restart_button->set_parent(this, connector_id);
-}
-
 void OcppServer::setup() {
   this->server_ = socket::socket_ip_loop_monitored(SOCK_STREAM, 0);
   if (this->server_ == nullptr) {
@@ -244,18 +148,6 @@ void OcppServer::setup() {
     ESP_LOGE(TAG, "Could not start OCPP listener on port %u", this->port_);
     this->mark_failed();
   }
-
-  if (this->has_charger_ && this->charger_.has_connector && this->charger_.connector.current_limit_number != nullptr &&
-      this->charger_.connector.has_preferred_current_limit) {
-    this->charger_.connector.current_limit_number->publish_state(this->charger_.connector.preferred_current_limit);
-  }
-  if (this->has_charger_ && this->charger_.has_connector) {
-    auto *connector = &this->charger_.connector;
-    this->update_connector_allocation_(connector);
-    this->publish_connector_state_if_configured_(connector);
-    if (connector->enabled_switch != nullptr)
-      connector->enabled_switch->publish_state(connector->enabled);
-  }
 }
 
 void OcppServer::loop() {
@@ -268,83 +160,10 @@ void OcppServer::loop() {
 void OcppServer::dump_config() {
   ESP_LOGCONFIG(TAG, "OCPP server:");
   ESP_LOGCONFIG(TAG, "  Listen: 0.0.0.0:%u%s", this->port_, this->path_.c_str());
-  ESP_LOGCONFIG(TAG, "  Allocation: strategy=equal min_current=%.1f A", this->allocation_min_current_);
-  ESP_LOGCONFIG(TAG, "  Site: phases=%u voltage=%.1f V", this->site_.limits.phases, this->site_.limits.voltage);
-  ESP_LOGCONFIG(TAG, "  Configured charger: %s", this->has_charger_ ? this->charger_.charge_point_id.c_str() : "none");
-  if (this->has_charger_)
-    ESP_LOGCONFIG(TAG, "    Charger max_current=%.1f A per phase", this->charger_.max_current);
-  if (this->has_charger_ && this->charger_.has_connector) {
-    ESP_LOGCONFIG(TAG, "    Connector %u max_current=%.1f A", this->charger_.connector.id,
-                  this->charger_.connector.max_current);
-  }
   ESP_LOGCONFIG(TAG, "  Implemented messages: BootNotification");
 }
 
 float OcppServer::get_setup_priority() const { return setup_priority::WIFI - 1.0f; }
-
-void OcppServer::set_current_limit(uint8_t connector_id, float current_limit) {
-  if (current_limit <= 0) {
-    ESP_LOGW(TAG, "Ignoring non-positive current limit %.1f A", current_limit);
-    return;
-  }
-
-  float limit = current_limit;
-  auto *connector = this->find_connector_(connector_id);
-  if (this->has_charger_ && connector == nullptr) {
-    ESP_LOGW(TAG, "Cannot store current limit; connector %u is not configured for charge point '%s'", connector_id,
-             this->charge_point_id_.c_str());
-    return;
-  }
-  if (connector != nullptr && limit > connector->max_current) {
-    ESP_LOGW(TAG, "Clamping stored current limit %.1f A to configured connector maximum %.1f A", limit,
-             connector->max_current);
-    limit = connector->max_current;
-  }
-
-  if (connector != nullptr) {
-    connector->preferred_current_limit = limit;
-    connector->has_preferred_current_limit = true;
-    connector->charging_profile_applied = false;
-    const bool allocation_updated = this->update_connector_allocation_(connector);
-    if (connector->current_limit_number != nullptr)
-      connector->current_limit_number->publish_state(limit);
-    if (!allocation_updated)
-      return;
-  }
-  ESP_LOGI(TAG, "Stored current limit %.1f A for connector %u; current-limit OCPP messages are not supported", limit,
-           connector_id);
-}
-
-void OcppServer::set_connector_enabled(uint8_t connector_id, bool enabled) {
-  auto *connector = this->find_connector_(connector_id);
-  if (this->has_charger_ && connector == nullptr) {
-    ESP_LOGW(TAG, "Cannot %s connector; connector %u is not configured for charge point '%s'",
-             enabled ? "enable" : "disable", connector_id, this->charge_point_id_.c_str());
-    return;
-  }
-  if (connector == nullptr)
-    return;
-
-  connector->enabled = enabled;
-  connector->charging_profile_applied = false;
-  const bool allocation_updated = this->update_connector_allocation_(connector);
-  if (connector->enabled_switch != nullptr)
-    connector->enabled_switch->publish_state(enabled);
-
-  if (this->client_ == nullptr || !this->handshake_done_) {
-    ESP_LOGI(TAG, "Stored connector %u as %s; no OCPP wallbox is connected", connector_id,
-             enabled ? "enabled" : "disabled");
-    return;
-  }
-  ESP_LOGI(TAG, "Stored connector %u as %s; connector control OCPP messages are not supported", connector_id,
-           enabled ? "enabled" : "disabled");
-  (void) allocation_updated;
-}
-
-void OcppServer::restart_connector_session(uint8_t connector_id) {
-  ESP_LOGW(TAG, "Connector session restart is not supported; only BootNotification is implemented (connectorId=%u)",
-           connector_id);
-}
 
 void OcppServer::accept_client_() {
   sockaddr_storage addr{};
@@ -417,46 +236,6 @@ bool OcppServer::request_matches_path_(const std::string &uri) {
   return true;
 }
 
-ConfiguredCharger *OcppServer::find_charger_(const std::string &charge_point_id) {
-  if (this->has_charger_ && charger_has_charge_point_id(this->charger_, charge_point_id))
-    return &this->charger_;
-  return nullptr;
-}
-
-const ConfiguredCharger *OcppServer::find_charger_(const std::string &charge_point_id) const {
-  if (this->has_charger_ && charger_has_charge_point_id(this->charger_, charge_point_id))
-    return &this->charger_;
-  return nullptr;
-}
-
-ConfiguredConnector *OcppServer::find_connector_(int connector_id) {
-  auto *charger = this->find_charger_(this->charge_point_id_);
-  if (charger == nullptr && this->has_charger_ && this->charge_point_id_.empty())
-    charger = &this->charger_;
-  return find_configured_connector(charger, connector_id);
-}
-
-const ConfiguredConnector *OcppServer::find_connector_(int connector_id) const {
-  const auto *charger = this->find_charger_(this->charge_point_id_);
-  if (charger == nullptr && this->has_charger_ && this->charge_point_id_.empty())
-    charger = &this->charger_;
-  return find_configured_connector(charger, connector_id);
-}
-
-bool OcppServer::update_connector_allocation_(ConfiguredConnector *connector) {
-  if (connector == nullptr)
-    return false;
-
-  const float available_current = connector->max_current;
-  update_connector_allocation(connector, available_current, this->allocation_min_current_);
-  return true;
-}
-
-void OcppServer::publish_connector_state_if_configured_(ConfiguredConnector *connector) {
-  if (connector != nullptr && connector->state_sensor != nullptr)
-    connector->state_sensor->publish_state(connector->state);
-}
-
 void OcppServer::handle_http_handshake_() {
   size_t header_end = this->rx_buffer_.find("\r\n\r\n");
   if (header_end == std::string::npos)
@@ -478,14 +257,6 @@ void OcppServer::handle_http_handshake_() {
     this->close_client_();
     return;
   }
-  const auto *configured_charger = this->find_charger_(this->charge_point_id_);
-  if (this->has_charger_ && configured_charger == nullptr) {
-    ESP_LOGW(TAG, "Rejecting unknown OCPP charge point '%s'", this->charge_point_id_.c_str());
-    static constexpr const char *FORBIDDEN = "HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n";
-    this->client_->write(FORBIDDEN, std::strlen(FORBIDDEN));
-    this->close_client_();
-    return;
-  }
 
   std::string response = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n";
   response += "Sec-WebSocket-Accept: " + this->websocket_accept_key_(key) + "\r\n";
@@ -495,9 +266,6 @@ void OcppServer::handle_http_handshake_() {
   this->client_->write(response.data(), response.size());
   this->handshake_done_ = true;
   ESP_LOGI(TAG, "OCPP WebSocket accepted for charge point '%s'", this->charge_point_id_.c_str());
-  if (configured_charger != nullptr) {
-    ESP_LOGI(TAG, "Using configured charger '%s'", configured_charger->charge_point_id.c_str());
-  }
 }
 
 std::string OcppServer::websocket_accept_key_(const std::string &client_key) {

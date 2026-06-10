@@ -119,25 +119,26 @@ sensor:
 
 ocpp:
   id: ocpp_server
-  site:
-    phases: 3
-    voltage: 230
-  allocation:
-    strategy: equal
-    min_current: 6
 
-  chargers:
-    - id: garage
-      charge_point_id: A99999
-      max_current: 32
-      phases: 3
-      connectors:
-        - id: 1
-          current_limit:
-            name: connector_current_limit
-            initial_value: 32
-            min_value: 6
-            max_value: 32
-            step: 1
-          state:
-            name: connector_state
+  # site:
+  #   phases: 3
+  #   voltage: 230
+  # allocation:
+  #   strategy: equal
+  #   min_current: 6
+
+  # chargers:
+  #   - id: garage
+  #     charge_point_id: A99999
+  #     max_current: 32
+  #     phases: 3
+  #     connectors:
+  #       - id: 1
+  #         current_limit:
+  #           name: connector_current_limit
+  #           initial_value: 32
+  #           min_value: 6
+  #           max_value: 32
+  #           step: 1
+  #         state:
+  #           name: connector_state

@@ -1,18 +1,11 @@
 #pragma once
 
-#include "charger.h"
-#include "site.h"
-
 #include "esphome/components/json/json_util.h"
-#include "esphome/components/number/number.h"
-#include "esphome/components/sensor/sensor.h"
 #include "esphome/components/socket/socket.h"
-#include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/core/component.h"
 
 #ifdef USE_OCPP
 
-#include <array>
 #include <memory>
 #include <string>
 
@@ -24,30 +17,11 @@ class OcppServer : public Component {
  public:
   void set_port(uint16_t port) { this->port_ = port; }
   void set_path(std::string path);
-  void set_allocation_min_current(float min_current) { this->allocation_min_current_ = min_current; }
-  void set_site(uint8_t phases, float voltage);
-  void add_charger(std::string charge_point_id, float max_current, uint8_t phases = 3);
-  void set_charger_phase_mapping(std::string charge_point_id, uint8_t charger_phase, uint8_t site_phase);
-  void add_connector(std::string charge_point_id, uint8_t connector_id, float max_current);
-  void set_connector_current_sensor(std::string charge_point_id, uint8_t connector_id, sensor::Sensor *current_sensor);
-  void set_connector_state_sensor(std::string charge_point_id, uint8_t connector_id,
-                                  text_sensor::TextSensor *state_sensor);
-  void set_connector_current_limit_number(std::string charge_point_id, uint8_t connector_id,
-                                          OcppCurrentLimitNumber *current_limit_number, float initial_limit);
-  void apply_connector_current_limit_restore(uint8_t connector_id, float current_limit);
-  void set_connector_enabled_switch(std::string charge_point_id, uint8_t connector_id,
-                                    OcppConnectorEnabledSwitch *enabled_switch);
-  void set_connector_restart_button(std::string charge_point_id, uint8_t connector_id,
-                                    OcppConnectorButton *restart_button);
 
   void setup() override;
   void loop() override;
   void dump_config() override;
   float get_setup_priority() const override;
-
-  void set_current_limit(uint8_t connector_id, float current_limit);
-  void set_connector_enabled(uint8_t connector_id, bool enabled);
-  void restart_connector_session(uint8_t connector_id);
 
  protected:
   void accept_client_();
@@ -58,20 +32,10 @@ class OcppServer : public Component {
 #include "protocol.h"
 
   bool request_matches_path_(const std::string &uri);
-  ConfiguredCharger *find_charger_(const std::string &charge_point_id);
-  const ConfiguredCharger *find_charger_(const std::string &charge_point_id) const;
-  ConfiguredConnector *find_connector_(int connector_id);
-  const ConfiguredConnector *find_connector_(int connector_id) const;
-  bool update_connector_allocation_(ConfiguredConnector *connector);
-  void publish_connector_state_if_configured_(ConfiguredConnector *connector);
   std::string websocket_accept_key_(const std::string &client_key);
 
   uint16_t port_{9000};
-  float allocation_min_current_{6.0f};
   std::string path_{"/ocpp"};
-  ConfiguredSite site_;
-  ConfiguredCharger charger_;
-  bool has_charger_{false};
   std::unique_ptr<socket::ListenSocket> server_;
 };
 

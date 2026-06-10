@@ -8,14 +8,6 @@
 #include "esphome/core/defines.h"
 #endif
 
-#ifdef USE_OCPP
-#include "esphome/components/button/button.h"
-#include "esphome/components/number/number.h"
-#include "esphome/components/switch/switch.h"
-#include "esphome/components/text_sensor/text_sensor.h"
-#include "esphome/core/preferences.h"
-#endif
-
 namespace esphome::sensor {
 class Sensor;
 }  // namespace esphome::sensor
@@ -30,58 +22,6 @@ class OcppServer;
 class OcppCurrentLimitNumber;
 class OcppConnectorEnabledSwitch;
 class OcppConnectorButton;
-
-#ifdef USE_OCPP
-class OcppConnectorEnabledSwitch : public switch_::Switch {
- public:
-  void set_parent(OcppServer *parent, uint8_t connector_id) {
-    this->parent_ = parent;
-    this->connector_id_ = connector_id;
-  }
-
- protected:
-  void write_state(bool state) override;
-
-  OcppServer *parent_{nullptr};
-  uint8_t connector_id_{0};
-};
-
-class OcppConnectorButton : public button::Button {
- public:
-  void set_parent(OcppServer *parent, uint8_t connector_id) {
-    this->parent_ = parent;
-    this->connector_id_ = connector_id;
-  }
-
- protected:
-  void press_action() override;
-
-  OcppServer *parent_{nullptr};
-  uint8_t connector_id_{0};
-};
-
-class OcppCurrentLimitNumber : public number::Number, public Component {
- public:
-  void set_parent(OcppServer *parent, uint8_t connector_id) {
-    this->parent_ = parent;
-    this->connector_id_ = connector_id;
-  }
-  void set_initial_value(float initial_value) { this->initial_value_ = initial_value; }
-  void set_restore_value(bool restore_value) { this->restore_value_ = restore_value; }
-
-  void setup() override;
-  float get_setup_priority() const override { return setup_priority::HARDWARE; }
-
- protected:
-  void control(float value) override;
-
-  OcppServer *parent_{nullptr};
-  uint8_t connector_id_{0};
-  float initial_value_{0.0f};
-  bool restore_value_{false};
-  ESPPreferenceObject pref_;
-};
-#endif
 
 struct ConfiguredConnector {
   uint8_t id;
