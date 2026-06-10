@@ -1,8 +1,5 @@
-#include "esphome/components/ocpp/connector.h"
-
 #include <cstdlib>
 #include <iostream>
-#include <limits>
 
 template<typename T> void assert_equal(const char *description, const T &actual, const T &expected) {
   if (actual == expected)
@@ -14,7 +11,7 @@ template<typename T> void assert_equal(const char *description, const T &actual,
 }
 
 int sum(int a, int b) {
-    return a + b;
+  return a + b;
 }
 
 int main() {
