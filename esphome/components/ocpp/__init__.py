@@ -39,7 +39,6 @@ CONF_CURRENT_LIMIT = "current_limit"
 CONF_DRAWN_CURRENT = "used_current"
 CONF_DRAWN_CURRENT_SOURCE = "drawn_current_source"
 CONF_GRID = "grid"
-CONF_HEADROOM_CURRENT = "headroom_current"
 CONF_L1 = "l1"
 CONF_L2 = "l2"
 CONF_L3 = "l3"
@@ -225,12 +224,6 @@ def _validate_site(value):
     power = grid.get(CONF_POWER, {})
     storage = value.get(CONF_STORAGE, {})
     storage_power = storage.get(CONF_POWER, {})
-    headroom_current = value.get(CONF_HEADROOM_CURRENT, {})
-    if not isinstance(headroom_current, Mapping):
-        headroom_current = {}
-    grid_headroom_current = grid.get(CONF_HEADROOM_CURRENT, {})
-    if not isinstance(grid_headroom_current, Mapping):
-        grid_headroom_current = {}
     drawn_current = value.get(CONF_DRAWN_CURRENT, {})
     if not isinstance(drawn_current, Mapping):
         drawn_current = {}
@@ -242,10 +235,6 @@ def _validate_site(value):
     if phases == 1:
         if CONF_L2 in power or CONF_L3 in power:
             raise cv.Invalid("single-phase sites may only configure grid.power.l1")
-        if CONF_L2 in headroom_current or CONF_L3 in headroom_current:
-            raise cv.Invalid("single-phase sites may only configure headroom_current.l1")
-        if CONF_L2 in grid_headroom_current or CONF_L3 in grid_headroom_current:
-            raise cv.Invalid("single-phase sites may only configure grid.headroom_current.l1")
         if CONF_L2 in drawn_current or CONF_L3 in drawn_current:
             raise cv.Invalid("single-phase sites may only configure used_current.l1")
         if has_aggregate:
@@ -368,7 +357,6 @@ GRID_SCHEMA = cv.Schema(
         cv.Required(CONF_MAX_POWER): cv.positive_float,
         cv.Optional(CONF_MAX_PHASE_IMBALANCE): cv.positive_float,
         cv.Required(CONF_MAX_CURRENT): cv.positive_float,
-        cv.Optional(CONF_HEADROOM_CURRENT): DRAWN_CURRENT_SCHEMA,
         cv.Optional(CONF_POWER): GRID_POWER_SCHEMA,
     }
 )
@@ -380,7 +368,6 @@ SITE_SCHEMA = cv.All(
             cv.Required(CONF_VOLTAGE): cv.positive_float,
             cv.Optional(CONF_POLICY, default="normal"): cv.one_of("normal", "solar", lower=True),
             cv.Optional(CONF_SOLAR, default={}): SOLAR_SCHEMA,
-            cv.Optional(CONF_HEADROOM_CURRENT): DRAWN_CURRENT_SCHEMA,
             cv.Optional(CONF_DRAWN_CURRENT): DRAWN_CURRENT_SCHEMA,
             cv.Optional(CONF_GRID): GRID_SCHEMA,
             cv.Optional(CONF_STORAGE): STORAGE_SCHEMA,
@@ -504,15 +491,6 @@ async def to_code(config):
                         num, export_margin_power[CONF_INITIAL_VALUE]
                     )
                 )
-        if headroom_current_config := site.get(CONF_HEADROOM_CURRENT):
-            scalar_config, phase_configs = _split_drawn_current_config(headroom_current_config)
-            if scalar_config:
-                sens = await sensor.new_sensor(scalar_config)
-                cg.add(var.set_site_headroom_current_max_sensor(sens))
-            for index, phase in enumerate(PHASE_KEYS):
-                if phase in phase_configs:
-                    sens = await sensor.new_sensor(phase_configs[phase])
-                    cg.add(var.set_site_headroom_current_sensor(index, sens))
         if drawn_current_config := site.get(CONF_DRAWN_CURRENT):
             scalar_config, phase_configs = _split_drawn_current_config(drawn_current_config)
             if scalar_config:
@@ -527,15 +505,6 @@ async def to_code(config):
             if CONF_MAX_PHASE_IMBALANCE in grid:
                 cg.add(var.set_grid_max_phase_imbalance(grid[CONF_MAX_PHASE_IMBALANCE]))
             cg.add(var.set_grid_max_current(grid[CONF_MAX_CURRENT]))
-            if headroom_current_config := grid.get(CONF_HEADROOM_CURRENT):
-                scalar_config, phase_configs = _split_drawn_current_config(headroom_current_config)
-                if scalar_config:
-                    sens = await sensor.new_sensor(scalar_config)
-                    cg.add(var.set_grid_headroom_current_max_sensor(sens))
-                for index, phase in enumerate(PHASE_KEYS):
-                    if phase in phase_configs:
-                        sens = await sensor.new_sensor(phase_configs[phase])
-                        cg.add(var.set_grid_headroom_current_sensor(index, sens))
             if power := grid.get(CONF_POWER):
                 if CONF_L1 in power:
                     sens = await cg.get_variable(power[CONF_L1])

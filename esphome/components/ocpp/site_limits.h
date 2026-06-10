@@ -36,10 +36,10 @@ struct SitePowerMeasurements {
   std::optional<float> storage_energy_kwh{};
 };
 
-struct SiteLoadHeadroomCurrent {
-  float grid_headroom{0.0f};
-  float solar_headroom{std::numeric_limits<float>::quiet_NaN()};
-  float site_headroom{0.0f};
+struct SiteLoadAvailableCurrent {
+  float grid_available{0.0f};
+  float solar_available{std::numeric_limits<float>::quiet_NaN()};
+  float site_available{0.0f};
 };
 
 inline uint8_t site_active_phases(const SiteLimitConfig &config) { return config.phases == 3 ? 3 : 1; }
@@ -118,43 +118,43 @@ inline float site_solar_surplus_current_for_load(const SiteLimitConfig &config,
   const auto grid_power = grid_phase_power(site_grid_limit_config(config), site_grid_power_measurements(measurements));
   const auto storage_power = site_storage_phase_power(config, measurements);
   const float margin_per_used_phase = grid_divide_or_zero(config.solar_export_margin_power, used_phase_count);
-  float headroom_power = std::numeric_limits<float>::infinity();
+  float available_power = std::numeric_limits<float>::infinity();
 
   for (uint8_t i = 0; i < active_phases; i++) {
     if (!used_phases[i])
       continue;
     const float storage_discharge_power = grid_clamp_non_negative(storage_power[i]);
-    const float phase_headroom_power = -grid_power[i] - margin_per_used_phase - storage_discharge_power;
-    headroom_power = std::min(headroom_power, phase_headroom_power);
+    const float phase_available_power = -grid_power[i] - margin_per_used_phase - storage_discharge_power;
+    available_power = std::min(available_power, phase_available_power);
   }
-  return std::isfinite(headroom_power) ? headroom_power / config.voltage : 0.0f;
+  return std::isfinite(available_power) ? available_power / config.voltage : 0.0f;
 }
 
-inline SiteLoadHeadroomCurrent site_load_headroom_current(const SiteLimitConfig &config,
-                                                          const SitePowerMeasurements &measurements,
-                                                          const std::array<bool, 3> &used_phases) {
-  const float grid_headroom = grid_headroom_current_for_load(site_grid_limit_config(config),
-                                                            site_grid_power_measurements(measurements), used_phases);
-  SiteLoadHeadroomCurrent headroom;
-  headroom.grid_headroom = grid_headroom;
+inline SiteLoadAvailableCurrent site_load_available_current(const SiteLimitConfig &config,
+                                                            const SitePowerMeasurements &measurements,
+                                                            const std::array<bool, 3> &used_phases) {
+  const float grid_available = grid_available_current_for_load(site_grid_limit_config(config),
+                                                              site_grid_power_measurements(measurements), used_phases);
+  SiteLoadAvailableCurrent available;
+  available.grid_available = grid_available;
   if (config.energy_policy != SiteEnergyPolicy::SOLAR)
-    headroom.site_headroom = grid_headroom;
+    available.site_available = grid_available;
   else {
-    const float solar_headroom = site_solar_surplus_current_for_load(config, measurements, used_phases);
-    headroom.solar_headroom = solar_headroom;
-    if (!std::isfinite(grid_headroom))
-      headroom.site_headroom = solar_headroom;
-    else if (!std::isfinite(solar_headroom))
-      headroom.site_headroom = grid_headroom;
+    const float solar_available = site_solar_surplus_current_for_load(config, measurements, used_phases);
+    available.solar_available = solar_available;
+    if (!std::isfinite(grid_available))
+      available.site_available = solar_available;
+    else if (!std::isfinite(solar_available))
+      available.site_available = grid_available;
     else
-      headroom.site_headroom = std::min(grid_headroom, solar_headroom);
+      available.site_available = std::min(grid_available, solar_available);
   }
-  return headroom;
+  return available;
 }
 
 inline float site_available_current_for_load(const SiteLimitConfig &config, const SitePowerMeasurements &measurements,
                                              const std::array<bool, 3> &used_phases) {
-  return site_load_headroom_current(config, measurements, used_phases).site_headroom;
+  return site_load_available_current(config, measurements, used_phases).site_available;
 }
 
 inline std::vector<float> site_phase_power(const SiteLimitConfig &config, const SitePowerMeasurements &measurements) {
@@ -175,28 +175,16 @@ inline std::vector<float> site_phase_power(const SiteLimitConfig &config, const 
   return power;
 }
 
-inline std::vector<float> site_headroom_current_per_phase(const SiteLimitConfig &config,
-                                                          const SitePowerMeasurements &measurements = {}) {
+inline std::vector<float> example_site_spare_current_per_phase(const SiteLimitConfig &config,
+                                                               const SitePowerMeasurements &measurements = {}) {
   const uint8_t active_phases = site_active_phases(config);
   std::vector<float> current(active_phases, 0.0f);
-  if (config.energy_policy != SiteEnergyPolicy::SOLAR) {
-    const auto headroom_current = grid_headroom_current(site_grid_limit_config(config),
-                                                        site_grid_power_measurements(measurements));
-    for (uint8_t i = 0; i < active_phases; i++)
-      current[i] = headroom_current[i];
-    return current;
-  }
   for (uint8_t i = 0; i < active_phases; i++) {
     std::array<bool, 3> used_phases{};
     used_phases[i] = true;
     current[i] = site_available_current_for_load(config, measurements, used_phases);
   }
   return current;
-}
-
-inline std::vector<float> example_site_spare_current_per_phase(const SiteLimitConfig &config,
-                                                               const SitePowerMeasurements &measurements = {}) {
-  return site_headroom_current_per_phase(config, measurements);
 }
 
 }  // namespace esphome::ocpp

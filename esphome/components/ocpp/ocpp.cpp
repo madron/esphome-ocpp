@@ -240,7 +240,18 @@ void OcppServer::set_site_energy_policy(std::string policy) {
 
 void OcppServer::set_solar_export_margin_power(float export_margin_power) {
   this->site_.limits.solar_export_margin_power = std::max(export_margin_power, 0.0f);
-  this->update_and_publish_site_headroom_current_if_configured_();
+  if (this->has_charger_ && this->charger_.has_connector) {
+    auto *connector = &this->charger_.connector;
+    const float previous_allocated_current = connector->allocated_current;
+    const bool allocation_updated = this->update_connector_allocation_(connector);
+    if (allocation_updated)
+      this->publish_connector_allocation_if_configured_(connector);
+    if (this->client_ != nullptr && this->handshake_done_ && connector->has_active_transaction && allocation_updated &&
+        connector->allocated_current != previous_allocated_current) {
+      connector->charging_profile_applied = false;
+      this->send_preferred_current_limit_if_needed_(connector->id);
+    }
+  }
 }
 
 void OcppServer::set_solar_export_margin_power_number(OcppSolarExportMarginNumber *number, float initial_value) {
@@ -311,18 +322,6 @@ void OcppServer::set_grid_max_phase_imbalance(float max_phase_imbalance) {
 
 void OcppServer::set_grid_max_current(float max_current) {
   this->site_.limits.grid_max_current = max_current;
-}
-
-void OcppServer::set_grid_headroom_current_sensor(uint8_t phase, sensor::Sensor *headroom_current_sensor) {
-  if (phase >= this->site_.grid_headroom_current_sensors.size())
-    return;
-  this->site_.grid_headroom_current_sensors[phase] = headroom_current_sensor;
-}
-
-void OcppServer::set_site_headroom_current_sensor(uint8_t phase, sensor::Sensor *headroom_current_sensor) {
-  if (phase >= this->site_.headroom_current_sensors.size())
-    return;
-  this->site_.headroom_current_sensors[phase] = headroom_current_sensor;
 }
 
 void OcppServer::set_site_drawn_current_sensor(uint8_t phase, sensor::Sensor *drawn_current_sensor) {
@@ -551,10 +550,6 @@ void OcppServer::setup() {
     this->update_charger_drawn_current_(&this->charger_);
     this->publish_charger_drawn_current_if_configured_(&this->charger_);
   }
-  this->update_grid_headroom_current_();
-  this->publish_grid_headroom_current_if_configured_();
-  this->update_site_headroom_current_();
-  this->publish_site_headroom_current_if_configured_();
   this->update_site_drawn_current_();
   this->publish_site_drawn_current_if_configured_();
   if (this->has_charger_ && this->charger_.has_connector) {
@@ -581,8 +576,6 @@ void OcppServer::loop() {
   this->run_pending_allocation_evaluation_if_ready_();
   if (this->has_charger_)
     this->update_and_publish_charger_drawn_current_if_configured_(&this->charger_);
-  this->update_and_publish_grid_headroom_current_if_configured_();
-  this->update_and_publish_site_headroom_current_if_configured_();
   this->update_and_publish_site_drawn_current_if_configured_();
 }
 
@@ -1106,49 +1099,10 @@ SitePowerMeasurements OcppServer::site_power_measurements_() const {
   return measurements;
 }
 
-bool OcppServer::update_grid_headroom_current_() {
-  return update_grid_headroom_current(&this->site_, this->site_power_measurements_());
-}
-
-void OcppServer::update_and_publish_grid_headroom_current_if_configured_() {
-  if (this->update_grid_headroom_current_())
-    this->publish_grid_headroom_current_if_configured_();
-}
-
-void OcppServer::publish_grid_headroom_current_if_configured_() {
-  publish_grid_headroom_current_if_configured(&this->site_);
-}
-
-bool OcppServer::update_site_headroom_current_() {
-  return update_site_headroom_current(&this->site_, this->site_power_measurements_());
-}
-
-void OcppServer::update_and_publish_site_headroom_current_if_configured_() {
-  if (this->update_site_headroom_current_()) {
-    this->publish_site_headroom_current_if_configured_();
-    if (this->has_charger_ && this->charger_.has_connector) {
-      auto *connector = &this->charger_.connector;
-      const float previous_allocated_current = connector->allocated_current;
-      const bool allocation_updated = this->update_connector_allocation_(connector);
-      if (allocation_updated)
-        this->publish_connector_allocation_if_configured_(connector);
-      if (this->client_ != nullptr && this->handshake_done_ && connector->has_active_transaction &&
-          allocation_updated && connector->allocated_current != previous_allocated_current) {
-        connector->charging_profile_applied = false;
-        this->send_preferred_current_limit_if_needed_(connector->id);
-      }
-    }
-  }
-}
-
-void OcppServer::publish_site_headroom_current_if_configured_() {
-  publish_site_headroom_current_if_configured(&this->site_);
-}
-
 float OcppServer::site_available_current_(const ConfiguredCharger &charger, const ConfiguredConnector *connector) const {
-  return site_load_headroom_current(this->site_.limits, this->site_power_measurements_(),
-                                    charger_site_load_phases(charger, connector))
-      .site_headroom;
+  return site_load_available_current(this->site_.limits, this->site_power_measurements_(),
+                                     charger_site_load_phases(charger, connector))
+      .site_available;
 }
 
 uint8_t OcppServer::active_connector_count_(const ConfiguredConnector *prospective_connector) const {
@@ -1175,11 +1129,11 @@ bool OcppServer::update_connector_allocation_(ConfiguredConnector *connector, bo
   float site_available_current = 0.0f;
   float connector_current = 0.0f;
   uint8_t active_connector_count = 0;
-  SiteLoadHeadroomCurrent load_headroom;
+  SiteLoadAvailableCurrent load_available;
   if (this->has_charger_) {
     const auto site_load_phases = charger_site_load_phases(this->charger_, connector);
-    load_headroom = site_load_headroom_current(this->site_.limits, this->site_power_measurements_(), site_load_phases);
-    site_available_current = load_headroom.site_headroom;
+    load_available = site_load_available_current(this->site_.limits, this->site_power_measurements_(), site_load_phases);
+    site_available_current = load_available.site_available;
     connector_current = this->connector_current_for_allocation_(*connector);
     active_connector_count = this->active_connector_count_(include_connector_as_active ? connector : nullptr);
     available_current = equal_available_current(site_available_current, connector_current, active_connector_count);
@@ -1192,19 +1146,19 @@ bool OcppServer::update_connector_allocation_(ConfiguredConnector *connector, bo
     if (this->site_.limits.energy_policy == SiteEnergyPolicy::SOLAR) {
       ESP_LOGI(TAG,
                "Allocation decision: connectorId=%u enabled=%s active=%s include_as_active=%s active_count=%u "
-               "grid_headroom=%.1f A solar_headroom=%.1f A site_headroom=%.1f A connector_current=%.1f A "
+               "grid_available=%.1f A solar_available=%.1f A site_available=%.1f A connector_current=%.1f A "
                "available=%.1f->%.1f A preferred_limit=%.1f A allocated=%.1f->%.1f A",
                connector->id, YESNO(connector->enabled), YESNO(connector->has_active_transaction),
-               YESNO(include_connector_as_active), active_connector_count, load_headroom.grid_headroom,
-               load_headroom.solar_headroom, site_available_current, connector_current, previous_available_current,
+               YESNO(include_connector_as_active), active_connector_count, load_available.grid_available,
+               load_available.solar_available, site_available_current, connector_current, previous_available_current,
                connector->available_current, preferred_limit, previous_allocated_current, connector->allocated_current);
     } else {
       ESP_LOGI(TAG,
                "Allocation decision: connectorId=%u enabled=%s active=%s include_as_active=%s active_count=%u "
-               "grid_headroom=%.1f A site_headroom=%.1f A connector_current=%.1f A available=%.1f->%.1f A "
+               "grid_available=%.1f A site_available=%.1f A connector_current=%.1f A available=%.1f->%.1f A "
                "preferred_limit=%.1f A allocated=%.1f->%.1f A",
                connector->id, YESNO(connector->enabled), YESNO(connector->has_active_transaction),
-               YESNO(include_connector_as_active), active_connector_count, load_headroom.grid_headroom,
+               YESNO(include_connector_as_active), active_connector_count, load_available.grid_available,
                site_available_current, connector_current, previous_available_current, connector->available_current,
                preferred_limit, previous_allocated_current, connector->allocated_current);
     }

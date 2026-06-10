@@ -53,8 +53,8 @@ inline float grid_current_max(const std::array<float, 3> &current) {
   return std::max(current[0], std::max(current[1], current[2]));
 }
 
-inline float grid_headroom_current_for_load(const GridLimitConfig &config, const GridPowerMeasurements &measurements,
-                                            const std::array<bool, 3> &used_phases) {
+inline float grid_available_current_for_load(const GridLimitConfig &config, const GridPowerMeasurements &measurements,
+                                             const std::array<bool, 3> &used_phases) {
   const uint8_t active_phases = grid_active_phases(config);
   uint8_t used_phase_count = 0;
   for (uint8_t i = 0; i < active_phases; i++) {
@@ -67,14 +67,14 @@ inline float grid_headroom_current_for_load(const GridLimitConfig &config, const
     return 0.0f;
 
   const auto power = grid_phase_power(config, measurements);
-  float headroom_current = std::numeric_limits<float>::infinity();
+  float available_current = std::numeric_limits<float>::infinity();
 
   if (config.max_power.has_value()) {
     float total_power = 0.0f;
     for (uint8_t i = 0; i < active_phases; i++)
       total_power += power[i];
     const float remaining_power = grid_clamp_non_negative(config.max_power.value() - total_power);
-    headroom_current = std::min(headroom_current, remaining_power / (config.voltage * used_phase_count));
+    available_current = std::min(available_current, remaining_power / (config.voltage * used_phase_count));
   }
 
   if (config.max_current.has_value()) {
@@ -82,7 +82,7 @@ inline float grid_headroom_current_for_load(const GridLimitConfig &config, const
       if (!used_phases[i])
         continue;
       const float used_current = power[i] / config.voltage;
-      headroom_current = std::min(headroom_current, grid_clamp_non_negative(config.max_current.value() - used_current));
+      available_current = std::min(available_current, grid_clamp_non_negative(config.max_current.value() - used_current));
     }
   }
 
@@ -93,7 +93,7 @@ inline float grid_headroom_current_for_load(const GridLimitConfig &config, const
     if (max_power - min_power > max_phase_imbalance)
       return 0.0f;
 
-    float headroom_power = std::numeric_limits<float>::infinity();
+    float available_power = std::numeric_limits<float>::infinity();
     for (uint8_t high_phase = 0; high_phase < active_phases; high_phase++) {
       for (uint8_t low_phase = 0; low_phase < active_phases; low_phase++) {
         const float power_difference = power[high_phase] - power[low_phase];
@@ -103,66 +103,15 @@ inline float grid_headroom_current_for_load(const GridLimitConfig &config, const
           continue;
         }
         if (used_phases[high_phase]) {
-          headroom_power = std::min(headroom_power,
-                                    grid_clamp_non_negative(max_phase_imbalance - power_difference));
+          available_power = std::min(available_power,
+                                     grid_clamp_non_negative(max_phase_imbalance - power_difference));
         }
       }
     }
-    headroom_current = std::min(headroom_current, headroom_power / config.voltage);
+    available_current = std::min(available_current, available_power / config.voltage);
   }
 
-  return headroom_current;
-}
-
-// Grid headroom is pure grid/source headroom from grid limits and signed grid power.
-// Site headroom currently mirrors this value; future site logic can combine grid, storage, and other sources.
-inline std::array<float, 3> grid_headroom_current(const GridLimitConfig &config,
-                                                 const GridPowerMeasurements &measurements = {}) {
-  const uint8_t active_phases = grid_active_phases(config);
-  std::array<float, 3> headroom_current{};
-  for (uint8_t i = 0; i < active_phases; i++)
-    headroom_current[i] = std::numeric_limits<float>::infinity();
-  if (config.voltage <= 0.0f) {
-    for (uint8_t i = 0; i < active_phases; i++)
-      headroom_current[i] = 0.0f;
-    return headroom_current;
-  }
-
-  const auto power = grid_phase_power(config, measurements);
-
-  if (config.max_power.has_value()) {
-    float total_power = 0.0f;
-    for (uint8_t i = 0; i < active_phases; i++)
-      total_power += power[i];
-    const float remaining_power = grid_clamp_non_negative(config.max_power.value() - total_power);
-    const float balanced_headroom_current = remaining_power / (config.voltage * active_phases);
-    for (uint8_t i = 0; i < active_phases; i++)
-      headroom_current[i] = std::min(headroom_current[i], balanced_headroom_current);
-  }
-
-  if (config.max_current.has_value()) {
-    for (uint8_t i = 0; i < active_phases; i++) {
-      const float used_current = power[i] / config.voltage;
-      const float phase_headroom_current = grid_clamp_non_negative(config.max_current.value() - used_current);
-      headroom_current[i] = std::min(headroom_current[i], phase_headroom_current);
-    }
-  }
-
-  if (active_phases == 3 && config.max_phase_imbalance.has_value()) {
-    const float min_power = std::min(power[0], std::min(power[1], power[2]));
-    const float max_power = std::max(power[0], std::max(power[1], power[2]));
-    if (max_power - min_power > config.max_phase_imbalance.value()) {
-      for (uint8_t i = 0; i < active_phases; i++)
-        headroom_current[i] = std::min(headroom_current[i], 0.0f);
-      return headroom_current;
-    }
-    for (uint8_t i = 0; i < active_phases; i++) {
-      const float headroom_power = grid_clamp_non_negative(config.max_phase_imbalance.value() - (power[i] - min_power));
-      headroom_current[i] = std::min(headroom_current[i], headroom_power / config.voltage);
-    }
-  }
-
-  return headroom_current;
+  return available_current;
 }
 
 }  // namespace esphome::ocpp
