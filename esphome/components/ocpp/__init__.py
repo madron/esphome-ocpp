@@ -51,4 +51,3 @@ async def to_code(config):
     server = config[CONF_SERVER]
     cg.add(var.set_port(server[CONF_PORT]))
     cg.add(var.set_path(server[CONF_PATH]))
-    cg.add_define("USE_OCPP")

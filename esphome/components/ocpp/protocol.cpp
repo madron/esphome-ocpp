@@ -1,7 +1,5 @@
 #include "ocpp.h"
 
-#ifdef USE_OCPP
-
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
@@ -86,5 +84,3 @@ void OcppComponent::send_ocpp_error_(const std::string &unique_id, const char *c
 }
 
 }  // namespace esphome::ocpp
-
-#endif  // USE_OCPP

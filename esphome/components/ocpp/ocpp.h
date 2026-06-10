@@ -4,8 +4,6 @@
 #include "esphome/components/socket/socket.h"
 #include "esphome/core/component.h"
 
-#ifdef USE_OCPP
-
 #include <memory>
 #include <string>
 
@@ -40,5 +38,3 @@ class OcppComponent : public Component {
 };
 
 }  // namespace esphome::ocpp
-
-#endif  // USE_OCPP

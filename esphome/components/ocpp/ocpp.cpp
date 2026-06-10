@@ -1,7 +1,5 @@
 #include "ocpp.h"
 
-#ifdef USE_OCPP
-
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
@@ -328,5 +326,3 @@ void OcppComponent::handle_ws_frames_() {
 }
 
 }  // namespace esphome::ocpp
-
-#endif  // USE_OCPP
