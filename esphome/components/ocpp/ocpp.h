@@ -73,6 +73,8 @@ class OcppServer : public Component {
   void add_charger(std::string charge_point_id, float max_current, uint8_t phases = 3);
   void set_charger_phase_mapping(std::string charge_point_id, uint8_t charger_phase, uint8_t site_phase);
   void set_charger_drawn_current_sensor(std::string charge_point_id, sensor::Sensor *drawn_current_sensor);
+  void set_charger_drawn_current_sensor(std::string charge_point_id, uint8_t phase,
+                                        sensor::Sensor *drawn_current_sensor);
   void set_charger_drawn_current_source_sensor(std::string charge_point_id, sensor::Sensor *drawn_current_source_sensor);
   void set_charger_drawn_current_source_phase_sensor(std::string charge_point_id, uint8_t phase,
                                                      sensor::Sensor *drawn_current_source_sensor);

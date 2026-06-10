@@ -58,27 +58,6 @@ external_components:
       path: ./esphome/components
 
 
-# udp:
-#   - id: udp_grid_power
-#     port: 18511
-
-# packet_transport:
-#   - platform: udp
-#     id: packet_transport_udp_grid_power
-#     udp_id: udp_grid_power
-#     providers:
-#       - name: garage
-#         encryption: !secret udp_grid_power_packet_transport_key
-
-# sensor:
-#   - platform: packet_transport
-#     transport_id: packet_transport_udp_grid_power
-#     provider: garage
-#     remote_id: wb1_power_grid
-#     id: grid_power_aggregate
-#     internal: true
-
-
 mqtt:
   broker: !secret mqtt_broker
   username: !secret mqtt_username
@@ -143,59 +122,25 @@ ocpp:
   site:
     phases: 3
     voltage: 230
-    policy: solar
-    solar:
-      export_margin_power:
-        name: solar_export_margin_power
-        min_value: 0
-        max_value: 1000
-        step: 50
-        initial_value: 300
-    headroom_current:
-      l1: site_headroom_current_l1
-      l2: site_headroom_current_l2
-      l3: site_headroom_current_l3
-    drawn_current:
-      name: site_drawn_current
-      l1: site_drawn_current_l1
-      l2: site_drawn_current_l2
-      l3: site_drawn_current_l3
-    grid:
-      max_current: 32
-      max_power: 10000
-      max_phase_imbalance: 6000
-      headroom_current:
-        l1: grid_headroom_current_l1
-        l2: grid_headroom_current_l2
-        l3: grid_headroom_current_l3
-      power:
-        l1: grid_power_l1
-        l2: grid_power_l2
-        l3: grid_power_l3
-    storage:
-      capacity: 20
-      energy: storage_soc
-      power:
-        aggregate: storage_power
+    used_current:
+      name: site_used_current
+      l1: site_used_current_l1
+      l2: site_used_current_l2
+      l3: site_used_current_l3
   allocation:
     strategy: equal
     min_current: 6
-    log_decisions: true
-    settle_delay:
-      name: allocation_settle_delay
-      initial_value: 2
-    settle_delay_per_amp:
-      name: allocation_settle_delay_per_amp
-      initial_value: 3
-    preference: first_connected
 
   chargers:
     - id: garage
       charge_point_id: A99999
       max_current: 32
       phases: 3
-      drawn_current:
-        name: charger_drawn_current
+      used_current:
+        name: charger_used_current
+        l1: charger_used_current_l1
+        l2: charger_used_current_l2
+        l3: charger_used_current_l3
       connectors:
         - id: 1
           current_limit:
@@ -203,21 +148,11 @@ ocpp:
             initial_value: 32
             min_value: 6
             max_value: 32
-            step: 0.5
+            step: 1
           state:
             name: connector_state
-          available_current:
-            name: connector_available_current
-          allocated_current:
-            name: connector_allocated_current
-          drawn_current:
-            name: connector_drawn_current
-            l1: connector_drawn_current_l1
-            l2: connector_drawn_current_l2
-            l3: connector_drawn_current_l3
-          power:
-            name: connector_power
-          restart:
-            name: connector_restart
-          enabled:
-            name: connector_enabled
+          used_current:
+            name: connector_used_current
+            l1: connector_used_current_l1
+            l2: connector_used_current_l2
+            l3: connector_used_current_l3

@@ -36,7 +36,7 @@ CONF_AVAILABLE_CURRENT = "available_current"
 CONF_ALLOCATION = "allocation"
 CONF_ALLOCATED_CURRENT = "allocated_current"
 CONF_CURRENT_LIMIT = "current_limit"
-CONF_DRAWN_CURRENT = "drawn_current"
+CONF_DRAWN_CURRENT = "used_current"
 CONF_DRAWN_CURRENT_SOURCE = "drawn_current_source"
 CONF_GRID = "grid"
 CONF_HEADROOM_CURRENT = "headroom_current"
@@ -247,7 +247,7 @@ def _validate_site(value):
         if CONF_L2 in grid_headroom_current or CONF_L3 in grid_headroom_current:
             raise cv.Invalid("single-phase sites may only configure grid.headroom_current.l1")
         if CONF_L2 in drawn_current or CONF_L3 in drawn_current:
-            raise cv.Invalid("single-phase sites may only configure drawn_current.l1")
+            raise cv.Invalid("single-phase sites may only configure used_current.l1")
         if has_aggregate:
             raise cv.Invalid("single-phase sites should use grid.power.l1 instead of grid.power.aggregate")
         if CONF_L2 in storage_power or CONF_L3 in storage_power:
@@ -430,7 +430,7 @@ CHARGER_SCHEMA = cv.Schema(
             cv.Required(CONF_PHASES): cv.one_of(1, 3, int=True),
             cv.Optional(CONF_PHASE_MAPPING): cv.All(cv.ensure_list(_phase_name), cv.Length(min=1, max=3)),
         cv.Optional(CONF_DRAWN_CURRENT_SOURCE): DRAWN_CURRENT_SOURCE_SCHEMA,
-        cv.Optional(CONF_DRAWN_CURRENT): CURRENT_SENSOR_SCHEMA,
+        cv.Optional(CONF_DRAWN_CURRENT): DRAWN_CURRENT_SCHEMA,
         cv.Required(CONF_CONNECTORS): cv.All(cv.ensure_list(CONNECTOR_SCHEMA), cv.Length(min=1, max=1)),
     }
 )
@@ -600,12 +600,22 @@ async def to_code(config):
                     )
                 )
         if drawn_current_config := charger.get(CONF_DRAWN_CURRENT):
-            sens = await sensor.new_sensor(drawn_current_config)
-            cg.add(
-                var.set_charger_drawn_current_sensor(
-                    charger[CONF_CHARGE_POINT_ID], sens
+            scalar_config, phase_configs = _split_drawn_current_config(drawn_current_config)
+            if scalar_config:
+                sens = await sensor.new_sensor(scalar_config)
+                cg.add(
+                    var.set_charger_drawn_current_sensor(
+                        charger[CONF_CHARGE_POINT_ID], sens
+                    )
                 )
-            )
+            for index, phase in enumerate(PHASE_KEYS):
+                if phase in phase_configs:
+                    sens = await sensor.new_sensor(phase_configs[phase])
+                    cg.add(
+                        var.set_charger_drawn_current_sensor(
+                            charger[CONF_CHARGE_POINT_ID], index, sens
+                        )
+                    )
         for connector in charger[CONF_CONNECTORS]:
             cg.add(
                 var.add_connector(

@@ -14,6 +14,7 @@ struct ConfiguredCharger {
   uint8_t phases{3};
   std::array<uint8_t, 3> phase_mapping{0, 1, 2};
   sensor::Sensor *drawn_current_sensor{nullptr};
+  std::array<sensor::Sensor *, 3> drawn_current_sensors{};
   sensor::Sensor *drawn_current_source_sensor{nullptr};
   std::array<sensor::Sensor *, 3> drawn_current_source_sensors{};
   std::array<float, 3> latest_drawn_current{};

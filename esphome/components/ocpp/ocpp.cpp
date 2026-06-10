@@ -355,6 +355,14 @@ void OcppServer::set_charger_drawn_current_sensor(std::string charge_point_id, s
   charger->drawn_current_sensor = drawn_current_sensor;
 }
 
+void OcppServer::set_charger_drawn_current_sensor(std::string charge_point_id, uint8_t phase,
+                                                  sensor::Sensor *drawn_current_sensor) {
+  auto *charger = this->find_charger_(charge_point_id);
+  if (charger == nullptr || phase >= charger->drawn_current_sensors.size())
+    return;
+  charger->drawn_current_sensors[phase] = drawn_current_sensor;
+}
+
 void OcppServer::set_charger_drawn_current_source_sensor(std::string charge_point_id,
                                                          sensor::Sensor *drawn_current_source_sensor) {
   auto *charger = this->find_charger_(charge_point_id);
@@ -1335,6 +1343,13 @@ void OcppServer::update_and_publish_charger_drawn_current_if_configured_(Configu
 void OcppServer::publish_charger_drawn_current_if_configured_(ConfiguredCharger *charger) {
   if (charger != nullptr && charger->drawn_current_sensor != nullptr)
     charger->drawn_current_sensor->publish_state(this->drawn_current_max_(*charger));
+  if (charger == nullptr)
+    return;
+  const uint8_t active_phases = charger->phases == 3 ? 3 : 1;
+  for (uint8_t i = 0; i < active_phases; i++) {
+    if (charger->drawn_current_sensors[i] != nullptr)
+      charger->drawn_current_sensors[i]->publish_state(charger->latest_drawn_current[i]);
+  }
 }
 
 bool OcppServer::update_site_drawn_current_() {
