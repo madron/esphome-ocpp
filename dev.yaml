@@ -120,6 +120,9 @@ sensor:
 ocpp:
   id: ocpp_id
 
+  charge_points:
+    - id: garage
+
   # site:
   #   phases: 3
   #   voltage: 230
@@ -127,7 +130,7 @@ ocpp:
   #   strategy: equal
   #   min_current: 6
 
-  # chargers:
+  # charge_points:
   #   - id: garage
   #     charge_point_id: A99999
   #     max_current: 32

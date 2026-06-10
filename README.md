@@ -11,7 +11,7 @@ site, chargers, and connectors. Each level has a different responsibility.
 
 - The `site` describes the shared electrical installation. It defines the number
   of available phases, the phase-to-neutral voltage in `V`.
-- A `charger` describes one OCPP charge point that connects to this component.
+- A `charge_point` describes one OCPP charge point that connects to this component.
   It is identified by its `charge_point_id`, which must match the identity used
   by the charger in the WebSocket URL. Charger-level configuration is about
   admission, the number of phases, charger-to-site phase mapping, and grouping of
@@ -34,26 +34,13 @@ ocpp:
   server:
     port: 9000
 
-  site:
-    phases: 3
-    voltage: 230
-
-  allocation:
-    strategy: equal
-    min_current: 6
-
-  chargers:
+  charge_points:
     - id: garage_left
-      charge_point_id: GARAGE_LEFT
-      max_current: 32
-      phases: 3
-      phase_mapping: [L1, L2, L3]
-      connectors:
-        - id: 1
 ```
 
-With the default server path `/`, configure the charger OCPP/WebSocket server URL as:
+### Charger configuration
 
+With the default server path `/`, configure the charger OCPP/WebSocket server URL as:
 ```text
 ws://<esp-ip>:9000
 ```
