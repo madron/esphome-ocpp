@@ -34,15 +34,7 @@ class OcppServer : public Component {
   void set_port(uint16_t port) { this->port_ = port; }
   void set_path(std::string path);
   void set_allocation_min_current(float min_current) { this->allocation_min_current_ = min_current; }
-  void set_allocation_log_decisions(bool log_decisions) { this->allocation_log_decisions_ = log_decisions; }
   void set_site(uint8_t phases, float voltage);
-  void set_storage_capacity(float capacity_kwh);
-  void set_storage_power_l1_sensor(sensor::Sensor *sensor) { this->site_.storage_power_l1_sensor = sensor; }
-  void set_storage_power_l2_sensor(sensor::Sensor *sensor) { this->site_.storage_power_l2_sensor = sensor; }
-  void set_storage_power_l3_sensor(sensor::Sensor *sensor) { this->site_.storage_power_l3_sensor = sensor; }
-  void set_storage_power_aggregate_sensor(sensor::Sensor *sensor) { this->site_.storage_power_aggregate_sensor = sensor; }
-  void set_storage_soc_sensor(sensor::Sensor *sensor) { this->site_.storage_soc_sensor = sensor; }
-  void set_storage_energy_sensor(sensor::Sensor *sensor) { this->site_.storage_energy_sensor = sensor; }
   void add_charger(std::string charge_point_id, float max_current, uint8_t phases = 3);
   void set_charger_phase_mapping(std::string charge_point_id, uint8_t charger_phase, uint8_t site_phase);
   void add_connector(std::string charge_point_id, uint8_t connector_id, float max_current);
@@ -176,7 +168,6 @@ class OcppServer : public Component {
   bool pending_allocation_evaluation_{false};
   uint8_t pending_allocation_connector_id_{0};
   bool pending_allocation_include_connector_as_active_{false};
-  bool allocation_log_decisions_{false};
   std::array<PendingOcppCall, 4> pending_calls_{};
   std::array<std::string, 4> tx_queue_{};
   uint8_t tx_queue_head_{0};

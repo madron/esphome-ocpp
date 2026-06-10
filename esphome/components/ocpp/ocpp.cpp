@@ -178,11 +178,6 @@ void OcppServer::set_site(uint8_t phases, float voltage) {
   configure_site(&this->site_, phases, voltage);
 }
 
-void OcppServer::set_storage_capacity(float capacity_kwh) {
-  if (capacity_kwh > 0.0f)
-    this->site_.limits.storage_capacity_kwh = capacity_kwh;
-}
-
 void OcppServer::add_charger(std::string charge_point_id, float max_current, uint8_t phases) {
   if (this->has_charger_ && charger_has_charge_point_id(this->charger_, charge_point_id)) {
     this->charger_.max_current = max_current;
@@ -354,11 +349,8 @@ void OcppServer::loop() {
 void OcppServer::dump_config() {
   ESP_LOGCONFIG(TAG, "OCPP server:");
   ESP_LOGCONFIG(TAG, "  Listen: 0.0.0.0:%u%s", this->port_, this->path_.c_str());
-  ESP_LOGCONFIG(TAG, "  Allocation: strategy=equal min_current=%.1f A log_decisions=%s",
-                this->allocation_min_current_, YESNO(this->allocation_log_decisions_));
+  ESP_LOGCONFIG(TAG, "  Allocation: strategy=equal min_current=%.1f A", this->allocation_min_current_);
   ESP_LOGCONFIG(TAG, "  Site: phases=%u voltage=%.1f V", this->site_.limits.phases, this->site_.limits.voltage);
-  if (this->site_.limits.storage_capacity_kwh.has_value())
-    ESP_LOGCONFIG(TAG, "    Storage capacity=%.2f kWh", this->site_.limits.storage_capacity_kwh.value());
   ESP_LOGCONFIG(TAG, "  Configured charger: %s", this->has_charger_ ? this->charger_.charge_point_id.c_str() : "none");
   if (this->has_charger_)
     ESP_LOGCONFIG(TAG, "    Charger max_current=%.1f A per phase", this->charger_.max_current);
@@ -831,18 +823,7 @@ bool OcppServer::update_connector_allocation_(ConfiguredConnector *connector, bo
     return false;
 
   const float available_current = connector->max_current;
-  const float previous_available_current = connector->available_current;
-  const float previous_allocated_current = connector->allocated_current;
-  const float preferred_limit = connector->has_preferred_current_limit ? connector->preferred_current_limit : NAN;
   update_connector_allocation(connector, available_current, this->allocation_min_current_);
-  if (this->allocation_log_decisions_) {
-    ESP_LOGI(TAG,
-             "Allocation decision: connectorId=%u enabled=%s active=%s include_as_active=%s "
-             "available=%.1f->%.1f A preferred_limit=%.1f A allocated=%.1f->%.1f A",
-             connector->id, YESNO(connector->enabled), YESNO(connector->has_active_transaction),
-             YESNO(include_connector_as_active), previous_available_current, connector->available_current,
-             preferred_limit, previous_allocated_current, connector->allocated_current);
-  }
   return true;
 }
 
@@ -855,10 +836,6 @@ bool OcppServer::should_defer_connector_allocation_(ConfiguredConnector *connect
   this->pending_allocation_evaluation_ = true;
   this->pending_allocation_connector_id_ = connector->id;
   this->pending_allocation_include_connector_as_active_ = include_connector_as_active;
-  if (this->allocation_log_decisions_) {
-    ESP_LOGI(TAG, "Allocation decision deferred: connectorId=%u set_charging_profile_in_flight=%s", connector->id,
-             YESNO(this->set_charging_profile_in_flight_));
-  }
   return true;
 }
 

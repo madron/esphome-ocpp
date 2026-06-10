@@ -25,9 +25,7 @@ devices, and connectors represent the individually controlled charging outlets.
 
 ## Example Configuration
 
-Example for a three-phase installation where the electricity provider
-defines a 10 kW contractual limit, allows a maximum imbalance of 6 kW between
-phases, and two chargers are configured:
+Example for a three-phase installation with one configured charger:
 
 ```yaml
 ocpp:
@@ -41,7 +39,7 @@ ocpp:
     phases: 3
     voltage: 230
 
-allocation:
+  allocation:
     strategy: equal
     min_current: 6
 
@@ -61,5 +59,3 @@ allocation:
 - Current: Amperes (`A`)
 - Voltage: Volts (`V`)
 - Energy: kilowatt-hours (`kWh`)
-
-

@@ -2,9 +2,7 @@ import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import button, number, sensor, switch, text_sensor
 from esphome.const import (
-    CONF_CAPACITY,
     CONF_CURRENT,
-    CONF_ENERGY,
     CONF_ID,
     CONF_INITIAL_VALUE,
     CONF_MAX_VALUE,
@@ -32,20 +30,15 @@ CONF_CURRENT_LIMIT = "current_limit"
 CONF_L1 = "l1"
 CONF_L2 = "l2"
 CONF_L3 = "l3"
-CONF_AGGREGATE = "aggregate"
 CONF_MAX_CURRENT = "max_current"
 CONF_MIN_CURRENT = "min_current"
 CONF_PHASE_MAPPING = "phase_mapping"
 CONF_PHASES = "phases"
-CONF_PREFERENCE = "preference"
 CONF_ENABLED = "enabled"
 CONF_RESTART = "restart"
 CONF_SERVER = "server"
 CONF_SITE = "site"
 CONF_PATH = "path"
-CONF_LOG_DECISIONS = "log_decisions"
-CONF_STORAGE = "storage"
-CONF_SOC = "soc"
 CONF_STRATEGY = "strategy"
 CONF_VOLTAGE = "voltage"
 
@@ -55,7 +48,6 @@ OcppConnectorButton = ocpp_ns.class_("OcppConnectorButton", button.Button)
 OcppConnectorEnabledSwitch = ocpp_ns.class_("OcppConnectorEnabledSwitch", switch.Switch)
 OcppCurrentLimitNumber = ocpp_ns.class_("OcppCurrentLimitNumber", number.Number, cg.Component)
 
-PHASE_KEYS = (CONF_L1, CONF_L2, CONF_L3)
 PHASE_TO_INDEX = {CONF_L1.upper(): 0, CONF_L2.upper(): 1, CONF_L3.upper(): 2}
 
 
@@ -146,30 +138,6 @@ def _validate_chargers(value):
     return value
 
 
-def _validate_site(value):
-    phases = value[CONF_PHASES]
-    storage = value.get(CONF_STORAGE, {})
-    storage_power = storage.get(CONF_POWER, {})
-    has_storage_aggregate = CONF_AGGREGATE in storage_power
-    configured_storage_phases = [phase for phase in PHASE_KEYS if phase in storage_power]
-
-    if phases == 1:
-        if CONF_L2 in storage_power or CONF_L3 in storage_power:
-            raise cv.Invalid("single-phase sites may only configure storage.power.l1")
-        if has_storage_aggregate:
-            raise cv.Invalid("single-phase sites should use storage.power.l1 instead of storage.power.aggregate")
-    elif configured_storage_phases and len(configured_storage_phases) != 3:
-        raise cv.Invalid("three-phase sites must configure all of storage.power.l1, l2 and l3 together")
-
-    if has_storage_aggregate and configured_storage_phases:
-        raise cv.Invalid("storage.power.aggregate must not be combined with per-phase storage.power sensors")
-    if CONF_SOC in storage and CONF_ENERGY in storage:
-        raise cv.Invalid("storage.soc and storage.energy are mutually exclusive")
-    if (CONF_SOC in storage or CONF_ENERGY in storage) and CONF_CAPACITY not in storage:
-        raise cv.Invalid("storage.capacity is required when storage.soc or storage.energy is configured")
-    return value
-
-
 SERVER_SCHEMA = cv.Schema(
     {
         cv.Optional(CONF_PORT, default=9000): cv.port,
@@ -181,44 +149,14 @@ ALLOCATION_SCHEMA = cv.Schema(
     {
         cv.Optional(CONF_STRATEGY, default="equal"): cv.one_of("equal", lower=True),
         cv.Optional(CONF_MIN_CURRENT, default=6): cv.positive_float,
-        cv.Optional(CONF_LOG_DECISIONS, default=False): cv.boolean,
-        cv.Optional(CONF_PREFERENCE, default="first_connected"): cv.one_of(
-            "first_connected",
-            "last_connected",
-            "least_charged",
-            "round_robin",
-            lower=True,
-        ),
     }
 )
 
-POWER_SENSOR_ID_SCHEMA = cv.Schema(
+SITE_SCHEMA = cv.Schema(
     {
-        cv.Optional(CONF_L1): cv.use_id(sensor.Sensor),
-        cv.Optional(CONF_L2): cv.use_id(sensor.Sensor),
-        cv.Optional(CONF_L3): cv.use_id(sensor.Sensor),
-        cv.Optional(CONF_AGGREGATE): cv.use_id(sensor.Sensor),
+        cv.Required(CONF_PHASES): cv.one_of(1, 3, int=True),
+        cv.Required(CONF_VOLTAGE): cv.positive_float,
     }
-)
-
-STORAGE_SCHEMA = cv.Schema(
-    {
-        cv.Optional(CONF_POWER): POWER_SENSOR_ID_SCHEMA,
-        cv.Optional(CONF_SOC): cv.use_id(sensor.Sensor),
-        cv.Optional(CONF_ENERGY): cv.use_id(sensor.Sensor),
-        cv.Optional(CONF_CAPACITY): cv.positive_float,
-    }
-)
-
-SITE_SCHEMA = cv.All(
-    cv.Schema(
-        {
-            cv.Required(CONF_PHASES): cv.one_of(1, 3, int=True),
-            cv.Required(CONF_VOLTAGE): cv.positive_float,
-            cv.Optional(CONF_STORAGE): STORAGE_SCHEMA,
-        }
-    ),
-    _validate_site,
 )
 
 CONNECTOR_SCHEMA = cv.Schema(
@@ -288,31 +226,8 @@ async def to_code(config):
     cg.add(var.set_path(server[CONF_PATH]))
     allocation = config[CONF_ALLOCATION]
     cg.add(var.set_allocation_min_current(allocation[CONF_MIN_CURRENT]))
-    cg.add(var.set_allocation_log_decisions(allocation[CONF_LOG_DECISIONS]))
     if site := config.get(CONF_SITE):
         cg.add(var.set_site(site[CONF_PHASES], site[CONF_VOLTAGE]))
-        if storage := site.get(CONF_STORAGE):
-            if CONF_CAPACITY in storage:
-                cg.add(var.set_storage_capacity(storage[CONF_CAPACITY]))
-            if power := storage.get(CONF_POWER):
-                if CONF_L1 in power:
-                    sens = await cg.get_variable(power[CONF_L1])
-                    cg.add(var.set_storage_power_l1_sensor(sens))
-                if CONF_L2 in power:
-                    sens = await cg.get_variable(power[CONF_L2])
-                    cg.add(var.set_storage_power_l2_sensor(sens))
-                if CONF_L3 in power:
-                    sens = await cg.get_variable(power[CONF_L3])
-                    cg.add(var.set_storage_power_l3_sensor(sens))
-                if CONF_AGGREGATE in power:
-                    sens = await cg.get_variable(power[CONF_AGGREGATE])
-                    cg.add(var.set_storage_power_aggregate_sensor(sens))
-            if CONF_SOC in storage:
-                sens = await cg.get_variable(storage[CONF_SOC])
-                cg.add(var.set_storage_soc_sensor(sens))
-            if CONF_ENERGY in storage:
-                sens = await cg.get_variable(storage[CONF_ENERGY])
-                cg.add(var.set_storage_energy_sensor(sens))
     for charger in config[CONF_CHARGERS]:
         cg.add(
             var.add_charger(
