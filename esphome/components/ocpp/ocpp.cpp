@@ -24,8 +24,8 @@ void OcppComponent::loop() { this->server_.loop(); }
 void OcppComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "OCPP:");
   std::string charger_url = this->server_.get_charger_url();
-  ESP_LOGCONFIG(TAG, "  Url: %s", charger_url.c_str());
-  ESP_LOGCONFIG(TAG, "  Configured charge points: %u", static_cast<unsigned>(this->charge_points_.size()));
+  ESP_LOGCONFIG(TAG, "  %s", charger_url.c_str());
+  ESP_LOGCONFIG(TAG, "  Charge points: %u", static_cast<unsigned>(this->charge_points_.size()));
   for (auto *charge_point : this->charge_points_) {
     if (charge_point != nullptr) {
       ESP_LOGCONFIG(TAG, "    - charge_point_id: %s", charge_point->get_charge_point_id().c_str());

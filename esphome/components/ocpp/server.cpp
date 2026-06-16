@@ -1,5 +1,6 @@
 #include "server.h"
 
+#include "esphome/components/network/util.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
@@ -155,7 +156,16 @@ void OcppServer::loop() {
 }
 
 std::string OcppServer::get_charger_url() const {
-  return str_sprintf("ws://%s:%d%s", "<server_ip>", this->server_port_, this->server_path_.c_str());
+  const char *server_ip = "<server_ip>";
+  char ip_buffer[network::IP_ADDRESS_BUFFER_SIZE];
+  for (const auto &ip : network::get_ip_addresses()) {
+    if (!ip.is_set())
+      continue;
+    ip.str_to(ip_buffer);
+    server_ip = ip_buffer;
+    break;
+  }
+  return str_sprintf("ws://%s:%d%s", server_ip, this->server_port_, this->server_path_.c_str());
 }
 
 void OcppServer::accept_client_() {
