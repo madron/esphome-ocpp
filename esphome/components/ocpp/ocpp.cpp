@@ -26,16 +26,24 @@ void OcppComponent::dump_config() {
   this->server_.dump_config();
   ESP_LOGCONFIG(TAG, "  Configured charge points: %u", static_cast<unsigned>(this->charge_points_.size()));
   for (auto *charge_point : this->charge_points_) {
-    if (charge_point != nullptr)
+    if (charge_point != nullptr) {
       ESP_LOGCONFIG(TAG, "    - charge_point_id: %s", charge_point->get_charge_point_id().c_str());
+      if (charge_point->get_debug_ocpp_messages())
+        ESP_LOGCONFIG(TAG, "      debug_ocpp_messages: true");
+    }
   }
 }
 
 float OcppComponent::get_setup_priority() const { return setup_priority::WIFI - 1.0f; }
 
 void OcppComponent::on_websocket_connected(const std::string &connection_id) {
-  if (this->find_charge_point_by_id_(connection_id) == nullptr)
+  const ChargePoint *charge_point = this->find_charge_point_by_id_(connection_id);
+  if (charge_point == nullptr) {
     ESP_LOGW(TAG, "Connected charge point '%s' is not configured", connection_id.c_str());
+    this->protocol_.set_debug_ocpp_messages(false);
+  } else {
+    this->protocol_.set_debug_ocpp_messages(charge_point->get_debug_ocpp_messages());
+  }
   this->protocol_.on_connected(connection_id);
 }
 

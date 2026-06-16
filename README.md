@@ -35,7 +35,10 @@ ocpp:
   charge_points:
     - id: garage_left
       charge_point_id: A99999
+      debug_ocpp_messages: true
 ```
+
+`debug_ocpp_messages` is optional per `charge_point`. When enabled, raw OCPP RX/TX payloads for that charger are logged at the ESPHome debug log level.
 
 ### Charger configuration
 
