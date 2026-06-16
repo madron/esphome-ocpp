@@ -3,7 +3,6 @@
 substitutions:
   name: ocpp
   static_ip: !secret static_ip
-  ota_password_new: !secret ota_password
 
 esp32:
   board: nodemcu-32s
@@ -13,10 +12,6 @@ esp32:
 
 esphome:
   name: ${name}
-  on_boot:
-    - lambda: |-
-        id(ota_id).set_auth_password("${ota_password_new}");
-
 
 wifi:
   ssid: !secret wifi_ssid
@@ -28,13 +23,7 @@ wifi:
     subnet: !secret subnet
     dns1: !secret dns1
 
-
 logger:
-
-ota:
-  id: ota_id
-  platform: esphome
-  password: ${ota_password_new}
 
 preferences:
   flash_write_interval: 1d
@@ -45,76 +34,69 @@ web_server:
     username: !secret web_server_username
     password: !secret web_server_password
 
-time:
-  - platform: sntp
-    id: sntp_time
-    timezone: Europe/Rome
-
-
 external_components:
   - components: [ ocpp ]
     source:
       type: local
       path: ./esphome/components
 
+# mqtt:
+#   broker: !secret mqtt_broker
+#   username: !secret mqtt_username
+#   password: !secret mqtt_password
+#   reboot_timeout: 0s
+#   keepalive: 5s
 
-mqtt:
-  broker: !secret mqtt_broker
-  username: !secret mqtt_username
-  password: !secret mqtt_password
-  reboot_timeout: 0s
-  keepalive: 5s
 
-
-sensor:
-  - platform: mqtt_subscribe
-    id: grid_power_l1
-    name: grid_power_l1
-    topic: inverter/sensor/grid_power_a/state
-    device_class: power
-    unit_of_measurement: "W"
-    accuracy_decimals: 0
-    filters:
-      - multiply: -1
-  - platform: mqtt_subscribe
-    id: grid_power_l2
-    name: grid_power_l2
-    topic: inverter/sensor/grid_power_b/state
-    device_class: power
-    unit_of_measurement: "W"
-    accuracy_decimals: 0
-    filters:
-      - multiply: -1
-  - platform: mqtt_subscribe
-    id: grid_power_l3
-    name: grid_power_l3
-    topic: inverter/sensor/grid_power_c/state
-    device_class: power
-    unit_of_measurement: "W"
-    accuracy_decimals: 0
-    filters:
-      - multiply: -1
-  - platform: mqtt_subscribe
-    id: storage_power
-    name: storage_power
-    topic: inverter/sensor/battery_power/state
-    device_class: power
-    unit_of_measurement: "W"
-    accuracy_decimals: 0
-  - platform: mqtt_subscribe
-    id: storage_soc
-    name: storage_soc
-    topic: inverter/sensor/battery_soc/state
-    device_class: energy
-    unit_of_measurement: "%"
-    accuracy_decimals: 0
-  - platform: mqtt_subscribe
-    id: storage_energy
-    name: storage_energy
-    topic: inverter/sensor/battery_energy_kwh/state
-    device_class: energy
-    unit_of_measurement: "kWh"
-    accuracy_decimals: 1
+# sensor:
+#   - platform: mqtt_subscribe
+#     id: grid_power_l1
+#     name: grid_power_l1
+#     topic: inverter/sensor/grid_power_a/state
+#     device_class: power
+#     unit_of_measurement: "W"
+#     accuracy_decimals: 0
+#     filters:
+#       - multiply: -1
+#   - platform: mqtt_subscribe
+#     id: grid_power_l2
+#     name: grid_power_l2
+#     topic: inverter/sensor/grid_power_b/state
+#     device_class: power
+#     unit_of_measurement: "W"
+#     accuracy_decimals: 0
+#     filters:
+#       - multiply: -1
+#   - platform: mqtt_subscribe
+#     id: grid_power_l3
+#     name: grid_power_l3
+#     topic: inverter/sensor/grid_power_c/state
+#     device_class: power
+#     unit_of_measurement: "W"
+#     accuracy_decimals: 0
+#     filters:
+#       - multiply: -1
+#   - platform: mqtt_subscribe
+#     id: storage_power
+#     name: storage_power
+#     topic: inverter/sensor/battery_power/state
+#     device_class: power
+#     unit_of_measurement: "W"
+#     accuracy_decimals: 0
+#   - platform: mqtt_subscribe
+#     id: storage_soc
+#     name: storage_soc
+#     topic: inverter/sensor/battery_soc/state
+#     device_class: energy
+#     unit_of_measurement: "%"
+#     accuracy_decimals: 0
+#   - platform: mqtt_subscribe
+#     id: storage_energy
+#     name: storage_energy
+#     topic: inverter/sensor/battery_energy_kwh/state
+#     device_class: energy
+#     unit_of_measurement: "kWh"
+#     accuracy_decimals: 1
 
 
 ocpp:
@@ -123,27 +105,6 @@ ocpp:
   charge_points:
     - id: garage
       charge_point_id: A99999
+      debug_ocpp_messages: true
     - id: unknown
-
-  # site:
-  #   phases: 3
-  #   voltage: 230
-  # allocation:
-  #   strategy: equal
-  #   min_current: 6
-
-  # charge_points:
-  #   - id: garage
-  #     charge_point_id: A99999
-  #     max_current: 32
-  #     phases: 3
-  #     connectors:
-  #       - id: 1
-  #         current_limit:
-  #           name: connector_current_limit
-  #           initial_value: 32
-  #           min_value: 6
-  #           max_value: 32
-  #           step: 1
-  #         state:
-  #           name: connector_state
+      debug_ocpp_messages: true
