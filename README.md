@@ -25,8 +25,6 @@ devices, and connectors represent the individually controlled charging outlets.
 
 ## Example Configuration
 
-Example for a three-phase installation with one configured charger:
-
 ```yaml
 ocpp:
   id: ocpp_id
@@ -36,6 +34,7 @@ ocpp:
 
   charge_points:
     - id: garage_left
+      charge_point_id: A99999
 ```
 
 ### Charger configuration

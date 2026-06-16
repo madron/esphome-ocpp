@@ -122,6 +122,8 @@ ocpp:
 
   charge_points:
     - id: garage
+      charge_point_id: A99999
+    - id: unknown
 
   # site:
   #   phases: 3
