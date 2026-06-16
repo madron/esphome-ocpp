@@ -38,25 +38,37 @@ void OcppComponent::dump_config() {
 float OcppComponent::get_setup_priority() const { return setup_priority::WIFI - 1.0f; }
 
 void OcppComponent::on_websocket_connected(const std::string &connection_id) {
-  const ChargePoint *charge_point = this->find_charge_point_by_id_(connection_id);
-  if (charge_point == nullptr) {
-    ESP_LOGW(TAG, "Connected charge point '%s' is not configured", connection_id.c_str());
-  }
-  this->protocol_.on_connected(connection_id);
+    ChargePoint *charge_point = this->find_charge_point_by_connection_id_(connection_id);
+    if (charge_point == nullptr) {
+        ESP_LOGW(TAG, "No charge point available for '%s'", connection_id.c_str());
+    }
+    this->active_charge_point_ = charge_point;
+    this->protocol_.on_connected(connection_id);
 }
 
-void OcppComponent::on_websocket_disconnected() { this->protocol_.on_disconnected(); }
+void OcppComponent::on_websocket_disconnected() {
+    if (this->active_charge_point_ != nullptr && this->active_charge_point_->get_charge_point_id().empty())
+        this->active_charge_point_->set_connection_id("");
+    this->active_charge_point_ = nullptr;
+    this->protocol_.on_disconnected();
+}
 
 void OcppComponent::on_websocket_text(const std::string &message) { this->protocol_.handle_text(message); }
 
 void OcppComponent::send_ocpp_text(const std::string &message) { this->server_.send_text(message); }
 
-const ChargePoint *OcppComponent::find_charge_point_by_id_(const std::string &charge_point_id) const {
-  for (auto *charge_point : this->charge_points_) {
-    if (charge_point != nullptr && charge_point->get_charge_point_id() == charge_point_id)
-      return charge_point;
-  }
-  return nullptr;
+ChargePoint *OcppComponent::find_charge_point_by_connection_id_(const std::string &connection_id) const {
+    for (auto *charge_point : this->charge_points_) {
+        if (charge_point != nullptr && charge_point->get_connection_id() == connection_id)
+        return charge_point;
+    }
+    for (auto *charge_point : this->charge_points_) {
+        if (charge_point != nullptr && charge_point->get_connection_id().empty()) {
+            charge_point->set_connection_id(connection_id);
+            return charge_point;
+        }
+    }
+    return nullptr;
 }
 
 }  // namespace esphome::ocpp

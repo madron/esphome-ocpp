@@ -10,10 +10,17 @@ int main() {
 
     // get_charge_point_id
     assert_equal("set_charge_point_id", charge_point.get_charge_point_id(), std::string(""));
+    assert_equal("get_connection_id", charge_point.get_connection_id(), std::string(""));
 
-    // set_charge_point_id
+    // set_charge_point_id also initializes the connection_id
     charge_point.set_charge_point_id("A99999");
     assert_equal("set_charge_point_id", charge_point.get_charge_point_id(), std::string("A99999"));
+    assert_equal("set_charge_point_id connection_id", charge_point.get_connection_id(), std::string("A99999"));
+
+    // set_connection_id
+    charge_point.set_connection_id("B11111");
+    assert_equal("set_connection_id", charge_point.get_connection_id(), std::string("B11111"));
+    assert_equal("set_connection_id keeps charge_point_id", charge_point.get_charge_point_id(), std::string("A99999"));
 
     // get_debug_ocpp_messages
     assert_equal("get_debug_ocpp_messages", charge_point.get_debug_ocpp_messages(), false);

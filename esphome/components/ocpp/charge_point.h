@@ -8,11 +8,14 @@ class ChargePoint {
   public:
     void set_charge_point_id(std::string charge_point_id);
     const std::string &get_charge_point_id() const;
+    void set_connection_id(std::string connection_id);
+    const std::string &get_connection_id() const;
     void set_debug_ocpp_messages(bool debug_ocpp_messages);
     bool get_debug_ocpp_messages() const;
 
   protected:
     std::string charge_point_id_;
+    std::string connection_id_;
     bool debug_ocpp_messages_{false};
 };
 

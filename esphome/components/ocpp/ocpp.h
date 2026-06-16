@@ -29,11 +29,12 @@ class OcppComponent : public Component, public OcppServerListener, public OcppPr
     void on_websocket_disconnected() override;
     void on_websocket_text(const std::string &message) override;
     void send_ocpp_text(const std::string &message) override;
-    const ChargePoint *find_charge_point_by_id_(const std::string &charge_point_id) const;
+    ChargePoint *find_charge_point_by_connection_id_(const std::string &connection_id) const;
 
     OcppServer server_;
     OcppProtocol protocol_;
     std::vector<ChargePoint *> charge_points_;
+    ChargePoint *active_charge_point_{nullptr};
 
 };
 
