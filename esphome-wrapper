@@ -14,7 +14,7 @@ Environment:
   ESPHOME_CONFIG             ESPHome config inside this repository. Defaults to dev.yaml.
   ESPHOME_BIN                ESPHome executable. Defaults to esphome.
 
-The wrapper activates the repository .venv before resolving sops and ESPHome.
+The wrapper activates the repository virtualenv before resolving sops and ESPHome.
 
 The wrapper decrypts the SOPS file into a temporary secrets.yaml outside the
 repository, runs ESPHome from that temporary config directory, then removes the
@@ -92,8 +92,8 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-venv_activate="$repo_root/.venv/bin/activate"
-[[ -f "$venv_activate" ]] || die "virtualenv not found; create it with: python3 -m venv .venv"
+venv_activate="$HOME/environments/ocpp/bin/activate"
+[[ -f "$venv_activate" ]] || die "virtualenv not found; create it with: mkvirtualenv ocpp"
 # shellcheck source=/dev/null
 source "$venv_activate"
 
