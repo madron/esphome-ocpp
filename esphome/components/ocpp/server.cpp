@@ -154,8 +154,8 @@ void OcppServer::loop() {
     this->read_client_();
 }
 
-void OcppServer::dump_config() const {
-  ESP_LOGCONFIG(TAG, "  Listen: 0.0.0.0:%u%s", this->server_port_, this->server_path_.c_str());
+std::string OcppServer::get_charger_url() const {
+  return str_sprintf("ws://%s:%d%s", "<server_ip>", this->server_port_, this->server_path_.c_str());
 }
 
 void OcppServer::accept_client_() {

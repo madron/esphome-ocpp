@@ -27,8 +27,8 @@ class OcppServer {
 
     bool setup();
     void loop();
-    void dump_config() const;
     void send_text(const std::string &message);
+    std::string get_charger_url() const;
 
   protected:
     void accept_client_();

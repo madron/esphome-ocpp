@@ -22,8 +22,9 @@ void OcppComponent::setup() {
 void OcppComponent::loop() { this->server_.loop(); }
 
 void OcppComponent::dump_config() {
-  ESP_LOGCONFIG(TAG, "OCPP server:");
-  this->server_.dump_config();
+  ESP_LOGCONFIG(TAG, "OCPP:");
+  std::string charger_url = this->server_.get_charger_url();
+  ESP_LOGCONFIG(TAG, "  Url: %s", charger_url.c_str());
   ESP_LOGCONFIG(TAG, "  Configured charge points: %u", static_cast<unsigned>(this->charge_points_.size()));
   for (auto *charge_point : this->charge_points_) {
     if (charge_point != nullptr) {
@@ -40,9 +41,6 @@ void OcppComponent::on_websocket_connected(const std::string &connection_id) {
   const ChargePoint *charge_point = this->find_charge_point_by_id_(connection_id);
   if (charge_point == nullptr) {
     ESP_LOGW(TAG, "Connected charge point '%s' is not configured", connection_id.c_str());
-    this->protocol_.set_debug_ocpp_messages(false);
-  } else {
-    this->protocol_.set_debug_ocpp_messages(charge_point->get_debug_ocpp_messages());
   }
   this->protocol_.on_connected(connection_id);
 }
