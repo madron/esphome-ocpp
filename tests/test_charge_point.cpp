@@ -51,12 +51,12 @@ int main() {
     charge_point.on_connected("A99999");
     assert_equal("online before boot", charge_point.is_online(), false);
     assert_equal("online sensor before boot", online_sensor.state, false);
-    charge_point.handle_ocpp_text("[2,\"boot-1\",\"BootNotification\",{\"chargePointVendor\":\"Acme\",\"chargePointModel\":\"Wallbox\"}]");
+    charge_point.handle_ocpp_text(R"([2,"boot-1","BootNotification",{"chargePointVendor":"Acme","chargePointModel":"Wallbox"}])");
     assert_equal("online after boot", charge_point.is_online(), true);
     assert_equal("online sensor after boot", online_sensor.state, true);
     assert_equal("boot response count", sink.messages.size(), 1);
     assert_equal("boot response connection", sink.connection_ids[0], "A99999");
-    assert_equal("boot response", sink.messages[0], "[3,\"boot-1\",{\"currentTime\":\"1970-01-01T00:00:00Z\",\"interval\":300,\"status\":\"Accepted\"}]");
+    assert_equal("boot response", sink.messages[0], R"([3,"boot-1",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
 
     charge_point.on_disconnected();
     assert_equal("online after disconnect", charge_point.is_online(), false);
