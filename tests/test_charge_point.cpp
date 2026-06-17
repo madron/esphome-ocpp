@@ -23,18 +23,18 @@ int main() {
     ChargePoint charge_point;
 
     // get_charge_point_id
-    assert_equal("set_charge_point_id", charge_point.get_charge_point_id(), std::string(""));
-    assert_equal("get_connection_id", charge_point.get_connection_id(), std::string(""));
+    assert_equal("set_charge_point_id", charge_point.get_charge_point_id(), "");
+    assert_equal("get_connection_id", charge_point.get_connection_id(), "");
 
     // set_charge_point_id also initializes the connection_id
     charge_point.set_charge_point_id("A99999");
-    assert_equal("set_charge_point_id", charge_point.get_charge_point_id(), std::string("A99999"));
-    assert_equal("set_charge_point_id connection_id", charge_point.get_connection_id(), std::string("A99999"));
+    assert_equal("set_charge_point_id", charge_point.get_charge_point_id(), "A99999");
+    assert_equal("set_charge_point_id connection_id", charge_point.get_connection_id(), "A99999");
 
     // set_connection_id
     charge_point.set_connection_id("B11111");
-    assert_equal("set_connection_id", charge_point.get_connection_id(), std::string("B11111"));
-    assert_equal("set_connection_id keeps charge_point_id", charge_point.get_charge_point_id(), std::string("A99999"));
+    assert_equal("set_connection_id", charge_point.get_connection_id(), "B11111");
+    assert_equal("set_connection_id keeps charge_point_id", charge_point.get_charge_point_id(), "A99999");
 
     // get_debug_ocpp_messages
     assert_equal("get_debug_ocpp_messages", charge_point.get_debug_ocpp_messages(), false);
@@ -54,9 +54,9 @@ int main() {
     charge_point.handle_ocpp_text("[2,\"boot-1\",\"BootNotification\",{\"chargePointVendor\":\"Acme\",\"chargePointModel\":\"Wallbox\"}]");
     assert_equal("online after boot", charge_point.is_online(), true);
     assert_equal("online sensor after boot", online_sensor.state, true);
-    assert_equal("boot response count", sink.messages.size(), static_cast<size_t>(1));
-    assert_equal("boot response connection", sink.connection_ids[0], std::string("A99999"));
-    assert_equal("boot response", sink.messages[0], std::string("[3,\"boot-1\",{\"currentTime\":\"1970-01-01T00:00:00Z\",\"interval\":300,\"status\":\"Accepted\"}]"));
+    assert_equal("boot response count", sink.messages.size(), 1);
+    assert_equal("boot response connection", sink.connection_ids[0], "A99999");
+    assert_equal("boot response", sink.messages[0], "[3,\"boot-1\",{\"currentTime\":\"1970-01-01T00:00:00Z\",\"interval\":300,\"status\":\"Accepted\"}]");
 
     charge_point.on_disconnected();
     assert_equal("online after disconnect", charge_point.is_online(), false);

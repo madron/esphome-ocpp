@@ -1,7 +1,8 @@
 #include <cstdlib>
 #include <iostream>
 
-template<typename T> void assert_equal(const char *description, const T &actual, const T &expected) {
+template<typename Actual, typename Expected>
+void assert_equal(const char *description, const Actual &actual, const Expected &expected) {
   if (actual == expected)
     return;
   std::cerr << description << "\n";
