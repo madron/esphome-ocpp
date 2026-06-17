@@ -9,6 +9,10 @@
 - Consider only the esphome-ocpp repository and not any other repositories unless explicitly mentioned.
 - You are allowed to run esphome-wrapper with compile and config command only unless explicily authorized.
 
+## Formatting
+
+- Use 4 spaces for indentation in both python anc c++ files.
+
 ## Units and Configuration Values
 
 - Use these units of measure consistently in documentation and option descriptions: power in Watts (`W`), current in
