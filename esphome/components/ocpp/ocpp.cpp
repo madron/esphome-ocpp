@@ -1,6 +1,6 @@
 #include "ocpp.h"
 
-#include "esphome/core/hal.h"
+#include "esphome/core/application.h"
 #include "esphome/core/log.h"
 
 namespace esphome::ocpp {
@@ -22,7 +22,7 @@ void OcppComponent::setup() {
 
 void OcppComponent::loop() {
     this->server_.loop();
-    uint32_t now = millis();
+    uint32_t now = App.get_loop_component_start_time();
     for (auto *charge_point : this->charge_points_) {
         if (charge_point != nullptr)
             charge_point->loop(now);
@@ -53,7 +53,7 @@ void OcppComponent::on_websocket_connected(const std::string &connection_id) {
     if (charge_point == nullptr) {
         ESP_LOGW(TAG, "No charge point available for '%s'", connection_id.c_str());
     } else {
-        charge_point->on_connected(connection_id, millis());
+        charge_point->on_connected(connection_id, App.get_loop_component_start_time());
     }
 }
 
