@@ -123,8 +123,8 @@ int main() {
         assert_equal("force_boot_trigger_after_delay", charge_point.sink.messages.size(), 1);
         assert_equal("force_boot_trigger_connection", charge_point.sink.connection_ids[0], "A99999");
         assert_equal("force_boot_trigger", charge_point.sink.messages[0],
-                     R"([2,"trigger-boot-notification-1","TriggerMessage",{"requestedMessage":"BootNotification"}])");
-        charge_point.handle_ocpp_text(R"([3,"trigger-boot-notification-1",{"status":"Accepted"}])");
+                     R"([2,"trigger-boot-notification","TriggerMessage",{"requestedMessage":"BootNotification"}])");
+        charge_point.handle_ocpp_text(R"([3,"trigger-boot-notification",{"status":"Accepted"}])");
         assert_equal("force_boot_trigger_result_ignored", charge_point.sink.messages.size(), 1);
         charge_point.loop(10000);
         charge_point.on_disconnected();

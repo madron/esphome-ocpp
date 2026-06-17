@@ -87,8 +87,7 @@ void ChargePoint::apply_protocol_result_(const OcppProtocolResult &result) {
 void ChargePoint::send_forced_boot_notification_trigger_() {
   this->force_boot_notification_pending_ = false;
   this->force_boot_notification_scheduled_ = false;
-  std::string unique_id = "trigger-boot-notification-" + std::to_string(++this->trigger_message_sequence_);
-  this->send_message_(this->protocol_.make_trigger_boot_notification(unique_id));
+  this->send_message_(this->protocol_.make_trigger_boot_notification("trigger-boot-notification"));
 }
 
 void ChargePoint::set_online_(bool online) {

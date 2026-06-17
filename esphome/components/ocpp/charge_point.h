@@ -64,7 +64,6 @@ class ChargePoint {
     bool connected_{false};
     bool online_{false};
     uint32_t connected_at_millis_{0};
-    uint32_t trigger_message_sequence_{0};
 };
 
 }  // namespace esphome::ocpp
