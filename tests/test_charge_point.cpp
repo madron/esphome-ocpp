@@ -62,5 +62,13 @@ int main() {
     assert_equal("online after disconnect", charge_point.is_online(), false);
     assert_equal("online sensor after disconnect", online_sensor.state, false);
 
+    // Heartbeat
+    charge_point.on_connected("A99999");
+    assert_equal("offline before boot", charge_point.is_online(), false);
+    charge_point.handle_ocpp_text(R"([2,"d8cc833a-0f43-441a-adbc-5e1f1869f067","Heartbeat",{}])");
+    assert_equal("online_after_heartbeat", charge_point.is_online(), true);
+    assert_equal("heartbeat response count", sink.messages.size(), 2);
+    assert_equal("heartbeat response", sink.messages[1], R"([3,"d8cc833a-0f43-441a-adbc-5e1f1869f067",{"currentTime":"1970-01-01T00:00:00Z"}])");
+
     return 0;
 }

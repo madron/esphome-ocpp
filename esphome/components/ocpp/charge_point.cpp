@@ -40,7 +40,8 @@ void ChargePoint::handle_ocpp_text(const std::string &message) {
 
 void ChargePoint::apply_protocol_result_(const OcppProtocolResult &result) {
   for (const auto &event : result.events) {
-    if (event.type == OcppProtocolEventType::BOOT_NOTIFICATION_ACCEPTED)
+    if (event.type == OcppProtocolEventType::BOOT_NOTIFICATION_ACCEPTED ||
+        event.type == OcppProtocolEventType::HEARTBEAT_RECEIVED)
       this->set_online_(true);
   }
   for (const auto &message : result.outbound_messages) {

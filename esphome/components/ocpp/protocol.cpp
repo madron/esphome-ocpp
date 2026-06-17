@@ -85,6 +85,8 @@ OcppProtocolResult OcppProtocol::handle_text(const std::string &charge_point_id,
            unique_id.c_str());
   if (action == "BootNotification") {
     this->handle_boot_notification_(unique_id, &result);
+  } else if (action == "Heartbeat") {
+    this->handle_heartbeat_(unique_id, &result);
   } else {
     ESP_LOGW(TAG, "Unsupported OCPP action '%s' from charge point '%s'", action.c_str(), charge_point_id.c_str());
     result.outbound_messages.push_back(
@@ -97,6 +99,12 @@ void OcppProtocol::handle_boot_notification_(const std::string &unique_id, OcppP
   std::string response = "[3,\"" + json_escape(unique_id) + "\",{\"currentTime\":\"" + CURRENT_TIME +
                          "\",\"interval\":300,\"status\":\"Accepted\"}]";
   result->events.push_back({OcppProtocolEventType::BOOT_NOTIFICATION_ACCEPTED});
+  result->outbound_messages.push_back(response);
+}
+
+void OcppProtocol::handle_heartbeat_(const std::string &unique_id, OcppProtocolResult *result) {
+  std::string response = "[3,\"" + json_escape(unique_id) + "\",{\"currentTime\":\"" + CURRENT_TIME + "\"}]";
+  result->events.push_back({OcppProtocolEventType::HEARTBEAT_RECEIVED});
   result->outbound_messages.push_back(response);
 }
 
