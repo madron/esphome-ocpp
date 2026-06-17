@@ -27,6 +27,7 @@ void OcppComponent::loop() {
     if (charge_point != nullptr)
       charge_point->loop(now);
   }
+  this->send_queued_message_();
 }
 
 void OcppComponent::dump_config() {
@@ -72,8 +73,24 @@ void OcppComponent::on_websocket_text(const std::string &connection_id, const st
     charge_point->handle_ocpp_text(message);
 }
 
-void OcppComponent::send_ocpp_text(const std::string &connection_id, const std::string &message) {
-  this->server_.send_text(connection_id, message);
+bool OcppComponent::send_queued_message_() {
+  if (this->charge_points_.empty())
+    return false;
+  if (this->next_outbound_charge_point_ >= this->charge_points_.size())
+    this->next_outbound_charge_point_ = 0;
+  for (size_t checked = 0; checked < this->charge_points_.size(); checked++) {
+    size_t index = (this->next_outbound_charge_point_ + checked) % this->charge_points_.size();
+    ChargePoint *charge_point = this->charge_points_[index];
+    if (charge_point == nullptr)
+      continue;
+    std::string message;
+    if (!charge_point->pop_queued_message(&message))
+      continue;
+    this->next_outbound_charge_point_ = (index + 1) % this->charge_points_.size();
+    this->server_.send_text(charge_point->get_connection_id(), message);
+    return true;
+  }
+  return false;
 }
 
 ChargePoint *OcppComponent::find_charge_point_by_connection_id_(const std::string &connection_id) const {

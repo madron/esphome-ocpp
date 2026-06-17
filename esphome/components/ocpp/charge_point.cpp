@@ -4,6 +4,7 @@
 #include "esphome/core/log.h"
 #else
 #define ESP_LOGD(tag, ...)
+#define ESP_LOGW(tag, ...)
 #endif
 
 #include <utility>
@@ -44,6 +45,7 @@ void ChargePoint::on_connected(std::string connection_id, uint32_t now_millis) {
 void ChargePoint::on_disconnected() {
   this->connected_ = false;
   this->force_boot_notification_scheduled_ = false;
+  this->messages_.clear();
   this->set_online_(false);
 }
 
@@ -64,8 +66,19 @@ void ChargePoint::loop(uint32_t now_millis) {
 void ChargePoint::send_message_(const std::string &message) {
   if (this->debug_ocpp_messages_)
     ESP_LOGD(TAG, "%s >> %s", this->connection_id_.c_str(), message.c_str());
-  if (this->message_sink_ != nullptr)
-    this->message_sink_->send_ocpp_text(this->connection_id_, message);
+  if (this->messages_.size() >= this->max_queued_messages_) {
+    ESP_LOGW(TAG, "Dropping outbound OCPP message for '%s'; queue is full", this->connection_id_.c_str());
+    return;
+  }
+  this->messages_.push_back(message);
+}
+
+bool ChargePoint::pop_queued_message(std::string *message) {
+  if (message == nullptr || this->messages_.empty())
+    return false;
+  *message = std::move(this->messages_.front());
+  this->messages_.erase(this->messages_.begin());
+  return true;
 }
 
 void ChargePoint::apply_protocol_result_(const OcppProtocolResult &result) {
