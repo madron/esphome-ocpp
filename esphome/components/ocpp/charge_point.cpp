@@ -1,11 +1,5 @@
 #include "charge_point.h"
-
-#if __has_include("esphome/core/log.h")
 #include "esphome/core/log.h"
-#else
-#define ESP_LOGD(tag, ...)
-#define ESP_LOGW(tag, ...)
-#endif
 
 #include <utility>
 

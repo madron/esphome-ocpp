@@ -25,6 +25,8 @@ class CppTestCase(unittest.TestCase):
                     "c++",
                     "-std=c++17",
                     "-I",
+                    str(CPP_TEST_DIR),
+                    "-I",
                     str(REPO_ROOT),
                     str(source),
                     *(str(extra_source_path) for extra_source_path in extra_source_paths),

@@ -1,18 +1,7 @@
 #pragma once
 
 #include "protocol.h"
-
-#if __has_include("esphome/components/binary_sensor/binary_sensor.h")
 #include "esphome/components/binary_sensor/binary_sensor.h"
-#else
-namespace esphome::binary_sensor {
-class BinarySensor {
- public:
-  void publish_state(bool state) { this->state = state; }
-  bool state{false};
-};
-}  // namespace esphome::binary_sensor
-#endif
 
 #include <cstdint>
 #include <cstddef>

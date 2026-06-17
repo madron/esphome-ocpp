@@ -1,12 +1,5 @@
 #include "protocol.h"
-
-#if __has_include("esphome/core/log.h")
 #include "esphome/core/log.h"
-#else
-#define ESP_LOGD(tag, ...)
-#define ESP_LOGI(tag, ...)
-#define ESP_LOGW(tag, ...)
-#endif
 
 namespace esphome::ocpp {
 namespace {
