@@ -34,7 +34,7 @@ void ChargePoint::on_disconnected() { this->set_online_(false); }
 
 void ChargePoint::handle_ocpp_text(const std::string &message) {
   if (this->debug_ocpp_messages_)
-    ESP_LOGD(TAG, "RX %s: %s", this->connection_id_.c_str(), message.c_str());
+    ESP_LOGD(TAG, "%s << %s", this->connection_id_.c_str(), message.c_str());
   this->apply_protocol_result_(this->protocol_.handle_text(this->connection_id_, message));
 }
 
@@ -46,7 +46,7 @@ void ChargePoint::apply_protocol_result_(const OcppProtocolResult &result) {
   }
   for (const auto &message : result.outbound_messages) {
     if (this->debug_ocpp_messages_)
-      ESP_LOGD(TAG, "TX %s: %s", this->connection_id_.c_str(), message.c_str());
+      ESP_LOGD(TAG, "%s >> %s", this->connection_id_.c_str(), message.c_str());
     if (this->message_sink_ != nullptr)
       this->message_sink_->send_ocpp_text(this->connection_id_, message);
   }
