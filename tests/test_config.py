@@ -22,6 +22,7 @@ class ChargePointSchemaTests(unittest.TestCase):
         )
 
         self.assertFalse(validated["charge_points"][0]["debug_ocpp_messages"])
+        self.assertFalse(validated["charge_points"][0]["force_boot_notification"])
 
     def test_debug_ocpp_messages_enabled(self):
         validated = CONFIG_SCHEMA(
@@ -38,6 +39,22 @@ class ChargePointSchemaTests(unittest.TestCase):
         )
 
         self.assertTrue(validated["charge_points"][0]["debug_ocpp_messages"])
+
+    def test_force_boot_notification_enabled(self):
+        validated = CONFIG_SCHEMA(
+            {
+                "id": "ocpp_id",
+                "charge_points": [
+                    {
+                        "id": "garage_left",
+                        "charge_point_id": "A99999",
+                        "force_boot_notification": True,
+                    }
+                ],
+            }
+        )
+
+        self.assertTrue(validated["charge_points"][0]["force_boot_notification"])
 
 
 if __name__ == "__main__":

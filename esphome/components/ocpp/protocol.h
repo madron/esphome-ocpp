@@ -23,6 +23,7 @@ struct OcppProtocolResult {
 class OcppProtocol {
   public:
     OcppProtocolResult handle_text(const std::string &charge_point_id, const std::string &message);
+    std::string make_trigger_boot_notification(const std::string &unique_id) const;
 
   protected:
     void handle_boot_notification_(const std::string &unique_id, OcppProtocolResult *result);

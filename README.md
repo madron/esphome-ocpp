@@ -36,9 +36,20 @@ ocpp:
     - id: garage_left
       charge_point_id: A99999
       debug_ocpp_messages: true
+      force_boot_notification: true
 ```
 
 `debug_ocpp_messages` is optional per `charge_point`. When enabled, raw OCPP RX/TX payloads for that charger are logged at the ESPHome debug log level.
+
+### Charge point options
+
+| Option                                | Description |
+| ---                                   | --- |
+| `id` (Required)                       | ESPHome ID for this charge point. |
+| `charge_point_id` (Optional)          | OCPP/WebSocket identity expected from the charger. When omitted, the first free dynamic charge point slot is used. |
+| `debug_ocpp_messages` (Optional)      | Logs raw OCPP RX/TX payloads at debug level. Defaults to `false`. |
+| `force_boot_notification` (Optional)  | After ESPHome starts, sends one `TriggerMessage` requesting `BootNotification` if the charger connects and does not send `BootNotification` within 5 seconds. Defaults to `false`. |
+| `online` (Optional)                   | Binary sensor that is `on` after `BootNotification`, `Heartbeat`, or `StatusNotification`, and `off` after disconnect. |
 
 ### Charger configuration
 

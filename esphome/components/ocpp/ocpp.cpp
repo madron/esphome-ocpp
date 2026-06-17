@@ -1,5 +1,6 @@
 #include "ocpp.h"
 
+#include "esphome/core/hal.h"
 #include "esphome/core/log.h"
 
 namespace esphome::ocpp {
@@ -19,7 +20,14 @@ void OcppComponent::setup() {
   }
 }
 
-void OcppComponent::loop() { this->server_.loop(); }
+void OcppComponent::loop() {
+  this->server_.loop();
+  uint32_t now = millis();
+  for (auto *charge_point : this->charge_points_) {
+    if (charge_point != nullptr)
+      charge_point->loop(now);
+  }
+}
 
 void OcppComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "OCPP:");
@@ -31,6 +39,8 @@ void OcppComponent::dump_config() {
       ESP_LOGCONFIG(TAG, "    - charge_point_id: %s", charge_point->get_charge_point_id().c_str());
       if (charge_point->get_debug_ocpp_messages())
         ESP_LOGCONFIG(TAG, "      debug_ocpp_messages: true");
+      if (charge_point->get_force_boot_notification())
+        ESP_LOGCONFIG(TAG, "      force_boot_notification: true");
     }
   }
 }
@@ -42,7 +52,7 @@ void OcppComponent::on_websocket_connected(const std::string &connection_id) {
   if (charge_point == nullptr) {
     ESP_LOGW(TAG, "No charge point available for '%s'", connection_id.c_str());
   } else {
-    charge_point->on_connected(connection_id);
+    charge_point->on_connected(connection_id, millis());
   }
 }
 
