@@ -106,5 +106,8 @@ ocpp:
     - id: garage
       charge_point_id: A99999
       debug_ocpp_messages: true
+      online:
+        id: garage_online
+        name: garage_online
     - id: unknown
       debug_ocpp_messages: true

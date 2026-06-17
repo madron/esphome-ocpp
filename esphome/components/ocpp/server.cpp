@@ -140,8 +140,9 @@ bool OcppServer::setup() {
   this->server_->setsockopt(SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
   sockaddr_storage addr{};
   socklen_t addr_len = socket::set_sockaddr_any(reinterpret_cast<sockaddr *>(&addr), sizeof(addr), this->server_port_);
+  size_t listen_backlog = this->max_clients_ == 0 ? 1 : this->max_clients_;
   if (addr_len == 0 || this->server_->bind(reinterpret_cast<sockaddr *>(&addr), addr_len) != 0 ||
-      this->server_->listen(1) != 0 || this->server_->setblocking(false) != 0) {
+      this->server_->listen(static_cast<int>(listen_backlog)) != 0 || this->server_->setblocking(false) != 0) {
     ESP_LOGE(TAG, "Could not start listener on port %u", this->server_port_);
     return false;
   }
@@ -151,8 +152,11 @@ bool OcppServer::setup() {
 void OcppServer::loop() {
   if (this->server_ != nullptr && this->server_->ready())
     this->accept_client_();
-  if (this->client_ != nullptr && this->client_->ready())
-    this->read_client_();
+  for (auto client = this->clients_.begin(); client != this->clients_.end();) {
+    auto current = client++;
+    if (current->socket != nullptr && current->socket->ready())
+      this->read_client_(current);
+  }
 }
 
 std::string OcppServer::get_charger_url() const {
@@ -174,84 +178,81 @@ void OcppServer::accept_client_() {
   auto client = this->server_->accept_loop_monitored(reinterpret_cast<sockaddr *>(&addr), &addr_len);
   if (client == nullptr)
     return;
-  if (this->client_ != nullptr) {
-    ESP_LOGW(TAG, "Rejecting additional WebSocket connection; only one client is supported");
+  if (this->clients_.size() >= this->max_clients_) {
+    ESP_LOGW(TAG, "Rejecting additional WebSocket connection; no free client session is available");
     client->close();
     return;
   }
   client->setblocking(false);
-  this->client_ = std::move(client);
-  this->rx_buffer_.clear();
-  this->connection_id_.clear();
-  this->handshake_done_ = false;
-  ESP_LOGI(TAG, "WebSocket client connected");
+  ClientSession session;
+  session.socket = std::move(client);
+  this->clients_.push_back(std::move(session));
+  ESP_LOGI(TAG, "WebSocket client socket connected");
 }
 
-void OcppServer::close_client_() {
-  bool notify = this->handshake_done_;
-  if (this->client_ != nullptr)
-    this->client_->close();
-  this->client_.reset();
-  this->rx_buffer_.clear();
-  this->handshake_done_ = false;
-  this->connection_id_.clear();
+void OcppServer::close_client_(ClientSessions::iterator client) {
+  bool notify = client->handshake_done;
+  std::string connection_id = client->connection_id;
+  if (client->socket != nullptr)
+    client->socket->close();
+  this->clients_.erase(client);
   if (notify && this->listener_ != nullptr)
-    this->listener_->on_websocket_disconnected();
+    this->listener_->on_websocket_disconnected(connection_id);
 }
 
-void OcppServer::read_client_() {
+void OcppServer::read_client_(ClientSessions::iterator client) {
   uint8_t buffer[512];
   while (true) {
-    ssize_t read = this->client_->read(buffer, sizeof(buffer));
+    ssize_t read = client->socket->read(buffer, sizeof(buffer));
     if (read > 0) {
-      this->rx_buffer_.append(reinterpret_cast<const char *>(buffer), read);
-      if (this->rx_buffer_.size() > MAX_RX_BUFFER) {
+      client->rx_buffer.append(reinterpret_cast<const char *>(buffer), read);
+      if (client->rx_buffer.size() > MAX_RX_BUFFER) {
         ESP_LOGW(TAG, "Closing WebSocket connection with oversized receive buffer");
-        this->close_client_();
+        this->close_client_(client);
         return;
       }
       continue;
     }
     if (read == 0) {
       ESP_LOGI(TAG, "WebSocket client disconnected");
-      this->close_client_();
+      this->close_client_(client);
       return;
     }
     if (errno != EAGAIN && errno != EWOULDBLOCK) {
       ESP_LOGW(TAG, "WebSocket read failed: errno=%d", errno);
-      this->close_client_();
+      this->close_client_(client);
       return;
     }
     break;
   }
-  if (!this->handshake_done_)
-    this->handle_http_handshake_();
-  if (this->handshake_done_)
-    this->handle_ws_frames_();
+  if (!client->handshake_done && !this->handle_http_handshake_(client))
+    return;
+  if (client->handshake_done)
+    this->handle_ws_frames_(client);
 }
 
-bool OcppServer::request_matches_path_(const std::string &uri) {
+bool OcppServer::request_matches_path_(const std::string &uri, std::string *connection_id) const {
   if (uri == this->server_path_) {
-    this->connection_id_ = "";
+    *connection_id = "";
     return true;
   }
   if (this->server_path_ == "/" && uri.rfind("/", 0) == 0) {
-    this->connection_id_ = uri.substr(1);
+    *connection_id = uri.substr(1);
     return true;
   }
   std::string prefix = this->server_path_ + "/";
   if (uri.rfind(prefix, 0) != 0)
     return false;
-  this->connection_id_ = uri.substr(prefix.size());
+  *connection_id = uri.substr(prefix.size());
   return true;
 }
 
-void OcppServer::handle_http_handshake_() {
-  size_t header_end = this->rx_buffer_.find("\r\n\r\n");
+bool OcppServer::handle_http_handshake_(ClientSessions::iterator client) {
+  size_t header_end = client->rx_buffer.find("\r\n\r\n");
   if (header_end == std::string::npos)
-    return;
-  std::string request = this->rx_buffer_.substr(0, header_end + 4);
-  this->rx_buffer_.erase(0, header_end + 4);
+    return true;
+  std::string request = client->rx_buffer.substr(0, header_end + 4);
+  client->rx_buffer.erase(0, header_end + 4);
 
   size_t first_space = request.find(' ');
   size_t second_space = first_space == std::string::npos ? std::string::npos : request.find(' ', first_space + 1);
@@ -261,13 +262,15 @@ void OcppServer::handle_http_handshake_() {
     uri.erase(query);
 
   std::string key = header_value(request, "Sec-WebSocket-Key");
-  if (request.rfind("GET ", 0) != 0 || key.empty() || !this->request_matches_path_(uri)) {
+  std::string connection_id;
+  if (request.rfind("GET ", 0) != 0 || key.empty() || !this->request_matches_path_(uri, &connection_id) ||
+      this->has_connection_id_(connection_id, &*client)) {
     ESP_LOGW(TAG, "Rejecting WebSocket handshake: uri='%s' configured_path='%s' has_key=%s", uri.c_str(),
              this->server_path_.c_str(), YESNO(!key.empty()));
     static constexpr const char *BAD_REQUEST = "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n";
-    this->client_->write(BAD_REQUEST, std::strlen(BAD_REQUEST));
-    this->close_client_();
-    return;
+    client->socket->write(BAD_REQUEST, std::strlen(BAD_REQUEST));
+    this->close_client_(client);
+    return false;
   }
 
   std::string response = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n";
@@ -275,38 +278,40 @@ void OcppServer::handle_http_handshake_() {
   if (!this->subprotocol_.empty() && header_value(request, "Sec-WebSocket-Protocol").find(this->subprotocol_) != std::string::npos)
     response += "Sec-WebSocket-Protocol: " + this->subprotocol_ + "\r\n";
   response += "\r\n";
-  this->client_->write(response.data(), response.size());
-  this->handshake_done_ = true;
-  ESP_LOGI(TAG, "WebSocket accepted for connection '%s'", this->connection_id_.c_str());
+  client->socket->write(response.data(), response.size());
+  client->connection_id = std::move(connection_id);
+  client->handshake_done = true;
+  ESP_LOGI(TAG, "WebSocket accepted for connection '%s'", client->connection_id.c_str());
   if (this->listener_ != nullptr)
-    this->listener_->on_websocket_connected(this->connection_id_);
+    this->listener_->on_websocket_connected(client->connection_id);
+  return true;
 }
 
-void OcppServer::handle_ws_frames_() {
+bool OcppServer::handle_ws_frames_(ClientSessions::iterator client) {
   size_t frames_handled = 0;
-  while (this->rx_buffer_.size() >= 2) {
-    const uint8_t *data = reinterpret_cast<const uint8_t *>(this->rx_buffer_.data());
+  while (client->rx_buffer.size() >= 2) {
+    const uint8_t *data = reinterpret_cast<const uint8_t *>(client->rx_buffer.data());
     uint8_t opcode = data[0] & 0x0F;
     bool masked = (data[1] & 0x80) != 0;
     uint64_t payload_len = data[1] & 0x7F;
     size_t pos = 2;
     if (payload_len == 126) {
-      if (this->rx_buffer_.size() < 4)
-        return;
+      if (client->rx_buffer.size() < 4)
+        return true;
       payload_len = (uint16_t(data[2]) << 8) | data[3];
       pos = 4;
     } else if (payload_len == 127) {
       ESP_LOGW(TAG, "Closing WebSocket connection with unsupported large frame");
-      this->close_client_();
-      return;
+      this->close_client_(client);
+      return false;
     }
     if (!masked || payload_len > MAX_WS_PAYLOAD) {
       ESP_LOGW(TAG, "Closing WebSocket connection with invalid frame");
-      this->close_client_();
-      return;
+      this->close_client_(client);
+      return false;
     }
-    if (this->rx_buffer_.size() < pos + 4 + payload_len)
-      return;
+    if (client->rx_buffer.size() < pos + 4 + payload_len)
+      return true;
 
     uint8_t mask[4] = {data[pos], data[pos + 1], data[pos + 2], data[pos + 3]};
     pos += 4;
@@ -314,22 +319,23 @@ void OcppServer::handle_ws_frames_() {
     payload.resize(payload_len);
     for (size_t i = 0; i < payload_len; i++)
       payload[i] = static_cast<char>(data[pos + i] ^ mask[i % 4]);
-    this->rx_buffer_.erase(0, pos + payload_len);
+    client->rx_buffer.erase(0, pos + payload_len);
 
     if (opcode == 0x8) {
-      this->close_client_();
-      return;
+      this->close_client_(client);
+      return false;
     }
     if (opcode == 0x9) {
-      this->write_frame_(0xA, payload);
+      this->write_frame_(&*client, 0xA, payload);
       continue;
     }
     if (opcode == 0x1 && this->listener_ != nullptr)
-      this->listener_->on_websocket_text(payload);
+      this->listener_->on_websocket_text(client->connection_id, payload);
 
     if (++frames_handled >= MAX_WS_FRAMES_PER_LOOP)
-      return;
+      return true;
   }
+  return true;
 }
 
 std::string OcppServer::websocket_accept_key_(const std::string &client_key) {
@@ -337,10 +343,18 @@ std::string OcppServer::websocket_accept_key_(const std::string &client_key) {
   return base64_encode(digest.data(), digest.size());
 }
 
-void OcppServer::send_text(const std::string &message) { this->write_frame_(0x1, message); }
+void OcppServer::send_text(const std::string &connection_id, const std::string &message) {
+  for (auto &client : this->clients_) {
+    if (client.handshake_done && client.connection_id == connection_id) {
+      this->write_frame_(&client, 0x1, message);
+      return;
+    }
+  }
+  ESP_LOGW(TAG, "No WebSocket client found for connection '%s'", connection_id.c_str());
+}
 
-void OcppServer::write_frame_(uint8_t opcode, const std::string &payload) {
-  if (this->client_ == nullptr)
+void OcppServer::write_frame_(ClientSession *client, uint8_t opcode, const std::string &payload) {
+  if (client == nullptr || client->socket == nullptr)
     return;
   std::string frame;
   frame.push_back(static_cast<char>(0x80 | opcode));
@@ -352,7 +366,15 @@ void OcppServer::write_frame_(uint8_t opcode, const std::string &payload) {
     frame.push_back(static_cast<char>(payload.size() & 0xFF));
   }
   frame += payload;
-  this->client_->write(frame.data(), frame.size());
+  client->socket->write(frame.data(), frame.size());
+}
+
+bool OcppServer::has_connection_id_(const std::string &connection_id, const ClientSession *except) const {
+  for (const auto &client : this->clients_) {
+    if (&client != except && client.handshake_done && client.connection_id == connection_id)
+      return true;
+  }
+  return false;
 }
 
 }  // namespace esphome::ocpp

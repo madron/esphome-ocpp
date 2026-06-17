@@ -1,32 +1,30 @@
 #pragma once
 
-#include "esphome/components/json/json_util.h"
-
 #include <string>
+#include <vector>
 
 namespace esphome::ocpp {
 
-class OcppProtocolTransport {
-  public:
-    virtual ~OcppProtocolTransport() = default;
+enum class OcppProtocolEventType {
+  BOOT_NOTIFICATION_ACCEPTED,
+};
 
-    virtual void send_ocpp_text(const std::string &message) = 0;
+struct OcppProtocolEvent {
+  OcppProtocolEventType type;
+};
+
+struct OcppProtocolResult {
+  std::vector<OcppProtocolEvent> events;
+  std::vector<std::string> outbound_messages;
 };
 
 class OcppProtocol {
   public:
-    void set_transport(OcppProtocolTransport *transport) { this->transport_ = transport; }
-    void on_connected(const std::string &charge_point_id);
-    void on_disconnected();
-    void handle_text(const std::string &message);
+    OcppProtocolResult handle_text(const std::string &charge_point_id, const std::string &message);
 
   protected:
-    void handle_boot_notification_(const std::string &unique_id, JsonObject payload);
-    void send_text_(const std::string &message);
-    void send_ocpp_error_(const std::string &unique_id, const char *code, const char *description);
-
-    OcppProtocolTransport *transport_{nullptr};
-    std::string charge_point_id_;
+    void handle_boot_notification_(const std::string &unique_id, OcppProtocolResult *result);
+    std::string make_ocpp_error_(const std::string &unique_id, const char *code, const char *description) const;
 };
 
 }  // namespace esphome::ocpp

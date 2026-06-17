@@ -1,13 +1,15 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
+from esphome.components import binary_sensor
 from esphome.const import CONF_ID, CONF_PORT
 
 DEPENDENCIES = ["network"]
-AUTO_LOAD = ["json", "socket"]
+AUTO_LOAD = ["binary_sensor", "json", "socket"]
 
 CONF_CHARGE_POINT_ID = "charge_point_id"
 CONF_CHARGE_POINTS = "charge_points"
 CONF_DEBUG_OCPP_MESSAGES = "debug_ocpp_messages"
+CONF_ONLINE = "online"
 CONF_SERVER = "server"
 CONF_SERVER_PATH = "path"
 
@@ -52,6 +54,7 @@ CHARGE_POINT_SCHEMA = cv.Schema(
         cv.GenerateID(): cv.declare_id(ChargePoint),
         cv.Optional(CONF_CHARGE_POINT_ID): validate_charge_point_id,
         cv.Optional(CONF_DEBUG_OCPP_MESSAGES, default=False): cv.boolean,
+        cv.Optional(CONF_ONLINE): binary_sensor.binary_sensor_schema(),
     }
 )
 
@@ -107,5 +110,8 @@ async def to_code(config):
         charge_point = cg.new_Pvariable(charge_point_conf[CONF_ID])
         if CONF_CHARGE_POINT_ID in charge_point_conf:
             cg.add(charge_point.set_charge_point_id(charge_point_conf[CONF_CHARGE_POINT_ID]))
+        if CONF_ONLINE in charge_point_conf:
+            sens = await binary_sensor.new_binary_sensor(charge_point_conf[CONF_ONLINE])
+            cg.add(charge_point.set_online_binary_sensor(sens))
         cg.add(charge_point.set_debug_ocpp_messages(charge_point_conf[CONF_DEBUG_OCPP_MESSAGES]))
         cg.add(var.add_charge_point(charge_point))
