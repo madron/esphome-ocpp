@@ -8,6 +8,7 @@ namespace esphome::ocpp {
 enum class OcppProtocolEventType {
   BOOT_NOTIFICATION_ACCEPTED,
   HEARTBEAT_RECEIVED,
+  STATUS_NOTIFICATION_RECEIVED,
 };
 
 struct OcppProtocolEvent {
@@ -26,6 +27,7 @@ class OcppProtocol {
   protected:
     void handle_boot_notification_(const std::string &unique_id, OcppProtocolResult *result);
     void handle_heartbeat_(const std::string &unique_id, OcppProtocolResult *result);
+    void handle_status_notification_(const std::string &unique_id, OcppProtocolResult *result);
     std::string make_ocpp_error_(const std::string &unique_id, const char *code, const char *description) const;
 };
 
