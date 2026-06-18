@@ -2,8 +2,8 @@ import unittest
 from .cpp_test_case import CppTestCase
 
 
-class ExampleTests(CppTestCase):
-    def test_example(self):
+class ChargePointTests(CppTestCase):
+    def test_cpp(self):
         self.assert_cpp_test_passes(
             "test_charge_point.cpp",
             extra_sources=(
