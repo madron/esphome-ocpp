@@ -22,6 +22,7 @@ class OcppProtocol {
         std::string make_heartbeat_response(const std::string &unique_id) const;
         std::string make_status_notification_response(const std::string &unique_id) const;
         std::string make_trigger_boot_notification(const std::string &unique_id) const;
+        std::string make_trigger_status_notification(const std::string &unique_id) const;
         std::string make_ocpp_error(const std::string &unique_id, const char *code, const char *description) const;
 
     protected:

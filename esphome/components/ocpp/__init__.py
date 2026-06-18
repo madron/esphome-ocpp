@@ -9,13 +9,13 @@ AUTO_LOAD = ["binary_sensor", "json", "socket", "text_sensor"]
 CONF_CHARGE_POINT_ID = "charge_point_id"
 CONF_CHARGE_POINTS = "charge_points"
 CONF_DEBUG_OCPP_MESSAGES = "debug_ocpp_messages"
-CONF_FORCE_BOOT_NOTIFICATION = "force_boot_notification"
 CONF_FORCE_PROTOCOL = "force_protocol"
 CONF_CHARGER_INFO = "charger_info"
 CONF_ONLINE = "online"
 CONF_PROTOCOL = "protocol"
 CONF_SERVER = "server"
 CONF_SERVER_PATH = "path"
+CONF_STARTUP_NOTIFICATIONS_DELAY = "startup_notifications_delay"
 
 SUPPORTED_PROTOCOLS = ["ocpp1.6", "ocpp2.0.1"]
 
@@ -68,11 +68,11 @@ CHARGE_POINT_SCHEMA = cv.Schema(
         cv.GenerateID(): cv.declare_id(ChargePoint),
         cv.Optional(CONF_CHARGE_POINT_ID): validate_charge_point_id,
         cv.Optional(CONF_DEBUG_OCPP_MESSAGES, default=False): cv.boolean,
-        cv.Optional(CONF_FORCE_BOOT_NOTIFICATION, default=False): cv.boolean,
         cv.Optional(CONF_FORCE_PROTOCOL): validate_protocol,
         cv.Optional(CONF_CHARGER_INFO): text_sensor.text_sensor_schema(),
         cv.Optional(CONF_ONLINE): binary_sensor.binary_sensor_schema(),
         cv.Optional(CONF_PROTOCOL): text_sensor.text_sensor_schema(),
+        cv.Optional(CONF_STARTUP_NOTIFICATIONS_DELAY, default=300): cv.int_range(min=0, max=4294967),
     }
 )
 
@@ -140,5 +140,5 @@ async def to_code(config):
             sens = await binary_sensor.new_binary_sensor(charge_point_conf[CONF_ONLINE])
             cg.add(charge_point.set_online_binary_sensor(sens))
         cg.add(charge_point.set_debug_ocpp_messages(charge_point_conf[CONF_DEBUG_OCPP_MESSAGES]))
-        cg.add(charge_point.set_force_boot_notification(charge_point_conf[CONF_FORCE_BOOT_NOTIFICATION]))
+        cg.add(charge_point.set_startup_notifications_delay(charge_point_conf[CONF_STARTUP_NOTIFICATIONS_DELAY] * 1000))
         cg.add(var.add_charge_point(charge_point))

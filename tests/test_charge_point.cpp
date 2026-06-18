@@ -44,7 +44,7 @@ int main() {
 
         // get_debug_ocpp_messages
         assert_equal("get_debug_ocpp_messages", charge_point.get_debug_ocpp_messages(), false);
-        assert_equal("get_force_boot_notification", charge_point.get_force_boot_notification(), false);
+        assert_equal("get_startup_notifications_delay", charge_point.get_startup_notifications_delay(), 300000U);
         assert_equal("get_max_queued_messages", charge_point.get_max_queued_messages(), 8);
         assert_equal("get_force_protocol", charge_point.get_force_protocol(), std::string(""));
         assert_equal("protocol_default", charge_point.protocol_sensor.state, std::string(""));
@@ -54,9 +54,9 @@ int main() {
         charge_point.set_debug_ocpp_messages(true);
         assert_equal("set_debug_ocpp_messages", charge_point.get_debug_ocpp_messages(), true);
 
-        // set_force_boot_notification
-        charge_point.set_force_boot_notification(true);
-        assert_equal("set_force_boot_notification", charge_point.get_force_boot_notification(), true);
+        // set_startup_notifications_delay
+        charge_point.set_startup_notifications_delay(0);
+        assert_equal("set_startup_notifications_delay", charge_point.get_startup_notifications_delay(), 0U);
 
         // set_max_queued_messages
         charge_point.set_max_queued_messages(16);
@@ -136,44 +136,62 @@ int main() {
     }
 
     {
-        // force_boot_notification defaults off
+        // startup_notifications_delay can be disabled with 0
         TestChargePoint charge_point;
+        charge_point.set_startup_notifications_delay(0);
         charge_point.on_connected("A99999");
-        charge_point.loop(5000);
-        assert_equal("default_force_boot_trigger_count", charge_point.messages.size(), 0);
+        charge_point.loop(300000);
+        assert_equal("disabled_startup_notifications_trigger_count", charge_point.messages.size(), 0);
     }
 
     {
-        // force_boot_notification waits 5 seconds, then sends one TriggerMessage only
+        // Missing startup notifications are requested after the delay, BootNotification first
         TestChargePoint charge_point;
-        charge_point.set_force_boot_notification(true);
         charge_point.on_connected("A99999");
-        charge_point.loop(4999);
-        assert_equal("force_boot_trigger_before_delay", charge_point.messages.size(), 0);
-        charge_point.loop(5000);
-        assert_equal("force_boot_trigger_after_delay", charge_point.messages.size(), 1);
-        assert_equal("force_boot_trigger", charge_point.messages[0],
+        charge_point.loop(299999);
+        assert_equal("startup_trigger_before_delay", charge_point.messages.size(), 0);
+        charge_point.loop(300000);
+        assert_equal("startup_boot_trigger_after_delay", charge_point.messages.size(), 1);
+        assert_equal("startup_boot_trigger", charge_point.messages[0],
                      R"([2,"trigger-boot-notification","TriggerMessage",{"requestedMessage":"BootNotification"}])");
-        std::string force_boot_trigger;
-        assert_equal("force_boot_trigger_dequeued", charge_point.pop_queued_message(&force_boot_trigger), true);
+        charge_point.loop(301000);
+        assert_equal("startup_status_waits_for_boot_trigger_reply", charge_point.messages.size(), 1);
+        std::string startup_boot_trigger;
+        assert_equal("startup_boot_trigger_dequeued", charge_point.pop_queued_message(&startup_boot_trigger), true);
         charge_point.handle_ocpp_text(R"([3,"trigger-boot-notification",{"status":"Accepted"}])");
-        assert_equal("force_boot_trigger_result_ignored", charge_point.messages.size(), 0);
-        charge_point.loop(10000);
-        charge_point.on_disconnected();
-        charge_point.on_connected("A99999", 10000);
-        charge_point.loop(15000);
-        assert_equal("force boot trigger remains one shot", charge_point.messages.size(), 0);
+        assert_equal("startup_status_trigger_after_boot_reply", charge_point.messages.size(), 1);
+        assert_equal("startup_status_trigger", charge_point.messages[0],
+                     R"([2,"trigger-status-notification","TriggerMessage",{"requestedMessage":"StatusNotification"}])");
     }
 
     {
-        // Natural BootNotification before the delay suppresses the forced trigger
+        // Natural BootNotification before the delay suppresses only the boot trigger
         TestChargePoint charge_point;
-        charge_point.set_force_boot_notification(true);
         charge_point.on_connected("A99999");
         charge_point.handle_ocpp_text(R"([2,"boot-1","BootNotification",{"chargePointVendor":"Acme","chargePointModel":"Wallbox"}])");
-        charge_point.loop(5000);
-        assert_equal("natural_boot_suppresses_trigger_count", charge_point.messages.size(), 1);
         assert_equal("natural_boot_response", charge_point.messages[0], R"([3,"boot-1",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
+        charge_point.messages.clear();
+        charge_point.loop(300000);
+        assert_equal("natural_boot_status_trigger_count", charge_point.messages.size(), 1);
+        assert_equal("natural_boot_status_trigger", charge_point.messages[0],
+                     R"([2,"trigger-status-notification","TriggerMessage",{"requestedMessage":"StatusNotification"}])");
+    }
+
+    {
+        // Natural StatusNotification before the delay suppresses only the status trigger
+        TestChargePoint charge_point;
+        charge_point.on_connected("A99999");
+        charge_point.handle_ocpp_text(
+            R"([2,"status-1","StatusNotification",{"connectorId":1,"errorCode":"NoError","status":"Available"}])");
+        charge_point.messages.clear();
+        charge_point.loop(300000);
+        assert_equal("natural_status_boot_trigger_count", charge_point.messages.size(), 1);
+        assert_equal("natural_status_boot_trigger", charge_point.messages[0],
+                     R"([2,"trigger-boot-notification","TriggerMessage",{"requestedMessage":"BootNotification"}])");
+        std::string startup_boot_trigger;
+        assert_equal("natural_status_boot_trigger_dequeued", charge_point.pop_queued_message(&startup_boot_trigger), true);
+        charge_point.handle_ocpp_text(R"([3,"trigger-boot-notification",{"status":"Accepted"}])");
+        assert_equal("natural_status_no_status_trigger_after_boot_reply", charge_point.messages.size(), 0);
     }
 
     {

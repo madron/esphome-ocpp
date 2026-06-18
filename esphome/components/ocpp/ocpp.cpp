@@ -39,8 +39,8 @@ void OcppComponent::dump_config() {
             ESP_LOGCONFIG(TAG, "    - charge_point_id: %s", charge_point->get_charge_point_id().c_str());
             if (charge_point->get_debug_ocpp_messages())
                 ESP_LOGCONFIG(TAG, "      debug_ocpp_messages: true");
-            if (charge_point->get_force_boot_notification())
-                ESP_LOGCONFIG(TAG, "      force_boot_notification: true");
+            ESP_LOGCONFIG(TAG, "      startup_notifications_delay: %us",
+                          static_cast<unsigned>(charge_point->get_startup_notifications_delay() / 1000));
         }
     }
 }

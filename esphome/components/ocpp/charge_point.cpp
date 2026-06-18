@@ -8,7 +8,8 @@ namespace esphome::ocpp {
 namespace {
 
 static const char *const TAG = "ocpp.charge_point";
-static constexpr uint32_t FORCE_BOOT_NOTIFICATION_DELAY_MS = 5000;
+static const char *const TRIGGER_BOOT_NOTIFICATION_UNIQUE_ID = "trigger-boot-notification";
+static const char *const TRIGGER_STATUS_NOTIFICATION_UNIQUE_ID = "trigger-status-notification";
 
 }  // namespace
 
@@ -26,10 +27,10 @@ const std::string &ChargePoint::get_force_protocol() const { return this->forced
 
 void ChargePoint::set_debug_ocpp_messages(bool debug_ocpp_messages) { this->debug_ocpp_messages_ = debug_ocpp_messages; }
 bool ChargePoint::get_debug_ocpp_messages() const { return this->debug_ocpp_messages_; }
-void ChargePoint::set_force_boot_notification(bool force_boot_notification) {
-    this->force_boot_notification_ = force_boot_notification;
+void ChargePoint::set_startup_notifications_delay(uint32_t startup_notifications_delay_ms) {
+    this->startup_notifications_delay_ms_ = startup_notifications_delay_ms;
 }
-bool ChargePoint::get_force_boot_notification() const { return this->force_boot_notification_; }
+uint32_t ChargePoint::get_startup_notifications_delay() const { return this->startup_notifications_delay_ms_; }
 bool ChargePoint::is_online() const { return this->online_; }
 
 void ChargePoint::on_connected(std::string connection_id, uint32_t now_millis) {
@@ -45,13 +46,12 @@ void ChargePoint::on_connected(std::string connection_id, std::string protocol, 
         this->protocol_text_sensor_->publish_state(protocol);
     if (this->charger_info_text_sensor_ != nullptr)
         this->charger_info_text_sensor_->publish_state("");
-    this->force_boot_notification_scheduled_ =
-        this->force_boot_notification_ && this->force_boot_notification_pending_;
 }
 
 void ChargePoint::on_disconnected() {
     this->connected_ = false;
-    this->force_boot_notification_scheduled_ = false;
+    this->boot_notification_trigger_in_flight_ = false;
+    this->status_notification_trigger_in_flight_ = false;
     this->messages_.clear();
     if (this->protocol_text_sensor_ != nullptr)
         this->protocol_text_sensor_->publish_state("");
@@ -70,11 +70,11 @@ void ChargePoint::handle_ocpp_text(const std::string &message) {
 }
 
 void ChargePoint::loop(uint32_t now_millis) {
-    if (!this->connected_ || !this->force_boot_notification_scheduled_)
+    if (!this->connected_ || this->startup_notifications_delay_ms_ == 0)
         return;
-    if (now_millis - this->connected_at_millis_ < FORCE_BOOT_NOTIFICATION_DELAY_MS)
+    if (now_millis - this->connected_at_millis_ < this->startup_notifications_delay_ms_)
         return;
-    this->send_forced_boot_notification_trigger_();
+    this->send_startup_notification_triggers_();
 }
 
 void ChargePoint::send_message_(const std::string &message) {
@@ -99,12 +99,14 @@ void ChargePoint::handle_ocpp_message_(const OcppMessage &message) {
     if (message.message_type_id == OcppMessageType::CALL_RESULT) {
         ESP_LOGD(TAG, "OCPP call result: charge_point='%s' uniqueId='%s'", this->connection_id_.c_str(),
                 message.unique_id.c_str());
+        this->handle_startup_notification_trigger_reply_(message);
         return;
     }
 
     if (message.message_type_id == OcppMessageType::CALL_ERROR) {
         ESP_LOGW(TAG, "OCPP call error: charge_point='%s' uniqueId='%s'", this->connection_id_.c_str(),
                 message.unique_id.c_str());
+        this->handle_startup_notification_trigger_reply_(message);
         return;
     }
 
@@ -121,16 +123,21 @@ void ChargePoint::handle_ocpp_call_(const OcppMessage &call) {
             call.action.c_str(), call.unique_id.c_str());
 
     if (call.action == "BootNotification") {
-        this->force_boot_notification_pending_ = false;
-        this->force_boot_notification_scheduled_ = false;
+        bool was_boot_trigger_in_flight = this->boot_notification_trigger_in_flight_;
+        this->boot_notification_pending_ = false;
+        this->boot_notification_trigger_in_flight_ = false;
         this->set_online_(true);
         const auto &boot_notification = static_cast<const BootNotification &>(call);
         this->publish_charger_info_(boot_notification);
         this->send_message_(this->protocol_.make_boot_notification_response(call.unique_id));
+        if (was_boot_trigger_in_flight)
+            this->send_startup_notification_triggers_();
     } else if (call.action == "Heartbeat") {
         this->set_online_(true);
         this->send_message_(this->protocol_.make_heartbeat_response(call.unique_id));
     } else if (call.action == "StatusNotification") {
+        this->status_notification_pending_ = false;
+        this->status_notification_trigger_in_flight_ = false;
         this->set_online_(true);
         this->send_message_(this->protocol_.make_status_notification_response(call.unique_id));
     } else {
@@ -141,10 +148,41 @@ void ChargePoint::handle_ocpp_call_(const OcppMessage &call) {
     }
 }
 
-void ChargePoint::send_forced_boot_notification_trigger_() {
-    this->force_boot_notification_pending_ = false;
-    this->force_boot_notification_scheduled_ = false;
-    this->send_message_(this->protocol_.make_trigger_boot_notification("trigger-boot-notification"));
+void ChargePoint::handle_startup_notification_trigger_reply_(const OcppMessage &message) {
+    if (message.unique_id == TRIGGER_BOOT_NOTIFICATION_UNIQUE_ID) {
+        this->boot_notification_trigger_in_flight_ = false;
+        this->send_startup_notification_triggers_();
+    } else if (message.unique_id == TRIGGER_STATUS_NOTIFICATION_UNIQUE_ID) {
+        this->status_notification_trigger_in_flight_ = false;
+    }
+}
+
+void ChargePoint::send_startup_notification_triggers_() {
+    if (!this->connected_ || this->startup_notifications_delay_ms_ == 0)
+        return;
+
+    if (this->boot_notification_trigger_in_flight_ || this->status_notification_trigger_in_flight_)
+        return;
+
+    if (this->boot_notification_pending_) {
+        this->send_boot_notification_trigger_();
+        return;
+    }
+
+    if (this->status_notification_pending_)
+        this->send_status_notification_trigger_();
+}
+
+void ChargePoint::send_boot_notification_trigger_() {
+    this->boot_notification_pending_ = false;
+    this->boot_notification_trigger_in_flight_ = true;
+    this->send_message_(this->protocol_.make_trigger_boot_notification(TRIGGER_BOOT_NOTIFICATION_UNIQUE_ID));
+}
+
+void ChargePoint::send_status_notification_trigger_() {
+    this->status_notification_pending_ = false;
+    this->status_notification_trigger_in_flight_ = true;
+    this->send_message_(this->protocol_.make_trigger_status_notification(TRIGGER_STATUS_NOTIFICATION_UNIQUE_ID));
 }
 
 void ChargePoint::set_online_(bool online) {

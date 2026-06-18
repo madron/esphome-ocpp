@@ -145,6 +145,10 @@ std::string OcppProtocol::make_trigger_boot_notification(const std::string &uniq
     return "[2,\"" + json_escape(unique_id) + "\",\"TriggerMessage\",{\"requestedMessage\":\"BootNotification\"}]";
 }
 
+std::string OcppProtocol::make_trigger_status_notification(const std::string &unique_id) const {
+    return "[2,\"" + json_escape(unique_id) + "\",\"TriggerMessage\",{\"requestedMessage\":\"StatusNotification\"}]";
+}
+
 std::string OcppProtocol::make_ocpp_error(const std::string &unique_id, const char *code, const char *description) const {
     return "[4,\"" + json_escape(unique_id) + "\",\"" + code + "\",\"" + description + "\",{}]";
 }

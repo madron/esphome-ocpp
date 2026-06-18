@@ -15,6 +15,7 @@ namespace esphome::ocpp {
 class ChargePoint {
     public:
         static constexpr size_t DEFAULT_MAX_QUEUED_MESSAGES = 8;
+        static constexpr uint32_t DEFAULT_STARTUP_NOTIFICATIONS_DELAY_MS = 300000;
 
         void set_charge_point_id(std::string charge_point_id);
         const std::string &get_charge_point_id() const;
@@ -33,8 +34,8 @@ class ChargePoint {
         }
         void set_debug_ocpp_messages(bool debug_ocpp_messages);
         bool get_debug_ocpp_messages() const;
-        void set_force_boot_notification(bool force_boot_notification);
-        bool get_force_boot_notification() const;
+        void set_startup_notifications_delay(uint32_t startup_notifications_delay_ms);
+        uint32_t get_startup_notifications_delay() const;
         bool is_online() const;
         void set_max_queued_messages(size_t max_queued_messages) { this->max_queued_messages_ = max_queued_messages; }
         size_t get_max_queued_messages() const { return this->max_queued_messages_; }
@@ -50,7 +51,10 @@ class ChargePoint {
         void send_message_(const std::string &message);
         void handle_ocpp_message_(const OcppMessage &message);
         void handle_ocpp_call_(const OcppMessage &call);
-        void send_forced_boot_notification_trigger_();
+        void handle_startup_notification_trigger_reply_(const OcppMessage &message);
+        void send_startup_notification_triggers_();
+        void send_boot_notification_trigger_();
+        void send_status_notification_trigger_();
         void set_online_(bool online);
         void publish_charger_info_(const BootNotification &boot_notification);
 
@@ -64,9 +68,11 @@ class ChargePoint {
         text_sensor::TextSensor *charger_info_text_sensor_{nullptr};
         size_t max_queued_messages_{DEFAULT_MAX_QUEUED_MESSAGES};
         bool debug_ocpp_messages_{false};
-        bool force_boot_notification_{false};
-        bool force_boot_notification_pending_{true};
-        bool force_boot_notification_scheduled_{false};
+        uint32_t startup_notifications_delay_ms_{DEFAULT_STARTUP_NOTIFICATIONS_DELAY_MS};
+        bool boot_notification_pending_{true};
+        bool status_notification_pending_{true};
+        bool boot_notification_trigger_in_flight_{false};
+        bool status_notification_trigger_in_flight_{false};
         bool connected_{false};
         bool online_{false};
         uint32_t connected_at_millis_{0};
