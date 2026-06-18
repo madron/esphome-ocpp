@@ -7,14 +7,22 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace esphome::ocpp {
+
+const std::vector<std::string> &supported_ocpp_protocols();
+std::string select_supported_protocol(const std::string &client_protocols, const std::string &forced_protocol = "",
+                                      std::string *reject_reason = nullptr);
 
 class OcppServerListener {
     public:
         virtual ~OcppServerListener() = default;
 
-        virtual void on_websocket_connected(const std::string &connection_id) = 0;
+        virtual std::string select_websocket_protocol(const std::string &connection_id,
+                                                      const std::string &client_protocols,
+                                                      std::string *reject_reason) = 0;
+        virtual void on_websocket_connected(const std::string &connection_id, const std::string &protocol) = 0;
         virtual void on_websocket_disconnected(const std::string &connection_id) = 0;
         virtual void on_websocket_text(const std::string &connection_id, const std::string &message) = 0;
 };
@@ -25,7 +33,6 @@ class OcppServer {
         void set_port(uint16_t port) { this->server_port_ = port; }
         void set_max_clients(size_t max_clients) { this->max_clients_ = max_clients; }
         void set_path(std::string path);
-        void set_subprotocol(std::string subprotocol) { this->subprotocol_ = std::move(subprotocol); }
 
         bool setup();
         void loop();
@@ -58,7 +65,6 @@ class OcppServer {
         size_t max_clients_{1};
         uint16_t server_port_{9000};
         std::string server_path_{"/"};
-        std::string subprotocol_;
 };
 
 }  // namespace esphome::ocpp

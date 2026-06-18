@@ -6,11 +6,13 @@
 
 using esphome::ocpp::ChargePoint;
 using esphome::binary_sensor::BinarySensor;
+using esphome::text_sensor::TextSensor;
 
 class TestChargePoint : public ChargePoint {
  public:
     TestChargePoint() {
         this->set_online_binary_sensor(&this->online_sensor);
+        this->set_protocol_text_sensor(&this->protocol_sensor);
     }
 
     TestChargePoint(const TestChargePoint &) = delete;
@@ -18,6 +20,7 @@ class TestChargePoint : public ChargePoint {
 
     std::vector<std::string> &messages{this->messages_};
     BinarySensor online_sensor;
+    TextSensor protocol_sensor;
 };
 
 int main() {
@@ -41,6 +44,8 @@ int main() {
         assert_equal("get_debug_ocpp_messages", charge_point.get_debug_ocpp_messages(), false);
         assert_equal("get_force_boot_notification", charge_point.get_force_boot_notification(), false);
         assert_equal("get_max_queued_messages", charge_point.get_max_queued_messages(), 8);
+        assert_equal("get_force_protocol", charge_point.get_force_protocol(), std::string(""));
+        assert_equal("protocol_default", charge_point.protocol_sensor.state, std::string(""));
 
         // set_debug_ocpp_messages
         charge_point.set_debug_ocpp_messages(true);
@@ -53,6 +58,20 @@ int main() {
         // set_max_queued_messages
         charge_point.set_max_queued_messages(16);
         assert_equal("set_max_queued_messages", charge_point.get_max_queued_messages(), 16);
+
+        // set_force_protocol
+        charge_point.set_force_protocol("ocpp1.6");
+        assert_equal("set_force_protocol", charge_point.get_force_protocol(), std::string("ocpp1.6"));
+    }
+
+    {
+        // Protocol sensor is published on connect and cleared on disconnect
+        TestChargePoint charge_point;
+        charge_point.on_connected("A99999", "ocpp1.6");
+        assert_equal("protocol_after_connect", charge_point.protocol_sensor.state,
+                     std::string("ocpp1.6"));
+        charge_point.on_disconnected();
+        assert_equal("protocol_after_disconnect", charge_point.protocol_sensor.state, std::string(""));
     }
 
     {

@@ -20,6 +20,9 @@ const std::string &ChargePoint::get_charge_point_id() const { return this->charg
 void ChargePoint::set_connection_id(std::string connection_id) { this->connection_id_ = std::move(connection_id); }
 const std::string &ChargePoint::get_connection_id() const { return this->connection_id_; }
 
+void ChargePoint::set_force_protocol(std::string force_protocol) { this->forced_protocol_ = std::move(force_protocol); }
+const std::string &ChargePoint::get_force_protocol() const { return this->forced_protocol_; }
+
 void ChargePoint::set_debug_ocpp_messages(bool debug_ocpp_messages) { this->debug_ocpp_messages_ = debug_ocpp_messages; }
 bool ChargePoint::get_debug_ocpp_messages() const { return this->debug_ocpp_messages_; }
 void ChargePoint::set_force_boot_notification(bool force_boot_notification) {
@@ -29,9 +32,15 @@ bool ChargePoint::get_force_boot_notification() const { return this->force_boot_
 bool ChargePoint::is_online() const { return this->online_; }
 
 void ChargePoint::on_connected(std::string connection_id, uint32_t now_millis) {
+    this->on_connected(std::move(connection_id), "", now_millis);
+}
+
+void ChargePoint::on_connected(std::string connection_id, std::string protocol, uint32_t now_millis) {
     this->set_connection_id(std::move(connection_id));
     this->connected_ = true;
     this->connected_at_millis_ = now_millis;
+    if (this->protocol_text_sensor_ != nullptr)
+        this->protocol_text_sensor_->publish_state(protocol);
     this->force_boot_notification_scheduled_ =
         this->force_boot_notification_ && this->force_boot_notification_pending_;
 }
@@ -40,6 +49,8 @@ void ChargePoint::on_disconnected() {
     this->connected_ = false;
     this->force_boot_notification_scheduled_ = false;
     this->messages_.clear();
+    if (this->protocol_text_sensor_ != nullptr)
+        this->protocol_text_sensor_->publish_state("");
     this->set_online_(false);
 }
 

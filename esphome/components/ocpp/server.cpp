@@ -32,12 +32,45 @@ bool equals_ignore_case(const std::string &a, const char *b) {
     return true;
 }
 
-std::string trim(const std::string &value) {
+std::string trim_protocol(const std::string &value) {
     size_t begin = value.find_first_not_of(" \t");
     if (begin == std::string::npos)
         return "";
     size_t end = value.find_last_not_of(" \t");
     return value.substr(begin, end - begin + 1);
+}
+
+std::vector<std::string> split_protocols(const std::string &protocols) {
+    std::vector<std::string> result;
+    size_t begin = 0;
+    while (begin <= protocols.size()) {
+        size_t comma = protocols.find(',', begin);
+        std::string protocol = trim_protocol(protocols.substr(begin, comma - begin));
+        if (!protocol.empty())
+            result.push_back(protocol);
+        if (comma == std::string::npos)
+            break;
+        begin = comma + 1;
+    }
+    return result;
+}
+
+bool contains_protocol(const std::vector<std::string> &protocols, const std::string &protocol) {
+    for (const auto &candidate : protocols) {
+        if (candidate == protocol)
+            return true;
+    }
+    return false;
+}
+
+std::string join_protocols(const std::vector<std::string> &protocols) {
+    std::string result;
+    for (const auto &protocol : protocols) {
+        if (!result.empty())
+            result += ", ";
+        result += protocol;
+    }
+    return result;
 }
 
 std::string header_value(const std::string &request, const char *name) {
@@ -49,7 +82,7 @@ std::string header_value(const std::string &request, const char *name) {
         std::string line = request.substr(pos + 2, next - pos - 2);
         size_t colon = line.find(':');
         if (colon != std::string::npos && equals_ignore_case(line.substr(0, colon), name))
-            return trim(line.substr(colon + 1));
+            return trim_protocol(line.substr(colon + 1));
         pos = next;
     }
     return "";
@@ -121,6 +154,39 @@ std::array<uint8_t, 20> sha1(const std::string &input) {
 
 }  // namespace
 
+const std::vector<std::string> &supported_ocpp_protocols() {
+    static const std::vector<std::string> protocols{"ocpp1.6", "ocpp2.0.1"};
+    return protocols;
+}
+
+std::string select_supported_protocol(const std::string &client_protocols, const std::string &forced_protocol,
+                                      std::string *reject_reason) {
+    std::vector<std::string> offered_protocols = split_protocols(client_protocols);
+    const std::vector<std::string> &supported_protocols = supported_ocpp_protocols();
+
+    if (!forced_protocol.empty()) {
+        if (contains_protocol(supported_protocols, forced_protocol) && contains_protocol(offered_protocols, forced_protocol))
+            return forced_protocol;
+        if (reject_reason != nullptr) {
+            if (!contains_protocol(supported_protocols, forced_protocol))
+                *reject_reason = "forced protocol '" + forced_protocol + "' is not supported by this server";
+            else
+                *reject_reason = "forced protocol '" + forced_protocol + "' was not offered by the client";
+        }
+        return "";
+    }
+
+    for (const auto &offered_protocol : offered_protocols) {
+        if (contains_protocol(supported_protocols, offered_protocol))
+            return offered_protocol;
+    }
+    if (reject_reason != nullptr)
+        *reject_reason = client_protocols.empty() ? "client did not offer a WebSocket subprotocol"
+                                                  : "client did not offer a supported WebSocket subprotocol; supported protocols: " +
+                                                        join_protocols(supported_protocols);
+    return "";
+}
+
 void OcppServer::set_path(std::string path) {
     if (path.empty() || path[0] != '/')
         path.insert(path.begin(), '/');
@@ -187,7 +253,6 @@ void OcppServer::accept_client_() {
     ClientSession session;
     session.socket = std::move(client);
     this->clients_.push_back(std::move(session));
-    ESP_LOGI(TAG, "WebSocket client socket connected");
 }
 
 void OcppServer::close_client_(ClientSessions::iterator client) {
@@ -262,6 +327,7 @@ bool OcppServer::handle_http_handshake_(ClientSessions::iterator client) {
         uri.erase(query);
 
     std::string key = header_value(request, "Sec-WebSocket-Key");
+    std::string client_protocols = header_value(request, "Sec-WebSocket-Protocol");
     std::string connection_id;
     if (request.rfind("GET ", 0) != 0 || key.empty() || !this->request_matches_path_(uri, &connection_id) ||
         this->has_connection_id_(connection_id, &*client)) {
@@ -273,17 +339,32 @@ bool OcppServer::handle_http_handshake_(ClientSessions::iterator client) {
         return false;
     }
 
+    std::string protocol;
+    std::string reject_reason;
+    if (this->listener_ != nullptr)
+        protocol = this->listener_->select_websocket_protocol(connection_id, client_protocols, &reject_reason);
+
+    if (protocol.empty()) {
+        ESP_LOGW(TAG, "Disconnecting WebSocket client for protocol mismatch. Offered protocols: %s. Reason: %s",
+                 client_protocols.c_str(), reject_reason.empty() ? "no compatible protocol selected" : reject_reason.c_str());
+        static constexpr const char *BAD_REQUEST = "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n";
+        client->socket->write(BAD_REQUEST, std::strlen(BAD_REQUEST));
+        this->close_client_(client);
+        return false;
+    }
+
     std::string response = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n";
     response += "Sec-WebSocket-Accept: " + this->websocket_accept_key_(key) + "\r\n";
-    if (!this->subprotocol_.empty() && header_value(request, "Sec-WebSocket-Protocol").find(this->subprotocol_) != std::string::npos)
-        response += "Sec-WebSocket-Protocol: " + this->subprotocol_ + "\r\n";
+    if (!protocol.empty())
+        response += "Sec-WebSocket-Protocol: " + protocol + "\r\n";
     response += "\r\n";
     client->socket->write(response.data(), response.size());
     client->connection_id = std::move(connection_id);
     client->handshake_done = true;
+    ESP_LOGI(TAG, "WebSocket client socket connected. Offered protocols: %s", client_protocols.c_str());
     ESP_LOGI(TAG, "WebSocket accepted for connection '%s'", client->connection_id.c_str());
     if (this->listener_ != nullptr)
-        this->listener_->on_websocket_connected(client->connection_id);
+        this->listener_->on_websocket_connected(client->connection_id, protocol);
     return true;
 }
 

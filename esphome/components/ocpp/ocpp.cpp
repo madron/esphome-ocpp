@@ -13,7 +13,6 @@ static const char *const TAG = "ocpp";
 void OcppComponent::setup() {
     this->server_.set_listener(this);
     this->server_.set_max_clients(this->charge_points_.size());
-    this->server_.set_subprotocol("ocpp1.6");
     if (!this->server_.setup()) {
         ESP_LOGE(TAG, "Could not start OCPP server");
         this->mark_failed();
@@ -48,12 +47,28 @@ void OcppComponent::dump_config() {
 
 float OcppComponent::get_setup_priority() const { return setup_priority::WIFI - 1.0f; }
 
-void OcppComponent::on_websocket_connected(const std::string &connection_id) {
+void OcppComponent::add_charge_point(ChargePoint *charge_point) {
+    this->charge_points_.push_back(charge_point);
+}
+
+std::string OcppComponent::select_websocket_protocol(const std::string &connection_id,
+                                                     const std::string &client_protocols,
+                                                     std::string *reject_reason) {
     ChargePoint *charge_point = this->assign_charge_point_for_connection_(connection_id);
+    if (charge_point == nullptr) {
+        if (reject_reason != nullptr)
+            *reject_reason = "no charge point is available for this connection";
+        return "";
+    }
+    return select_supported_protocol(client_protocols, charge_point->get_force_protocol(), reject_reason);
+}
+
+void OcppComponent::on_websocket_connected(const std::string &connection_id, const std::string &protocol) {
+    ChargePoint *charge_point = this->find_charge_point_by_connection_id_(connection_id);
     if (charge_point == nullptr) {
         ESP_LOGW(TAG, "No charge point available for '%s'", connection_id.c_str());
     } else {
-        charge_point->on_connected(connection_id, App.get_loop_component_start_time());
+        charge_point->on_connected(connection_id, protocol, App.get_loop_component_start_time());
     }
 }
 

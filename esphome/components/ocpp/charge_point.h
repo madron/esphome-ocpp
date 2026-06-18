@@ -2,6 +2,7 @@
 
 #include "protocol.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
+#include "esphome/components/text_sensor/text_sensor.h"
 
 #include <cstdint>
 #include <cstddef>
@@ -18,8 +19,13 @@ class ChargePoint {
         const std::string &get_charge_point_id() const;
         void set_connection_id(std::string connection_id);
         const std::string &get_connection_id() const;
+        void set_force_protocol(std::string force_protocol);
+        const std::string &get_force_protocol() const;
         void set_online_binary_sensor(binary_sensor::BinarySensor *online_binary_sensor) {
             this->online_binary_sensor_ = online_binary_sensor;
+        }
+        void set_protocol_text_sensor(text_sensor::TextSensor *protocol_text_sensor) {
+            this->protocol_text_sensor_ = protocol_text_sensor;
         }
         void set_debug_ocpp_messages(bool debug_ocpp_messages);
         bool get_debug_ocpp_messages() const;
@@ -30,6 +36,7 @@ class ChargePoint {
         size_t get_max_queued_messages() const { return this->max_queued_messages_; }
 
         void on_connected(std::string connection_id, uint32_t now_millis = 0);
+        void on_connected(std::string connection_id, std::string protocol, uint32_t now_millis = 0);
         void on_disconnected();
         void handle_ocpp_text(const std::string &message);
         void loop(uint32_t now_millis);
@@ -43,9 +50,11 @@ class ChargePoint {
 
         std::string charge_point_id_;
         std::string connection_id_;
+        std::string forced_protocol_;
         OcppProtocol protocol_;
         std::vector<std::string> messages_;
         binary_sensor::BinarySensor *online_binary_sensor_{nullptr};
+        text_sensor::TextSensor *protocol_text_sensor_{nullptr};
         size_t max_queued_messages_{DEFAULT_MAX_QUEUED_MESSAGES};
         bool debug_ocpp_messages_{false};
         bool force_boot_notification_{false};

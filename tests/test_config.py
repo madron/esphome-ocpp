@@ -56,6 +56,39 @@ class ChargePointSchemaTests(unittest.TestCase):
 
         self.assertTrue(validated["charge_points"][0]["force_boot_notification"])
 
+    def test_force_protocol_and_protocol_text_sensor_enabled(self):
+        validated = CONFIG_SCHEMA(
+            {
+                "id": "ocpp_id",
+                "charge_points": [
+                    {
+                        "id": "garage_left",
+                        "charge_point_id": "A99999",
+                        "force_protocol": "ocpp1.6",
+                        "protocol": {"name": "Garage Protocol"},
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(validated["charge_points"][0]["force_protocol"], "ocpp1.6")
+        self.assertIn("protocol", validated["charge_points"][0])
+
+    def test_unsupported_force_protocol_rejected(self):
+        with self.assertRaises(Exception):
+            CONFIG_SCHEMA(
+                {
+                    "id": "ocpp_id",
+                    "charge_points": [
+                        {
+                            "id": "garage_left",
+                            "charge_point_id": "A99999",
+                            "force_protocol": "ocpp2.0.1",
+                        }
+                    ],
+                }
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

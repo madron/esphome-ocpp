@@ -107,6 +107,8 @@ ocpp:
       charge_point_id: A99999
       debug_ocpp_messages: true
       force_boot_notification: true
+      protocol:
+        name: garage_protocol
       online:
         id: garage_online
         name: garage_online

@@ -22,12 +22,13 @@ class OcppComponent : public Component, public OcppServerListener {
         void set_server_port(uint16_t port) { this->server_.set_port(port); }
         void set_server_path(std::string path) { this->server_.set_path(std::move(path)); }
 
-        void add_charge_point(ChargePoint *charge_point) {
-            this->charge_points_.push_back(charge_point);
-        }
+        void add_charge_point(ChargePoint *charge_point);
 
     protected:
-        void on_websocket_connected(const std::string &connection_id) override;
+        std::string select_websocket_protocol(const std::string &connection_id,
+                                              const std::string &client_protocols,
+                                              std::string *reject_reason) override;
+        void on_websocket_connected(const std::string &connection_id, const std::string &protocol) override;
         void on_websocket_disconnected(const std::string &connection_id) override;
         void on_websocket_text(const std::string &connection_id, const std::string &message) override;
         bool send_queued_message_();
