@@ -93,6 +93,18 @@ int main() {
     }
 
     {
+        // OCPP 2.0.1 BootNotification uses a different payload shape but the same charge point logic
+        TestChargePoint charge_point;
+        charge_point.on_connected("A99999", "ocpp2.0.1");
+        charge_point.handle_ocpp_text(
+            R"([2,"boot-2","BootNotification",{"chargingStation":{"model":"Prism Solar","vendorName":"Silla Industries","firmwareVersion":"3.2.77"},"reason":"PowerUp"}])");
+        assert_equal("ocpp201_online_after_boot", charge_point.is_online(), true);
+        assert_equal("ocpp201_boot_response_count", charge_point.messages.size(), 1);
+        assert_equal("ocpp201_boot_response", charge_point.messages[0],
+                     R"([3,"boot-2",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
+    }
+
+    {
         // Heartbeat
         TestChargePoint charge_point;
         charge_point.on_connected("A99999");

@@ -1,6 +1,7 @@
 #include "charge_point.h"
 #include "esphome/core/log.h"
 
+#include <memory>
 #include <utility>
 
 namespace esphome::ocpp {
@@ -37,6 +38,7 @@ void ChargePoint::on_connected(std::string connection_id, uint32_t now_millis) {
 
 void ChargePoint::on_connected(std::string connection_id, std::string protocol, uint32_t now_millis) {
     this->set_connection_id(std::move(connection_id));
+    this->protocol_.set_websocket_protocol(protocol);
     this->connected_ = true;
     this->connected_at_millis_ = now_millis;
     if (this->protocol_text_sensor_ != nullptr)
@@ -57,7 +59,10 @@ void ChargePoint::on_disconnected() {
 void ChargePoint::handle_ocpp_text(const std::string &message) {
     if (this->debug_ocpp_messages_)
         ESP_LOGD(TAG, "%s << %s", this->connection_id_.c_str(), message.c_str());
-    this->apply_protocol_result_(this->protocol_.handle_text(this->connection_id_, message));
+    std::unique_ptr<OcppMessage> ocpp_message = this->protocol_.parse_message(message);
+    if (ocpp_message == nullptr)
+        return;
+    this->handle_ocpp_message_(*ocpp_message);
 }
 
 void ChargePoint::loop(uint32_t now_millis) {
@@ -86,19 +91,48 @@ bool ChargePoint::pop_queued_message(std::string *message) {
     return true;
 }
 
-void ChargePoint::apply_protocol_result_(const OcppProtocolResult &result) {
-    for (const auto &event : result.events) {
-        if (event.type == OcppProtocolEventType::BOOT_NOTIFICATION_ACCEPTED) {
-            this->force_boot_notification_pending_ = false;
-            this->force_boot_notification_scheduled_ = false;
-            this->set_online_(true);
-        } else if (event.type == OcppProtocolEventType::HEARTBEAT_RECEIVED ||
-                    event.type == OcppProtocolEventType::STATUS_NOTIFICATION_RECEIVED) {
-            this->set_online_(true);
-        }
+void ChargePoint::handle_ocpp_message_(const OcppMessage &message) {
+    if (message.message_type_id == OcppMessageType::CALL_RESULT) {
+        ESP_LOGD(TAG, "OCPP call result: charge_point='%s' uniqueId='%s'", this->connection_id_.c_str(),
+                message.unique_id.c_str());
+        return;
     }
-    for (const auto &message : result.outbound_messages) {
-        this->send_message_(message);
+
+    if (message.message_type_id == OcppMessageType::CALL_ERROR) {
+        ESP_LOGW(TAG, "OCPP call error: charge_point='%s' uniqueId='%s'", this->connection_id_.c_str(),
+                message.unique_id.c_str());
+        return;
+    }
+
+    const auto *call = dynamic_cast<const OcppCall *>(&message);
+    if (call == nullptr) {
+        ESP_LOGW(TAG, "Ignoring OCPP CALL message without action: charge_point='%s' uniqueId='%s'",
+                this->connection_id_.c_str(), message.unique_id.c_str());
+        return;
+    }
+    this->handle_ocpp_call_(*call);
+}
+
+void ChargePoint::handle_ocpp_call_(const OcppCall &call) {
+    ESP_LOGD(TAG, "OCPP message: charge_point='%s' action='%s' uniqueId='%s'", this->connection_id_.c_str(),
+            call.action.c_str(), call.unique_id.c_str());
+
+    if (call.action == "BootNotification") {
+        this->force_boot_notification_pending_ = false;
+        this->force_boot_notification_scheduled_ = false;
+        this->set_online_(true);
+        this->send_message_(this->protocol_.make_boot_notification_response(call.unique_id));
+    } else if (call.action == "Heartbeat") {
+        this->set_online_(true);
+        this->send_message_(this->protocol_.make_heartbeat_response(call.unique_id));
+    } else if (call.action == "StatusNotification") {
+        this->set_online_(true);
+        this->send_message_(this->protocol_.make_status_notification_response(call.unique_id));
+    } else {
+        ESP_LOGW(TAG, "Unsupported OCPP action '%s' from charge point '%s'", call.action.c_str(),
+                this->connection_id_.c_str());
+        this->send_message_(
+            this->protocol_.make_ocpp_error(call.unique_id, "NotImplemented", "This OCPP action is not implemented"));
     }
 }
 

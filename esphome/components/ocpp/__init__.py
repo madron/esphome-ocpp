@@ -16,7 +16,7 @@ CONF_PROTOCOL = "protocol"
 CONF_SERVER = "server"
 CONF_SERVER_PATH = "path"
 
-SUPPORTED_PROTOCOLS = ["ocpp1.6"]
+SUPPORTED_PROTOCOLS = ["ocpp1.6", "ocpp2.0.1"]
 
 ocpp_ns = cg.esphome_ns.namespace("ocpp")
 OcppComponent = ocpp_ns.class_("OcppComponent", cg.Component)

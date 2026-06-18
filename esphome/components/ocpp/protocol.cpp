@@ -1,11 +1,20 @@
 #include "protocol.h"
 #include "esphome/core/log.h"
 
+#include <memory>
+
 namespace esphome::ocpp {
 namespace {
 
 static const char *const TAG = "ocpp";
 static constexpr const char *CURRENT_TIME = "1970-01-01T00:00:00Z";
+
+struct OcppEnvelope {
+    OcppMessageType message_type_id;
+    std::string unique_id;
+    std::string action;
+    size_t payload_pos{0};
+};
 
 std::string json_escape(const std::string &value) {
     std::string out;
@@ -48,122 +57,133 @@ bool expect_char(const std::string &message, size_t *pos, char expected) {
     return true;
 }
 
-bool expect_call_message_type(const std::string &message, size_t *pos) {
-    skip_ws(message, pos);
-    if (*pos >= message.size() || message[*pos] != '2')
-        return false;
-    (*pos)++;
-    return true;
-}
-
-bool expect_message_type(const std::string &message, size_t *pos, char expected) {
-    skip_ws(message, pos);
-    if (*pos >= message.size() || message[*pos] != expected)
-        return false;
-    (*pos)++;
-    return true;
-}
-
-bool parse_ocpp_message_type(const std::string &message, char *message_type) {
+bool parse_ocpp_envelope(const std::string &message, OcppEnvelope *envelope) {
     size_t pos = 0;
     if (!expect_char(message, &pos, '['))
         return false;
+
     skip_ws(message, &pos);
     if (pos >= message.size())
         return false;
-    char type = message[pos++];
-    if (type != '2' && type != '3' && type != '4')
+    char message_type = message[pos++];
+    if (message_type == '2')
+        envelope->message_type_id = OcppMessageType::CALL;
+    else if (message_type == '3')
+        envelope->message_type_id = OcppMessageType::CALL_RESULT;
+    else if (message_type == '4')
+        envelope->message_type_id = OcppMessageType::CALL_ERROR;
+    else
         return false;
-    *message_type = type;
+
+    if (!expect_char(message, &pos, ',') || !read_quoted(message, &pos, &envelope->unique_id))
+        return false;
+
+    if (envelope->message_type_id != OcppMessageType::CALL)
+        return true;
+
+    if (!expect_char(message, &pos, ',') || !read_quoted(message, &pos, &envelope->action) || !expect_char(message, &pos, ','))
+        return false;
+    envelope->payload_pos = pos;
     return true;
 }
 
-bool parse_ocpp_response(const std::string &message, char expected_type, std::string *unique_id) {
-    size_t pos = 0;
-    return expect_char(message, &pos, '[') && expect_message_type(message, &pos, expected_type) &&
-            expect_char(message, &pos, ',') && read_quoted(message, &pos, unique_id);
+bool find_string_field_after(const std::string &message, size_t start_pos, const char *field_name, std::string *out) {
+    std::string key = std::string("\"") + field_name + "\"";
+    size_t pos = message.find(key, start_pos);
+    if (pos == std::string::npos)
+        return false;
+    pos += key.size();
+    if (!expect_char(message, &pos, ':'))
+        return false;
+    return read_quoted(message, &pos, out);
 }
 
-bool parse_ocpp_call(const std::string &message, std::string *unique_id, std::string *action) {
-    size_t pos = 0;
-    return expect_char(message, &pos, '[') && expect_call_message_type(message, &pos) && expect_char(message, &pos, ',') &&
-            read_quoted(message, &pos, unique_id) && expect_char(message, &pos, ',') && read_quoted(message, &pos, action) &&
-            expect_char(message, &pos, ',');
+std::unique_ptr<OcppMessage> parse_boot_notification_1_6(const OcppEnvelope &envelope, const std::string &message) {
+    std::string charge_point_model;
+    std::string charge_point_vendor;
+    std::string firmware_version;
+    find_string_field_after(message, envelope.payload_pos, "chargePointModel", &charge_point_model);
+    find_string_field_after(message, envelope.payload_pos, "chargePointVendor", &charge_point_vendor);
+    find_string_field_after(message, envelope.payload_pos, "firmwareVersion", &firmware_version);
+    return std::unique_ptr<OcppMessage>(new BootNotification(
+        envelope.unique_id,
+        charge_point_model,
+        charge_point_vendor,
+        firmware_version
+    ));
+}
+
+std::unique_ptr<OcppMessage> parse_boot_notification_2_0_1(const OcppEnvelope &envelope, const std::string &message) {
+    std::string charge_point_model;
+    std::string charge_point_vendor;
+    std::string firmware_version;
+    size_t charging_station_pos = message.find("\"chargingStation\"", envelope.payload_pos);
+    if (charging_station_pos != std::string::npos) {
+        find_string_field_after(message, charging_station_pos, "model", &charge_point_model);
+        find_string_field_after(message, charging_station_pos, "vendorName", &charge_point_vendor);
+        find_string_field_after(message, charging_station_pos, "firmwareVersion", &firmware_version);
+    }
+    return std::unique_ptr<OcppMessage>(new BootNotification(
+        envelope.unique_id,
+        charge_point_model,
+        charge_point_vendor,
+        firmware_version
+    ));
 }
 
 }  // namespace
 
-OcppProtocolResult OcppProtocol::handle_text(const std::string &charge_point_id, const std::string &message) {
-    OcppProtocolResult result;
-    std::string unique_id;
-    std::string action;
-    char message_type = '\0';
-    if (!parse_ocpp_message_type(message, &message_type)) {
+bool OcppProtocol::set_websocket_protocol(const std::string &protocol) {
+    if (protocol.empty() || protocol == "ocpp1.6") {
+        this->version_ = OcppProtocolVersion::OCPP_1_6;
+        return true;
+    }
+    if (protocol == "ocpp2.0.1") {
+        this->version_ = OcppProtocolVersion::OCPP_2_0_1;
+        return true;
+    }
+    return false;
+}
+
+OcppProtocolVersion OcppProtocol::get_version() const { return this->version_; }
+
+std::unique_ptr<OcppMessage> OcppProtocol::parse_message(const std::string &message) const {
+    OcppEnvelope envelope{OcppMessageType::CALL};
+    if (!parse_ocpp_envelope(message, &envelope)) {
         ESP_LOGW(TAG, "Ignoring invalid OCPP JSON message: %s", message.c_str());
-        return result;
+        return nullptr;
     }
 
-    if (message_type == '3') {
-        if (parse_ocpp_response(message, message_type, &unique_id))
-            ESP_LOGD(TAG, "OCPP call result: charge_point='%s' uniqueId='%s'", charge_point_id.c_str(), unique_id.c_str());
-        else
-            ESP_LOGW(TAG, "Ignoring invalid OCPP CallResult message: %s", message.c_str());
-        return result;
+    if (envelope.message_type_id != OcppMessageType::CALL)
+        return std::unique_ptr<OcppMessage>(new OcppMessage(envelope.message_type_id, envelope.unique_id));
+
+    if (envelope.action == "BootNotification") {
+        if (this->version_ == OcppProtocolVersion::OCPP_2_0_1)
+            return parse_boot_notification_2_0_1(envelope, message);
+        return parse_boot_notification_1_6(envelope, message);
     }
 
-    if (message_type == '4') {
-        if (parse_ocpp_response(message, message_type, &unique_id))
-            ESP_LOGW(TAG, "OCPP call error: charge_point='%s' uniqueId='%s'", charge_point_id.c_str(), unique_id.c_str());
-        else
-            ESP_LOGW(TAG, "Ignoring invalid OCPP CallError message: %s", message.c_str());
-        return result;
-    }
+    return std::unique_ptr<OcppMessage>(new OcppCall(envelope.action, envelope.unique_id));
+}
 
-    if (!parse_ocpp_call(message, &unique_id, &action)) {
-        ESP_LOGW(TAG, "Ignoring invalid OCPP JSON message: %s", message.c_str());
-        return result;
-    }
+std::string OcppProtocol::make_boot_notification_response(const std::string &unique_id) const {
+    return "[3,\"" + json_escape(unique_id) + "\",{\"currentTime\":\"" + CURRENT_TIME +
+           "\",\"interval\":300,\"status\":\"Accepted\"}]";
+}
 
-    ESP_LOGD(TAG, "OCPP message: charge_point='%s' action='%s' uniqueId='%s'", charge_point_id.c_str(), action.c_str(),
-            unique_id.c_str());
-    if (action == "BootNotification") {
-        this->handle_boot_notification_(unique_id, &result);
-    } else if (action == "Heartbeat") {
-        this->handle_heartbeat_(unique_id, &result);
-    } else if (action == "StatusNotification") {
-        this->handle_status_notification_(unique_id, &result);
-    } else {
-        ESP_LOGW(TAG, "Unsupported OCPP action '%s' from charge point '%s'", action.c_str(), charge_point_id.c_str());
-        result.outbound_messages.push_back(
-            this->make_ocpp_error_(unique_id, "NotImplemented", "This OCPP action is not implemented"));
-    }
-    return result;
+std::string OcppProtocol::make_heartbeat_response(const std::string &unique_id) const {
+    return "[3,\"" + json_escape(unique_id) + "\",{\"currentTime\":\"" + CURRENT_TIME + "\"}]";
+}
+
+std::string OcppProtocol::make_status_notification_response(const std::string &unique_id) const {
+    return "[3,\"" + json_escape(unique_id) + "\",{}]";
 }
 
 std::string OcppProtocol::make_trigger_boot_notification(const std::string &unique_id) const {
     return "[2,\"" + json_escape(unique_id) + "\",\"TriggerMessage\",{\"requestedMessage\":\"BootNotification\"}]";
 }
 
-void OcppProtocol::handle_boot_notification_(const std::string &unique_id, OcppProtocolResult *result) {
-    std::string response = "[3,\"" + json_escape(unique_id) + "\",{\"currentTime\":\"" + CURRENT_TIME +
-                            "\",\"interval\":300,\"status\":\"Accepted\"}]";
-    result->events.push_back({OcppProtocolEventType::BOOT_NOTIFICATION_ACCEPTED});
-    result->outbound_messages.push_back(response);
-}
-
-void OcppProtocol::handle_heartbeat_(const std::string &unique_id, OcppProtocolResult *result) {
-    std::string response = "[3,\"" + json_escape(unique_id) + "\",{\"currentTime\":\"" + CURRENT_TIME + "\"}]";
-    result->events.push_back({OcppProtocolEventType::HEARTBEAT_RECEIVED});
-    result->outbound_messages.push_back(response);
-}
-
-void OcppProtocol::handle_status_notification_(const std::string &unique_id, OcppProtocolResult *result) {
-    std::string response = "[3,\"" + json_escape(unique_id) + "\",{}]";
-    result->events.push_back({OcppProtocolEventType::STATUS_NOTIFICATION_RECEIVED});
-    result->outbound_messages.push_back(response);
-}
-
-std::string OcppProtocol::make_ocpp_error_(const std::string &unique_id, const char *code, const char *description) const {
+std::string OcppProtocol::make_ocpp_error(const std::string &unique_id, const char *code, const char *description) const {
     return "[4,\"" + json_escape(unique_id) + "\",\"" + code + "\",\"" + description + "\",{}]";
 }
 

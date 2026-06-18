@@ -1,0 +1,50 @@
+#include "assertions.cpp"
+#include "esphome/components/ocpp/message.h"
+#include "esphome/components/ocpp/protocol.h"
+
+#include <memory>
+#include <string>
+
+using esphome::ocpp::BootNotification;
+using esphome::ocpp::OcppMessage;
+using esphome::ocpp::OcppMessageType;
+using esphome::ocpp::OcppProtocol;
+using esphome::ocpp::OcppProtocolVersion;
+
+int main() {
+    OcppProtocol protocol;
+    assert_equal("default_version", protocol.get_version() == OcppProtocolVersion::OCPP_1_6, true);
+
+    std::unique_ptr<OcppMessage> ocpp_16_message = protocol.parse_message(
+        R"([2,"boot-1","BootNotification",{"chargePointVendor":"Acme","chargePointModel":"Wallbox","firmwareVersion":"1.2.3"}])"
+    );
+    assert_equal("ocpp16_message_exists", ocpp_16_message != nullptr, true);
+    auto *ocpp_16_boot = dynamic_cast<BootNotification *>(ocpp_16_message.get());
+    assert_equal("ocpp16_boot_exists", ocpp_16_boot != nullptr, true);
+    assert_equal("ocpp16_boot_unique_id", ocpp_16_boot->unique_id, std::string("boot-1"));
+    assert_equal("ocpp16_boot_model", ocpp_16_boot->charge_point_model, std::string("Wallbox"));
+    assert_equal("ocpp16_boot_vendor", ocpp_16_boot->charge_point_vendor, std::string("Acme"));
+    assert_equal("ocpp16_boot_firmware", ocpp_16_boot->firmware_version, std::string("1.2.3"));
+
+    assert_equal("set_ocpp201", protocol.set_websocket_protocol("ocpp2.0.1"), true);
+    assert_equal("ocpp201_version", protocol.get_version() == OcppProtocolVersion::OCPP_2_0_1, true);
+    std::unique_ptr<OcppMessage> ocpp_201_message = protocol.parse_message(
+        R"([2,"boot-2","BootNotification",{"chargingStation":{"model":"Prism Solar","vendorName":"Silla Industries","firmwareVersion":"3.2.77"},"reason":"PowerUp"}])"
+    );
+    assert_equal("ocpp201_message_exists", ocpp_201_message != nullptr, true);
+    auto *ocpp_201_boot = dynamic_cast<BootNotification *>(ocpp_201_message.get());
+    assert_equal("ocpp201_boot_exists", ocpp_201_boot != nullptr, true);
+    assert_equal("ocpp201_boot_unique_id", ocpp_201_boot->unique_id, std::string("boot-2"));
+    assert_equal("ocpp201_boot_model", ocpp_201_boot->charge_point_model, std::string("Prism Solar"));
+    assert_equal("ocpp201_boot_vendor", ocpp_201_boot->charge_point_vendor, std::string("Silla Industries"));
+    assert_equal("ocpp201_boot_firmware", ocpp_201_boot->firmware_version, std::string("3.2.77"));
+
+    std::unique_ptr<OcppMessage> call_result = protocol.parse_message(R"([3,"result-1",{}])");
+    assert_equal("call_result_exists", call_result != nullptr, true);
+    assert_equal("call_result_type", static_cast<int>(call_result->message_type_id), 3);
+    assert_equal("call_result_unique_id", call_result->unique_id, std::string("result-1"));
+
+    assert_equal("unsupported_protocol", protocol.set_websocket_protocol("ocpp9.9"), false);
+    assert_equal("boot_response", protocol.make_boot_notification_response("boot-1"),
+                 R"([3,"boot-1",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
+}

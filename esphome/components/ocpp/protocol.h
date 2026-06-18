@@ -1,35 +1,31 @@
 #pragma once
 
+#include "message.h"
+
+#include <memory>
 #include <string>
-#include <vector>
 
 namespace esphome::ocpp {
 
-enum class OcppProtocolEventType {
-    BOOT_NOTIFICATION_ACCEPTED,
-    HEARTBEAT_RECEIVED,
-    STATUS_NOTIFICATION_RECEIVED,
+enum class OcppProtocolVersion {
+    OCPP_1_6,
+    OCPP_2_0_1,
 };
 
-struct OcppProtocolEvent {
-    OcppProtocolEventType type;
-};
-
-struct OcppProtocolResult {
-    std::vector<OcppProtocolEvent> events;
-    std::vector<std::string> outbound_messages;
-};
 
 class OcppProtocol {
     public:
-        OcppProtocolResult handle_text(const std::string &charge_point_id, const std::string &message);
+        bool set_websocket_protocol(const std::string &protocol);
+        OcppProtocolVersion get_version() const;
+        std::unique_ptr<OcppMessage> parse_message(const std::string &message) const;
+        std::string make_boot_notification_response(const std::string &unique_id) const;
+        std::string make_heartbeat_response(const std::string &unique_id) const;
+        std::string make_status_notification_response(const std::string &unique_id) const;
         std::string make_trigger_boot_notification(const std::string &unique_id) const;
+        std::string make_ocpp_error(const std::string &unique_id, const char *code, const char *description) const;
 
     protected:
-        void handle_boot_notification_(const std::string &unique_id, OcppProtocolResult *result);
-        void handle_heartbeat_(const std::string &unique_id, OcppProtocolResult *result);
-        void handle_status_notification_(const std::string &unique_id, OcppProtocolResult *result);
-        std::string make_ocpp_error_(const std::string &unique_id, const char *code, const char *description) const;
+        OcppProtocolVersion version_{OcppProtocolVersion::OCPP_1_6};
 };
 
 }  // namespace esphome::ocpp

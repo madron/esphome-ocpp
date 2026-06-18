@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -44,7 +45,8 @@ class ChargePoint {
 
     protected:
         void send_message_(const std::string &message);
-        void apply_protocol_result_(const OcppProtocolResult &result);
+        void handle_ocpp_message_(const OcppMessage &message);
+        void handle_ocpp_call_(const OcppCall &call);
         void send_forced_boot_notification_trigger_();
         void set_online_(bool online);
 
