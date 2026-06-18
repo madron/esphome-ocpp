@@ -1,0 +1,51 @@
+#include "assertions.cpp"
+#include "esphome/components/ocpp/message.h"
+
+#include <string>
+
+using esphome::ocpp::OcppMessage;
+using esphome::ocpp::OcppMessageType;
+using esphome::ocpp::OcppCall;
+using esphome::ocpp::BootNotification;
+
+int main() {
+    OcppMessage call(OcppMessageType::CALL, "call-1");
+    assert_equal("call_message_type", static_cast<int>(call.message_type_id), 2);
+    assert_equal("call_unique_id", call.unique_id, std::string("call-1"));
+
+    OcppMessage result(OcppMessageType::CALL_RESULT, "result-1");
+    assert_equal("result_message_type", static_cast<int>(result.message_type_id), 3);
+    assert_equal("result_unique_id", result.unique_id, std::string("result-1"));
+
+    OcppMessage error(OcppMessageType::CALL_ERROR, "error-1");
+    assert_equal("error_message_type", static_cast<int>(error.message_type_id), 4);
+    assert_equal("error_unique_id", error.unique_id, std::string("error-1"));
+
+    OcppMessage default_message(OcppMessageType::CALL_RESULT);
+    assert_equal("default_message_unique_id", default_message.unique_id, std::string(""));
+
+    OcppCall generic_call("SomeAction", "generic-call-1");
+    assert_equal("generic_call_message_type", static_cast<int>(generic_call.message_type_id), 2);
+    assert_equal("generic_call_unique_id", generic_call.unique_id, std::string("generic-call-1"));
+    assert_equal("generic_call_action", generic_call.action, std::string("SomeAction"));
+
+    OcppCall default_call("DefaultAction");
+    assert_equal("default_call_unique_id", default_call.unique_id, std::string(""));
+    assert_equal("default_call_action", default_call.action, std::string("DefaultAction"));
+
+    BootNotification boot_notification("boot-1", "Wallbox", "Acme", "1.2.3");
+    assert_equal("boot_notification_message_type", static_cast<int>(boot_notification.message_type_id), 2);
+    assert_equal("boot_notification_unique_id", boot_notification.unique_id, std::string("boot-1"));
+    assert_equal("boot_notification_action", boot_notification.action, std::string("BootNotification"));
+    assert_equal("boot_notification_model", boot_notification.charge_point_model, std::string("Wallbox"));
+    assert_equal("boot_notification_vendor", boot_notification.charge_point_vendor, std::string("Acme"));
+    assert_equal("boot_notification_firmware", boot_notification.firmware_version, std::string("1.2.3"));
+
+    BootNotification default_boot_notification;
+    assert_equal("default_boot_notification_message_type", static_cast<int>(default_boot_notification.message_type_id), 2);
+    assert_equal("default_boot_notification_unique_id", default_boot_notification.unique_id, std::string(""));
+    assert_equal("default_boot_notification_action", default_boot_notification.action, std::string("BootNotification"));
+    assert_equal("default_boot_notification_model", default_boot_notification.charge_point_model, std::string(""));
+    assert_equal("default_boot_notification_vendor", default_boot_notification.charge_point_vendor, std::string(""));
+    assert_equal("default_boot_notification_firmware", default_boot_notification.firmware_version, std::string(""));
+}
