@@ -44,6 +44,11 @@ int main() {
     assert_equal("call_result_type", static_cast<int>(call_result->message_type_id), 3);
     assert_equal("call_result_unique_id", call_result->unique_id, std::string("result-1"));
 
+    assert_equal("invalid_json_rejected", protocol.parse_message("{") == nullptr, true);
+    assert_equal("invalid_top_level_rejected", protocol.parse_message(R"({"messageTypeId":2})") == nullptr, true);
+    assert_equal("invalid_message_type_rejected", protocol.parse_message(R"([9,"bad",{}])") == nullptr, true);
+    assert_equal("invalid_call_payload_rejected", protocol.parse_message(R"([2,"bad","BootNotification",[]])") == nullptr, true);
+
     assert_equal("unsupported_protocol", protocol.set_websocket_protocol("ocpp9.9"), false);
     assert_equal("boot_response", protocol.make_boot_notification_response("boot-1"),
                  R"([3,"boot-1",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");

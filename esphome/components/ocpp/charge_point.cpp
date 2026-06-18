@@ -104,7 +104,7 @@ void ChargePoint::handle_ocpp_message_(const OcppMessage &message) {
         return;
     }
 
-    const auto *call = dynamic_cast<const OcppCall *>(&message);
+    const OcppCall *call = message.as_call();
     if (call == nullptr) {
         ESP_LOGW(TAG, "Ignoring OCPP CALL message without action: charge_point='%s' uniqueId='%s'",
                 this->connection_id_.c_str(), message.unique_id.c_str());

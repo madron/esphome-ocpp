@@ -74,6 +74,22 @@ class ChargePointSchemaTests(unittest.TestCase):
         self.assertEqual(validated["charge_points"][0]["force_protocol"], "ocpp1.6")
         self.assertIn("protocol", validated["charge_points"][0])
 
+    def test_ocpp_2_0_1_force_protocol_enabled(self):
+        validated = CONFIG_SCHEMA(
+            {
+                "id": "ocpp_id",
+                "charge_points": [
+                    {
+                        "id": "garage_left",
+                        "charge_point_id": "A99999",
+                        "force_protocol": "ocpp2.0.1",
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(validated["charge_points"][0]["force_protocol"], "ocpp2.0.1")
+
     def test_unsupported_force_protocol_rejected(self):
         with self.assertRaises(Exception):
             CONFIG_SCHEMA(
@@ -83,7 +99,7 @@ class ChargePointSchemaTests(unittest.TestCase):
                         {
                             "id": "garage_left",
                             "charge_point_id": "A99999",
-                            "force_protocol": "ocpp2.0.1",
+                            "force_protocol": "ocpp9.9",
                         }
                     ],
                 }
