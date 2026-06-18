@@ -5,6 +5,7 @@
 #include <vector>
 
 using esphome::ocpp::ChargePoint;
+using esphome::ocpp::QueuedMessage;
 using esphome::binary_sensor::BinarySensor;
 using esphome::text_sensor::TextSensor;
 
@@ -19,7 +20,7 @@ class TestChargePoint : public ChargePoint {
     TestChargePoint(const TestChargePoint &) = delete;
     TestChargePoint &operator=(const TestChargePoint &) = delete;
 
-    std::vector<std::string> &messages{this->messages_};
+    std::vector<QueuedMessage> &messages{this->messages_};
     BinarySensor online_sensor;
     TextSensor protocol_sensor;
     TextSensor charger_info_sensor;
@@ -89,7 +90,7 @@ int main() {
         assert_equal("charger_info_after_boot", charge_point.charger_info_sensor.state,
                      std::string("vendor: Acme, model: Wallbox"));
         assert_equal("boot_response_count", charge_point.messages.size(), 1);
-        assert_equal("boot_response", charge_point.messages[0], R"([3,"boot-1",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
+        assert_equal("boot_response", charge_point.messages[0].payload, R"([3,"boot-1",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
 
         charge_point.on_disconnected();
         assert_equal("online_after_disconnect", charge_point.is_online(), false);
@@ -108,7 +109,7 @@ int main() {
         assert_equal("ocpp201_charger_info_after_boot", charge_point.charger_info_sensor.state,
                      std::string("vendor: Silla Industries, model: Prism Solar, firmware: 3.2.77"));
         assert_equal("ocpp201_boot_response_count", charge_point.messages.size(), 1);
-        assert_equal("ocpp201_boot_response", charge_point.messages[0],
+        assert_equal("ocpp201_boot_response", charge_point.messages[0].payload,
                      R"([3,"boot-2",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
     }
 
@@ -120,7 +121,7 @@ int main() {
         charge_point.handle_ocpp_text(R"([2,"d8cc833a-0f43-441a-adbc-5e1f1869f067","Heartbeat",{}])");
         assert_equal("online_after_heartbeat", charge_point.is_online(), true);
         assert_equal("heartbeat_response_count", charge_point.messages.size(), 1);
-        assert_equal("heartbeat_response", charge_point.messages[0], R"([3,"d8cc833a-0f43-441a-adbc-5e1f1869f067",{"currentTime":"1970-01-01T00:00:00Z"}])");
+        assert_equal("heartbeat_response", charge_point.messages[0].payload, R"([3,"d8cc833a-0f43-441a-adbc-5e1f1869f067",{"currentTime":"1970-01-01T00:00:00Z"}])");
     }
 
     {
@@ -132,7 +133,7 @@ int main() {
             R"([2,"status-1","StatusNotification",{"connectorId":1,"errorCode":"NoError","status":"Available"}])");
         assert_equal("online_after_status_notification", charge_point.is_online(), true);
         assert_equal("status_notification_response_count", charge_point.messages.size(), 1);
-        assert_equal("status_notification_response", charge_point.messages[0], R"([3,"status-1",{}])");
+        assert_equal("status_notification_response", charge_point.messages[0].payload, R"([3,"status-1",{}])");
     }
 
     {
@@ -152,7 +153,7 @@ int main() {
         assert_equal("startup_trigger_before_delay", charge_point.messages.size(), 0);
         charge_point.loop(300000);
         assert_equal("startup_boot_trigger_after_delay", charge_point.messages.size(), 1);
-        assert_equal("startup_boot_trigger", charge_point.messages[0],
+        assert_equal("startup_boot_trigger", charge_point.messages[0].payload,
                      R"([2,"trigger-boot-notification","TriggerMessage",{"requestedMessage":"BootNotification"}])");
         charge_point.loop(301000);
         assert_equal("startup_status_waits_for_boot_trigger_reply", charge_point.messages.size(), 1);
@@ -160,7 +161,7 @@ int main() {
         assert_equal("startup_boot_trigger_dequeued", charge_point.pop_queued_message(&startup_boot_trigger), true);
         charge_point.handle_ocpp_text(R"([3,"trigger-boot-notification",{"status":"Accepted"}])");
         assert_equal("startup_status_trigger_after_boot_reply", charge_point.messages.size(), 1);
-        assert_equal("startup_status_trigger", charge_point.messages[0],
+        assert_equal("startup_status_trigger", charge_point.messages[0].payload,
                      R"([2,"trigger-status-notification","TriggerMessage",{"requestedMessage":"StatusNotification"}])");
     }
 
@@ -169,11 +170,11 @@ int main() {
         TestChargePoint charge_point;
         charge_point.on_connected("A99999");
         charge_point.handle_ocpp_text(R"([2,"boot-1","BootNotification",{"chargePointVendor":"Acme","chargePointModel":"Wallbox"}])");
-        assert_equal("natural_boot_response", charge_point.messages[0], R"([3,"boot-1",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
+        assert_equal("natural_boot_response", charge_point.messages[0].payload, R"([3,"boot-1",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
         charge_point.messages.clear();
         charge_point.loop(300000);
         assert_equal("natural_boot_status_trigger_count", charge_point.messages.size(), 1);
-        assert_equal("natural_boot_status_trigger", charge_point.messages[0],
+        assert_equal("natural_boot_status_trigger", charge_point.messages[0].payload,
                      R"([2,"trigger-status-notification","TriggerMessage",{"requestedMessage":"StatusNotification"}])");
     }
 
@@ -186,7 +187,7 @@ int main() {
         charge_point.messages.clear();
         charge_point.loop(300000);
         assert_equal("natural_status_boot_trigger_count", charge_point.messages.size(), 1);
-        assert_equal("natural_status_boot_trigger", charge_point.messages[0],
+        assert_equal("natural_status_boot_trigger", charge_point.messages[0].payload,
                      R"([2,"trigger-boot-notification","TriggerMessage",{"requestedMessage":"BootNotification"}])");
         std::string startup_boot_trigger;
         assert_equal("natural_status_boot_trigger_dequeued", charge_point.pop_queued_message(&startup_boot_trigger), true);
@@ -203,14 +204,66 @@ int main() {
         charge_point.handle_ocpp_text(R"([2,"heartbeat-2","Heartbeat",{}])");
         charge_point.handle_ocpp_text(R"([2,"heartbeat-3","Heartbeat",{}])");
         assert_equal("bounded_queue_count", charge_point.messages.size(), 2);
-        assert_equal("bounded_queue_first", charge_point.messages[0], R"([3,"heartbeat-1",{"currentTime":"1970-01-01T00:00:00Z"}])");
-        assert_equal("bounded_queue_second", charge_point.messages[1], R"([3,"heartbeat-2",{"currentTime":"1970-01-01T00:00:00Z"}])");
+        assert_equal("bounded_queue_first", charge_point.messages[0].payload, R"([3,"heartbeat-1",{"currentTime":"1970-01-01T00:00:00Z"}])");
+        assert_equal("bounded_queue_second", charge_point.messages[1].payload, R"([3,"heartbeat-2",{"currentTime":"1970-01-01T00:00:00Z"}])");
 
         std::string message;
         assert_equal("pop_first_message", charge_point.pop_queued_message(&message), true);
         assert_equal("first_popped_message", message, R"([3,"heartbeat-1",{"currentTime":"1970-01-01T00:00:00Z"}])");
         assert_equal("remaining_queue_count", charge_point.messages.size(), 1);
-        assert_equal("remaining_first_message", charge_point.messages[0], R"([3,"heartbeat-2",{"currentTime":"1970-01-01T00:00:00Z"}])");
+        assert_equal("remaining_first_message", charge_point.messages[0].payload, R"([3,"heartbeat-2",{"currentTime":"1970-01-01T00:00:00Z"}])");
+    }
+
+    {
+        // Responses from the charge point are still sent while our previous CALL is in flight
+        TestChargePoint charge_point;
+        charge_point.on_connected("A99999");
+        charge_point.loop(300000);
+
+        std::string startup_boot_trigger;
+        assert_equal("in_flight_boot_trigger_dequeued", charge_point.pop_queued_message(&startup_boot_trigger, 300000), true);
+        assert_equal("in_flight_boot_trigger", startup_boot_trigger,
+                     R"([2,"trigger-boot-notification","TriggerMessage",{"requestedMessage":"BootNotification"}])");
+
+        charge_point.handle_ocpp_text(R"([2,"boot-1","BootNotification",{"chargePointVendor":"Acme","chargePointModel":"Wallbox"}])");
+        assert_equal("in_flight_queue_count", charge_point.messages.size(), 1);
+        assert_equal("in_flight_response_before_call", charge_point.messages[0].payload,
+                     R"([3,"boot-1",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
+
+        std::string boot_response;
+        assert_equal("in_flight_response_dequeued", charge_point.pop_queued_message(&boot_response, 300001), true);
+        assert_equal("in_flight_response_payload", boot_response,
+                     R"([3,"boot-1",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
+
+        std::string blocked_status_trigger;
+        assert_equal("in_flight_blocks_next_call", charge_point.pop_queued_message(&blocked_status_trigger, 300002), false);
+        charge_point.handle_ocpp_text(R"([3,"trigger-boot-notification",{"status":"Accepted"}])");
+        assert_equal("in_flight_queues_next_call_after_reply", charge_point.messages.size(), 1);
+        assert_equal("in_flight_next_call_after_reply", charge_point.pop_queued_message(&blocked_status_trigger, 300003), true);
+        assert_equal("in_flight_next_call_payload", blocked_status_trigger,
+                     R"([2,"trigger-status-notification","TriggerMessage",{"requestedMessage":"StatusNotification"}])");
+    }
+
+    {
+        // A timed-out CALL is cleared so the next charger request can be sent
+        TestChargePoint charge_point;
+        charge_point.on_connected("A99999");
+        charge_point.loop(300000);
+
+        std::string startup_boot_trigger;
+        assert_equal("timeout_boot_trigger_dequeued", charge_point.pop_queued_message(&startup_boot_trigger, 300000), true);
+        charge_point.loop(300000 + ChargePoint::DEFAULT_CALL_TIMEOUT_MS);
+        assert_equal("timeout_status_trigger_count", charge_point.messages.size(), 1);
+        assert_equal("timeout_status_trigger", charge_point.messages[0].payload,
+                     R"([2,"trigger-status-notification","TriggerMessage",{"requestedMessage":"StatusNotification"}])");
+
+        std::string startup_status_trigger;
+        assert_equal("timeout_status_trigger_dequeued",
+                     charge_point.pop_queued_message(&startup_status_trigger,
+                                                     300000 + ChargePoint::DEFAULT_CALL_TIMEOUT_MS),
+                     true);
+        assert_equal("timeout_status_trigger_payload", startup_status_trigger,
+                     R"([2,"trigger-status-notification","TriggerMessage",{"requestedMessage":"StatusNotification"}])");
     }
 
     return 0;

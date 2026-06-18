@@ -99,7 +99,7 @@ bool OcppComponent::send_queued_message_() {
         if (charge_point == nullptr)
             continue;
         std::string message;
-        if (!charge_point->pop_queued_message(&message))
+        if (!charge_point->pop_queued_message(&message, App.get_loop_component_start_time()))
             continue;
         this->next_outbound_charge_point_ = (index + 1) % this->charge_points_.size();
         this->server_.send_text(charge_point->get_connection_id(), message);

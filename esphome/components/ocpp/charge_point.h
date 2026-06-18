@@ -12,10 +12,19 @@
 
 namespace esphome::ocpp {
 
+struct QueuedMessage {
+    std::string payload;
+    OcppMessageType message_type_id{OcppMessageType::CALL_RESULT};
+    std::string unique_id;
+    std::string action;
+    uint32_t sent_at_millis{0};
+};
+
 class ChargePoint {
     public:
         static constexpr size_t DEFAULT_MAX_QUEUED_MESSAGES = 8;
         static constexpr uint32_t DEFAULT_STARTUP_NOTIFICATIONS_DELAY_MS = 300000;
+        static constexpr uint32_t DEFAULT_CALL_TIMEOUT_MS = 60000;
 
         void set_charge_point_id(std::string charge_point_id);
         const std::string &get_charge_point_id() const;
@@ -45,16 +54,18 @@ class ChargePoint {
         void on_disconnected();
         void handle_ocpp_text(const std::string &message);
         void loop(uint32_t now_millis);
-        bool pop_queued_message(std::string *message);
+        bool pop_queued_message(std::string *message, uint32_t now_millis = 0);
 
     protected:
-        void send_message_(const std::string &message);
+        void send_message_(QueuedMessage message);
         void handle_ocpp_message_(const OcppMessage &message);
         void handle_ocpp_call_(const OcppMessage &call);
+        void handle_ocpp_call_reply_(const OcppMessage &message);
         void handle_startup_notification_trigger_reply_(const OcppMessage &message);
         void send_startup_notification_triggers_();
         void send_boot_notification_trigger_();
         void send_status_notification_trigger_();
+        void expire_in_flight_call_(uint32_t now_millis);
         void set_online_(bool online);
         void publish_charger_info_(const BootNotification &boot_notification);
 
@@ -62,7 +73,8 @@ class ChargePoint {
         std::string connection_id_;
         std::string forced_protocol_;
         OcppProtocol protocol_;
-        std::vector<std::string> messages_;
+        std::vector<QueuedMessage> messages_;
+        std::unique_ptr<QueuedMessage> in_flight_call_;
         binary_sensor::BinarySensor *online_binary_sensor_{nullptr};
         text_sensor::TextSensor *protocol_text_sensor_{nullptr};
         text_sensor::TextSensor *charger_info_text_sensor_{nullptr};
