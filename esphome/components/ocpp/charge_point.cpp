@@ -104,16 +104,15 @@ void ChargePoint::handle_ocpp_message_(const OcppMessage &message) {
         return;
     }
 
-    const OcppCall *call = message.as_call();
-    if (call == nullptr) {
+    if (message.action.empty()) {
         ESP_LOGW(TAG, "Ignoring OCPP CALL message without action: charge_point='%s' uniqueId='%s'",
                 this->connection_id_.c_str(), message.unique_id.c_str());
         return;
     }
-    this->handle_ocpp_call_(*call);
+    this->handle_ocpp_call_(message);
 }
 
-void ChargePoint::handle_ocpp_call_(const OcppCall &call) {
+void ChargePoint::handle_ocpp_call_(const OcppMessage &call) {
     ESP_LOGD(TAG, "OCPP message: charge_point='%s' action='%s' uniqueId='%s'", this->connection_id_.c_str(),
             call.action.c_str(), call.unique_id.c_str());
 

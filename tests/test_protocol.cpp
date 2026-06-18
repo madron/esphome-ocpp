@@ -43,6 +43,7 @@ int main() {
     assert_equal("call_result_exists", call_result != nullptr, true);
     assert_equal("call_result_type", static_cast<int>(call_result->message_type_id), 3);
     assert_equal("call_result_unique_id", call_result->unique_id, std::string("result-1"));
+    assert_equal("call_result_action", call_result->action, std::string(""));
 
     assert_equal("invalid_json_rejected", protocol.parse_message("{") == nullptr, true);
     assert_equal("invalid_top_level_rejected", protocol.parse_message(R"({"messageTypeId":2})") == nullptr, true);

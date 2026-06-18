@@ -12,24 +12,29 @@ int main() {
     OcppMessage call(OcppMessageType::CALL, "call-1");
     assert_equal("call_message_type", static_cast<int>(call.message_type_id), 2);
     assert_equal("call_unique_id", call.unique_id, std::string("call-1"));
-    assert_equal("base_call_has_no_action", call.as_call() == nullptr, true);
+    assert_equal("call_action_defaults_empty", call.action, std::string(""));
+
+    OcppMessage base_call_with_action(OcppMessageType::CALL, "call-2", "Heartbeat");
+    assert_equal("base_call_with_action", base_call_with_action.action, std::string("Heartbeat"));
 
     OcppMessage result(OcppMessageType::CALL_RESULT, "result-1");
     assert_equal("result_message_type", static_cast<int>(result.message_type_id), 3);
     assert_equal("result_unique_id", result.unique_id, std::string("result-1"));
+    assert_equal("result_action_defaults_empty", result.action, std::string(""));
 
     OcppMessage error(OcppMessageType::CALL_ERROR, "error-1");
     assert_equal("error_message_type", static_cast<int>(error.message_type_id), 4);
     assert_equal("error_unique_id", error.unique_id, std::string("error-1"));
+    assert_equal("error_action_defaults_empty", error.action, std::string(""));
 
     OcppMessage default_message(OcppMessageType::CALL_RESULT);
     assert_equal("default_message_unique_id", default_message.unique_id, std::string(""));
+    assert_equal("default_message_action", default_message.action, std::string(""));
 
     OcppCall generic_call("SomeAction", "generic-call-1");
     assert_equal("generic_call_message_type", static_cast<int>(generic_call.message_type_id), 2);
     assert_equal("generic_call_unique_id", generic_call.unique_id, std::string("generic-call-1"));
     assert_equal("generic_call_action", generic_call.action, std::string("SomeAction"));
-    assert_equal("generic_call_as_call", generic_call.as_call(), &generic_call);
 
     OcppCall default_call("DefaultAction");
     assert_equal("default_call_unique_id", default_call.unique_id, std::string(""));

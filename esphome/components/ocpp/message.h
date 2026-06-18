@@ -12,8 +12,6 @@ enum class OcppMessageType : uint8_t {
     CALL_ERROR = 4,
 };
 
-class OcppCall;
-
 // These classes are an abstraction of real OCPP messages and are intended to be
 // common ground across supported OCPP protocol versions.
 //
@@ -29,14 +27,15 @@ class OcppMessage {
     public:
         OcppMessage(
             OcppMessageType message_type_id,
-            std::string unique_id = ""
+            std::string unique_id = "",
+            std::string action = ""
         )
-            : message_type_id(message_type_id), unique_id(std::move(unique_id)) {}
+            : message_type_id(message_type_id), unique_id(std::move(unique_id)), action(std::move(action)) {}
         virtual ~OcppMessage() = default;
-        virtual const OcppCall *as_call() const { return nullptr; }
 
         const OcppMessageType message_type_id;
         std::string unique_id;
+        const std::string action;
 };
 
 class OcppCall : public OcppMessage {
@@ -47,13 +46,9 @@ class OcppCall : public OcppMessage {
         )
             : OcppMessage(
                   OcppMessageType::CALL,
-                  std::move(unique_id)
-              ),
-              action(std::move(action)) {}
-
-        const OcppCall *as_call() const override { return this; }
-
-        const std::string action;
+                  std::move(unique_id),
+                  std::move(action)
+              ) {}
 };
 
 class BootNotification : public OcppCall {
