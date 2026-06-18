@@ -11,6 +11,7 @@ CONF_CHARGE_POINTS = "charge_points"
 CONF_DEBUG_OCPP_MESSAGES = "debug_ocpp_messages"
 CONF_FORCE_BOOT_NOTIFICATION = "force_boot_notification"
 CONF_FORCE_PROTOCOL = "force_protocol"
+CONF_CHARGER_INFO = "charger_info"
 CONF_ONLINE = "online"
 CONF_PROTOCOL = "protocol"
 CONF_SERVER = "server"
@@ -69,6 +70,7 @@ CHARGE_POINT_SCHEMA = cv.Schema(
         cv.Optional(CONF_DEBUG_OCPP_MESSAGES, default=False): cv.boolean,
         cv.Optional(CONF_FORCE_BOOT_NOTIFICATION, default=False): cv.boolean,
         cv.Optional(CONF_FORCE_PROTOCOL): validate_protocol,
+        cv.Optional(CONF_CHARGER_INFO): text_sensor.text_sensor_schema(),
         cv.Optional(CONF_ONLINE): binary_sensor.binary_sensor_schema(),
         cv.Optional(CONF_PROTOCOL): text_sensor.text_sensor_schema(),
     }
@@ -131,6 +133,9 @@ async def to_code(config):
         if CONF_PROTOCOL in charge_point_conf:
             sens = await text_sensor.new_text_sensor(charge_point_conf[CONF_PROTOCOL])
             cg.add(charge_point.set_protocol_text_sensor(sens))
+        if CONF_CHARGER_INFO in charge_point_conf:
+            sens = await text_sensor.new_text_sensor(charge_point_conf[CONF_CHARGER_INFO])
+            cg.add(charge_point.set_charger_info_text_sensor(sens))
         if CONF_ONLINE in charge_point_conf:
             sens = await binary_sensor.new_binary_sensor(charge_point_conf[CONF_ONLINE])
             cg.add(charge_point.set_online_binary_sensor(sens))

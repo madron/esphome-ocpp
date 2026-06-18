@@ -28,6 +28,9 @@ class ChargePoint {
         void set_protocol_text_sensor(text_sensor::TextSensor *protocol_text_sensor) {
             this->protocol_text_sensor_ = protocol_text_sensor;
         }
+        void set_charger_info_text_sensor(text_sensor::TextSensor *charger_info_text_sensor) {
+            this->charger_info_text_sensor_ = charger_info_text_sensor;
+        }
         void set_debug_ocpp_messages(bool debug_ocpp_messages);
         bool get_debug_ocpp_messages() const;
         void set_force_boot_notification(bool force_boot_notification);
@@ -49,6 +52,7 @@ class ChargePoint {
         void handle_ocpp_call_(const OcppMessage &call);
         void send_forced_boot_notification_trigger_();
         void set_online_(bool online);
+        void publish_charger_info_(const BootNotification &boot_notification);
 
         std::string charge_point_id_;
         std::string connection_id_;
@@ -57,6 +61,7 @@ class ChargePoint {
         std::vector<std::string> messages_;
         binary_sensor::BinarySensor *online_binary_sensor_{nullptr};
         text_sensor::TextSensor *protocol_text_sensor_{nullptr};
+        text_sensor::TextSensor *charger_info_text_sensor_{nullptr};
         size_t max_queued_messages_{DEFAULT_MAX_QUEUED_MESSAGES};
         bool debug_ocpp_messages_{false};
         bool force_boot_notification_{false};

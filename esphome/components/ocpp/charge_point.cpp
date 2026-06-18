@@ -43,6 +43,8 @@ void ChargePoint::on_connected(std::string connection_id, std::string protocol, 
     this->connected_at_millis_ = now_millis;
     if (this->protocol_text_sensor_ != nullptr)
         this->protocol_text_sensor_->publish_state(protocol);
+    if (this->charger_info_text_sensor_ != nullptr)
+        this->charger_info_text_sensor_->publish_state("");
     this->force_boot_notification_scheduled_ =
         this->force_boot_notification_ && this->force_boot_notification_pending_;
 }
@@ -53,6 +55,8 @@ void ChargePoint::on_disconnected() {
     this->messages_.clear();
     if (this->protocol_text_sensor_ != nullptr)
         this->protocol_text_sensor_->publish_state("");
+    if (this->charger_info_text_sensor_ != nullptr)
+        this->charger_info_text_sensor_->publish_state("");
     this->set_online_(false);
 }
 
@@ -120,6 +124,8 @@ void ChargePoint::handle_ocpp_call_(const OcppMessage &call) {
         this->force_boot_notification_pending_ = false;
         this->force_boot_notification_scheduled_ = false;
         this->set_online_(true);
+        const auto &boot_notification = static_cast<const BootNotification &>(call);
+        this->publish_charger_info_(boot_notification);
         this->send_message_(this->protocol_.make_boot_notification_response(call.unique_id));
     } else if (call.action == "Heartbeat") {
         this->set_online_(true);
@@ -147,6 +153,26 @@ void ChargePoint::set_online_(bool online) {
     this->online_ = online;
     if (this->online_binary_sensor_ != nullptr)
         this->online_binary_sensor_->publish_state(online);
+}
+
+void ChargePoint::publish_charger_info_(const BootNotification &boot_notification) {
+    if (this->charger_info_text_sensor_ == nullptr)
+        return;
+
+    std::string info;
+    if (!boot_notification.charge_point_vendor.empty())
+        info = "vendor: " + boot_notification.charge_point_vendor;
+    if (!boot_notification.charge_point_model.empty()) {
+        if (!info.empty())
+            info += ", ";
+        info += "model: " + boot_notification.charge_point_model;
+    }
+    if (!boot_notification.firmware_version.empty()) {
+        if (!info.empty())
+            info += ", ";
+        info += "firmware: " + boot_notification.firmware_version;
+    }
+    this->charger_info_text_sensor_->publish_state(info);
 }
 
 }  // namespace esphome::ocpp

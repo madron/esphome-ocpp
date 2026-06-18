@@ -112,5 +112,8 @@ ocpp:
       online:
         id: garage_online
         name: garage_online
+      charger_info:
+        id: garage_charger_info
+        name: garage_charger_info
     - id: unknown
       debug_ocpp_messages: true

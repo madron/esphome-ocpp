@@ -13,6 +13,7 @@ class TestChargePoint : public ChargePoint {
     TestChargePoint() {
         this->set_online_binary_sensor(&this->online_sensor);
         this->set_protocol_text_sensor(&this->protocol_sensor);
+        this->set_charger_info_text_sensor(&this->charger_info_sensor);
     }
 
     TestChargePoint(const TestChargePoint &) = delete;
@@ -21,6 +22,7 @@ class TestChargePoint : public ChargePoint {
     std::vector<std::string> &messages{this->messages_};
     BinarySensor online_sensor;
     TextSensor protocol_sensor;
+    TextSensor charger_info_sensor;
 };
 
 int main() {
@@ -46,6 +48,7 @@ int main() {
         assert_equal("get_max_queued_messages", charge_point.get_max_queued_messages(), 8);
         assert_equal("get_force_protocol", charge_point.get_force_protocol(), std::string(""));
         assert_equal("protocol_default", charge_point.protocol_sensor.state, std::string(""));
+        assert_equal("charger_info_default", charge_point.charger_info_sensor.state, std::string(""));
 
         // set_debug_ocpp_messages
         charge_point.set_debug_ocpp_messages(true);
@@ -83,12 +86,15 @@ int main() {
         charge_point.handle_ocpp_text(R"([2,"boot-1","BootNotification",{"chargePointVendor":"Acme","chargePointModel":"Wallbox"}])");
         assert_equal("online_after_boot", charge_point.is_online(), true);
         assert_equal("online_sensor_after boot", charge_point.online_sensor.state, true);
+        assert_equal("charger_info_after_boot", charge_point.charger_info_sensor.state,
+                     std::string("vendor: Acme, model: Wallbox"));
         assert_equal("boot_response_count", charge_point.messages.size(), 1);
         assert_equal("boot_response", charge_point.messages[0], R"([3,"boot-1",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
 
         charge_point.on_disconnected();
         assert_equal("online_after_disconnect", charge_point.is_online(), false);
         assert_equal("online_sensor_after_disconnect", charge_point.online_sensor.state, false);
+        assert_equal("charger_info_after_disconnect", charge_point.charger_info_sensor.state, std::string(""));
         assert_equal("queued_messages_cleared_after_disconnect", charge_point.messages.size(), 0);
     }
 
@@ -99,6 +105,8 @@ int main() {
         charge_point.handle_ocpp_text(
             R"([2,"boot-2","BootNotification",{"chargingStation":{"model":"Prism Solar","vendorName":"Silla Industries","firmwareVersion":"3.2.77"},"reason":"PowerUp"}])");
         assert_equal("ocpp201_online_after_boot", charge_point.is_online(), true);
+        assert_equal("ocpp201_charger_info_after_boot", charge_point.charger_info_sensor.state,
+                     std::string("vendor: Silla Industries, model: Prism Solar, firmware: 3.2.77"));
         assert_equal("ocpp201_boot_response_count", charge_point.messages.size(), 1);
         assert_equal("ocpp201_boot_response", charge_point.messages[0],
                      R"([3,"boot-2",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");

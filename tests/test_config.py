@@ -74,6 +74,22 @@ class ChargePointSchemaTests(unittest.TestCase):
         self.assertEqual(validated["charge_points"][0]["force_protocol"], "ocpp1.6")
         self.assertIn("protocol", validated["charge_points"][0])
 
+    def test_charger_info_text_sensor_enabled(self):
+        validated = CONFIG_SCHEMA(
+            {
+                "id": "ocpp_id",
+                "charge_points": [
+                    {
+                        "id": "garage_left",
+                        "charge_point_id": "A99999",
+                        "charger_info": {"name": "Garage Charger Info"},
+                    }
+                ],
+            }
+        )
+
+        self.assertIn("charger_info", validated["charge_points"][0])
+
     def test_ocpp_2_0_1_force_protocol_enabled(self):
         validated = CONFIG_SCHEMA(
             {
