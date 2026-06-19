@@ -10,6 +10,7 @@ namespace {
 
 static const char *const TAG = "ocpp";
 static constexpr const char *CURRENT_TIME = "1970-01-01T00:00:00Z";
+static const char *const CHANGE_CONFIGURATION_UNIQUE_ID_PREFIX = "change-config-";
 static const char *const GET_CONFIGURATION_UNIQUE_ID = "get-configuration";
 static const char *const GET_CONFIGURATION_KEY_CONNECTOR_SWITCH_3_TO_1_PHASE_SUPPORTED =
     "ConnectorSwitch3to1PhaseSupported";
@@ -47,6 +48,10 @@ std::string json_string_or_empty(const JsonVariant &value) {
     if (!value.is<const char *>())
         return "";
     return value.as<std::string>();
+}
+
+bool is_change_configuration_unique_id(const std::string &unique_id) {
+    return unique_id.rfind(CHANGE_CONFIGURATION_UNIQUE_ID_PREFIX, 0) == 0;
 }
 
 std::unique_ptr<OcppMessage> parse_boot_notification_1_6(const std::string &unique_id, const JsonObject &payload) {
@@ -107,6 +112,10 @@ std::unique_ptr<OcppMessage> parse_get_configuration_response(const std::string 
     ));
 }
 
+std::unique_ptr<OcppMessage> parse_change_configuration_response(const std::string &unique_id, const JsonObject &payload) {
+    return std::unique_ptr<OcppMessage>(new ChangeConfigurationResponse(unique_id, json_string_or_empty(payload["status"])));
+}
+
 }  // namespace
 
 bool OcppProtocol::set_websocket_protocol(const std::string &protocol) {
@@ -122,6 +131,17 @@ bool OcppProtocol::set_websocket_protocol(const std::string &protocol) {
 }
 
 OcppProtocolVersion OcppProtocol::get_version() const { return this->version_; }
+
+std::string OcppProtocol::make_change_configuration_request(
+    const std::string &unique_id,
+    const std::string &key,
+    const std::string &value
+) const {
+    if (this->version_ != OcppProtocolVersion::OCPP_1_6)
+        return "";
+    return "[2,\"" + json_escape(unique_id) + "\",\"ChangeConfiguration\",{\"key\":\"" +
+           json_escape(key) + "\",\"value\":\"" + json_escape(value) + "\"}]";
+}
 
 std::unique_ptr<OcppMessage> OcppProtocol::parse_message(const std::string &message) const {
     JsonDocument document = json::parse_json(message);
@@ -147,6 +167,9 @@ std::unique_ptr<OcppMessage> OcppProtocol::parse_message(const std::string &mess
         if (message_type_id == OcppMessageType::CALL_RESULT && unique_id == GET_CONFIGURATION_UNIQUE_ID &&
             frame.size() >= 3 && frame[static_cast<size_t>(2)].is<JsonObject>())
             return parse_get_configuration_response(unique_id, frame[static_cast<size_t>(2)].as<JsonObject>());
+        if (message_type_id == OcppMessageType::CALL_RESULT && is_change_configuration_unique_id(unique_id) &&
+            frame.size() >= 3 && frame[static_cast<size_t>(2)].is<JsonObject>())
+            return parse_change_configuration_response(unique_id, frame[static_cast<size_t>(2)].as<JsonObject>());
         return std::unique_ptr<OcppMessage>(new OcppMessage(message_type_id, unique_id));
     }
 

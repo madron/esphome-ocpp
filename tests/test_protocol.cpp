@@ -6,6 +6,7 @@
 #include <string>
 
 using esphome::ocpp::BootNotification;
+using esphome::ocpp::ChangeConfigurationResponse;
 using esphome::ocpp::GetConfigurationResponse;
 using esphome::ocpp::OcppMessage;
 using esphome::ocpp::OcppMessageType;
@@ -53,6 +54,11 @@ int main() {
 
     assert_equal("unsupported_protocol", protocol.set_websocket_protocol("ocpp9.9"), false);
     assert_equal("reset_ocpp16", protocol.set_websocket_protocol("ocpp1.6"), true);
+    assert_equal("change_configuration_request",
+                 protocol.make_change_configuration_request("change-config-meter-values-sampled-data",
+                                                            "MeterValuesSampledData",
+                                                            "Current.Import,Power.Active.Import"),
+                 R"([2,"change-config-meter-values-sampled-data","ChangeConfiguration",{"key":"MeterValuesSampledData","value":"Current.Import,Power.Active.Import"}])");
     assert_equal("get_configuration_request", protocol.make_get_configuration_request("get-configuration"),
                  R"([2,"get-configuration","GetConfiguration",{"key":["MeterValueSampleInterval","MeterValuesSampledData","ConnectorSwitch3to1PhaseSupported"]}])");
     std::unique_ptr<OcppMessage> get_configuration_message = protocol.parse_message(
@@ -66,7 +72,18 @@ int main() {
                  std::string("Power.Active.Import,Current.Import,Voltage"));
     assert_equal("get_configuration_response_phase_switch", get_configuration_response->connector_switch_3_to_1_phase_supported,
                  std::string("false"));
+    std::unique_ptr<OcppMessage> change_configuration_message = protocol.parse_message(
+        R"([3,"change-config-meter-values-sampled-data",{"status":"Rejected"}])"
+    );
+    auto *change_configuration_response = dynamic_cast<ChangeConfigurationResponse *>(change_configuration_message.get());
+    assert_equal("change_configuration_response_exists", change_configuration_response != nullptr, true);
+    assert_equal("change_configuration_response_status", change_configuration_response->status, std::string("Rejected"));
     assert_equal("get_configuration_request_unsupported_on_ocpp201", protocol.set_websocket_protocol("ocpp2.0.1"), true);
+    assert_equal("change_configuration_request_ocpp201_empty",
+                 protocol.make_change_configuration_request("change-config-meter-values-sampled-data",
+                                                            "MeterValuesSampledData",
+                                                            "Current.Import"),
+                 std::string(""));
     assert_equal("get_configuration_request_ocpp201_empty", protocol.make_get_configuration_request("get-configuration"),
                  std::string(""));
     assert_equal("boot_response", protocol.make_boot_notification_response("boot-1"),

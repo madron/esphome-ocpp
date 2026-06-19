@@ -89,4 +89,16 @@ class GetConfigurationResponse : public OcppMessage {
         std::string connector_switch_3_to_1_phase_supported;
 };
 
+class ChangeConfigurationResponse : public OcppMessage {
+    public:
+        ChangeConfigurationResponse(
+            std::string unique_id = "",
+            std::string status = ""
+        )
+            : OcppMessage(OcppMessageType::CALL_RESULT, std::move(unique_id), "ChangeConfiguration"),
+              status(std::move(status)) {}
+
+        std::string status;
+};
+
 }  // namespace esphome::ocpp

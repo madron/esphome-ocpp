@@ -8,7 +8,20 @@ namespace esphome::ocpp {
 namespace {
 
 static const char *const TAG = "ocpp.charge_point";
+static const char *const CHANGE_CONFIGURATION_METER_VALUE_SAMPLE_INTERVAL_UNIQUE_ID =
+    "change-config-meter-value-sample-interval";
+static const char *const CHANGE_CONFIGURATION_METER_VALUES_SAMPLED_DATA_UNIQUE_ID =
+    "change-config-meter-values-sampled-data";
 static const char *const GET_CONFIGURATION_UNIQUE_ID = "get-configuration";
+static const char *const METER_VALUE_SAMPLE_INTERVAL_KEY = "MeterValueSampleInterval";
+static constexpr const char *METER_VALUE_SAMPLE_INTERVAL_VALUE = "5";
+static const char *const METER_VALUES_SAMPLED_DATA_KEY = "MeterValuesSampledData";
+static constexpr const char *const METER_VALUES_SAMPLED_DATA_FALLBACKS[] = {
+    "Current.Import,Power.Active.Import,Energy.Active.Import.Register,Voltage",
+    "Current.Import,Power.Active.Import,Energy.Active.Import.Register",
+    "Current.Import,Power.Active.Import",
+    "Current.Import",
+};
 static const char *const TRIGGER_BOOT_NOTIFICATION_UNIQUE_ID = "trigger-boot-notification";
 static const char *const TRIGGER_STATUS_NOTIFICATION_UNIQUE_ID = "trigger-status-notification";
 static constexpr size_t DEBUG_OCPP_MESSAGE_CHUNK_SIZE = 360;
@@ -70,6 +83,8 @@ void ChargePoint::on_connected(std::string connection_id, std::string protocol, 
 void ChargePoint::on_disconnected() {
     this->connected_ = false;
     this->boot_notification_trigger_in_flight_ = false;
+    this->change_configuration_stage_ = ChangeConfigurationStage::IDLE;
+    this->meter_values_sampled_data_fallback_index_ = 0;
     this->status_notification_trigger_in_flight_ = false;
     this->in_flight_call_.reset();
     this->messages_.clear();
@@ -139,9 +154,10 @@ void ChargePoint::handle_ocpp_message_(const OcppMessage &message) {
     if (message.message_type_id == OcppMessageType::CALL_RESULT) {
         ESP_LOGD(TAG, "OCPP call result: charge_point='%s' uniqueId='%s'", this->connection_id_.c_str(),
                 message.unique_id.c_str());
-        auto *get_configuration_response = dynamic_cast<const GetConfigurationResponse *>(&message);
-        if (get_configuration_response != nullptr)
-            this->handle_get_configuration_response_(*get_configuration_response);
+        if (message.action == "GetConfiguration")
+            this->handle_get_configuration_response_(static_cast<const GetConfigurationResponse &>(message));
+        else if (message.action == "ChangeConfiguration")
+            this->handle_change_configuration_reply_(message);
         this->handle_ocpp_call_reply_(message);
         this->handle_startup_notification_trigger_reply_(message);
         return;
@@ -150,6 +166,7 @@ void ChargePoint::handle_ocpp_message_(const OcppMessage &message) {
     if (message.message_type_id == OcppMessageType::CALL_ERROR) {
         ESP_LOGW(TAG, "OCPP call error: charge_point='%s' uniqueId='%s'", this->connection_id_.c_str(),
                 message.unique_id.c_str());
+        this->handle_change_configuration_reply_(message);
         this->handle_ocpp_call_reply_(message);
         this->handle_startup_notification_trigger_reply_(message);
         return;
@@ -211,12 +228,97 @@ void ChargePoint::handle_get_configuration_response_(const GetConfigurationRespo
     this->meter_value_sample_interval_ = message.meter_value_sample_interval;
     this->meter_values_sampled_data_ = message.meter_values_sampled_data;
     this->connector_switch_3_to_1_phase_supported_ = message.connector_switch_3_to_1_phase_supported;
+    this->change_configuration_stage_ = ChangeConfigurationStage::METER_VALUES_SAMPLED_DATA;
+    this->meter_values_sampled_data_fallback_index_ = 0;
 
     ESP_LOGI(TAG,
              "GetConfiguration response: charge_point_id='%s' MeterValueSampleInterval='%s' MeterValuesSampledData='%s' "
              "ConnectorSwitch3to1PhaseSupported='%s'",
              this->connection_id_.c_str(), this->meter_value_sample_interval_.c_str(),
              this->meter_values_sampled_data_.c_str(), this->connector_switch_3_to_1_phase_supported_.c_str());
+
+    if (!this->send_meter_values_sampled_data_change_request_())
+        this->change_configuration_stage_ = ChangeConfigurationStage::IDLE;
+}
+
+void ChargePoint::handle_change_configuration_reply_(const OcppMessage &message) {
+    if (message.unique_id == CHANGE_CONFIGURATION_METER_VALUES_SAMPLED_DATA_UNIQUE_ID) {
+        if (this->change_configuration_stage_ != ChangeConfigurationStage::METER_VALUES_SAMPLED_DATA)
+            return;
+        if (message.message_type_id == OcppMessageType::CALL_RESULT && message.action == "ChangeConfiguration") {
+            const auto &response = static_cast<const ChangeConfigurationResponse &>(message);
+
+            if (response.status == "Rejected" &&
+                this->meter_values_sampled_data_fallback_index_ + 1 <
+                    sizeof(METER_VALUES_SAMPLED_DATA_FALLBACKS) / sizeof(METER_VALUES_SAMPLED_DATA_FALLBACKS[0])) {
+                this->meter_values_sampled_data_fallback_index_++;
+                ESP_LOGW(TAG,
+                         "ChangeConfiguration rejected MeterValuesSampledData for '%s'; retrying fallback %u/%u",
+                         this->connection_id_.c_str(),
+                         static_cast<unsigned>(this->meter_values_sampled_data_fallback_index_ + 1),
+                         static_cast<unsigned>(sizeof(METER_VALUES_SAMPLED_DATA_FALLBACKS) /
+                                               sizeof(METER_VALUES_SAMPLED_DATA_FALLBACKS[0])));
+                if (!this->send_meter_values_sampled_data_change_request_())
+                    this->change_configuration_stage_ = ChangeConfigurationStage::IDLE;
+                return;
+            }
+
+            ESP_LOGI(TAG, "ChangeConfiguration MeterValuesSampledData reply: charge_point_id='%s' status='%s'",
+                     this->connection_id_.c_str(), response.status.c_str());
+        } else {
+            ESP_LOGW(TAG, "ChangeConfiguration MeterValuesSampledData failed: charge_point_id='%s' uniqueId='%s'",
+                     this->connection_id_.c_str(), message.unique_id.c_str());
+        }
+
+        this->change_configuration_stage_ = ChangeConfigurationStage::METER_VALUE_SAMPLE_INTERVAL;
+        if (!this->send_meter_value_sample_interval_change_request_())
+            this->change_configuration_stage_ = ChangeConfigurationStage::IDLE;
+        return;
+    }
+
+    if (message.unique_id == CHANGE_CONFIGURATION_METER_VALUE_SAMPLE_INTERVAL_UNIQUE_ID) {
+        if (this->change_configuration_stage_ != ChangeConfigurationStage::METER_VALUE_SAMPLE_INTERVAL)
+            return;
+        if (message.message_type_id == OcppMessageType::CALL_RESULT && message.action == "ChangeConfiguration") {
+            const auto &response = static_cast<const ChangeConfigurationResponse &>(message);
+            ESP_LOGI(TAG, "ChangeConfiguration MeterValueSampleInterval reply: charge_point_id='%s' status='%s'",
+                     this->connection_id_.c_str(), response.status.c_str());
+        } else {
+            ESP_LOGW(TAG, "ChangeConfiguration MeterValueSampleInterval failed: charge_point_id='%s' uniqueId='%s'",
+                     this->connection_id_.c_str(), message.unique_id.c_str());
+        }
+        this->change_configuration_stage_ = ChangeConfigurationStage::IDLE;
+    }
+}
+
+bool ChargePoint::send_meter_value_sample_interval_change_request_() {
+    std::string request = this->protocol_.make_change_configuration_request(
+        CHANGE_CONFIGURATION_METER_VALUE_SAMPLE_INTERVAL_UNIQUE_ID,
+        METER_VALUE_SAMPLE_INTERVAL_KEY,
+        METER_VALUE_SAMPLE_INTERVAL_VALUE
+    );
+    if (request.empty())
+        return false;
+
+    return this->send_message_({std::move(request), OcppMessageType::CALL,
+                                CHANGE_CONFIGURATION_METER_VALUE_SAMPLE_INTERVAL_UNIQUE_ID, "ChangeConfiguration"});
+}
+
+bool ChargePoint::send_meter_values_sampled_data_change_request_() {
+    if (this->meter_values_sampled_data_fallback_index_ >=
+        sizeof(METER_VALUES_SAMPLED_DATA_FALLBACKS) / sizeof(METER_VALUES_SAMPLED_DATA_FALLBACKS[0]))
+        return false;
+
+    std::string request = this->protocol_.make_change_configuration_request(
+        CHANGE_CONFIGURATION_METER_VALUES_SAMPLED_DATA_UNIQUE_ID,
+        METER_VALUES_SAMPLED_DATA_KEY,
+        METER_VALUES_SAMPLED_DATA_FALLBACKS[this->meter_values_sampled_data_fallback_index_]
+    );
+    if (request.empty())
+        return false;
+
+    return this->send_message_({std::move(request), OcppMessageType::CALL,
+                                CHANGE_CONFIGURATION_METER_VALUES_SAMPLED_DATA_UNIQUE_ID, "ChangeConfiguration"});
 }
 
 void ChargePoint::handle_startup_notification_trigger_reply_(const OcppMessage &message) {
@@ -279,6 +381,7 @@ void ChargePoint::expire_in_flight_call_(uint32_t now_millis) {
             this->in_flight_call_->action.c_str(), this->in_flight_call_->unique_id.c_str());
     OcppMessage timed_out_message(OcppMessageType::CALL_ERROR, this->in_flight_call_->unique_id);
     this->in_flight_call_.reset();
+    this->handle_change_configuration_reply_(timed_out_message);
     this->handle_startup_notification_trigger_reply_(timed_out_message);
 }
 

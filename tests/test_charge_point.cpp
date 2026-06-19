@@ -136,6 +136,50 @@ int main() {
                      std::string("Power.Active.Import,Current.Import,Voltage"));
         assert_equal("get_configuration_connector_switch_3_to_1_phase_supported",
                      charge_point.get_connector_switch_3_to_1_phase_supported(), std::string("false"));
+        assert_equal("get_configuration_queues_change_configuration_count", charge_point.messages.size(), 1);
+        assert_equal("get_configuration_queues_change_configuration", charge_point.messages[0].payload,
+                     R"([2,"change-config-meter-values-sampled-data","ChangeConfiguration",{"key":"MeterValuesSampledData","value":"Current.Import,Power.Active.Import,Energy.Active.Import.Register,Voltage"}])");
+    }
+
+    {
+        // MeterValuesSampledData falls back in order and then MeterValueSampleInterval is changed to 5
+        TestChargePoint charge_point;
+        charge_point.on_connected("A99999");
+        charge_point.handle_ocpp_text(
+            R"([3,"get-configuration",{"configurationKey":[{"key":"MeterValueSampleInterval","readonly":false,"value":"60"},{"key":"MeterValuesSampledData","readonly":false,"value":"Power.Active.Import"}]}])");
+        assert_equal("change_configuration_initial_request_count", charge_point.messages.size(), 1);
+        assert_equal("change_configuration_initial_request", charge_point.messages[0].payload,
+                     R"([2,"change-config-meter-values-sampled-data","ChangeConfiguration",{"key":"MeterValuesSampledData","value":"Current.Import,Power.Active.Import,Energy.Active.Import.Register,Voltage"}])");
+
+        charge_point.handle_ocpp_text(R"([3,"change-config-meter-values-sampled-data",{"status":"Rejected"}])");
+        assert_equal("change_configuration_first_fallback_count", charge_point.messages.size(), 2);
+        assert_equal("change_configuration_first_fallback", charge_point.messages[1].payload,
+                     R"([2,"change-config-meter-values-sampled-data","ChangeConfiguration",{"key":"MeterValuesSampledData","value":"Current.Import,Power.Active.Import,Energy.Active.Import.Register"}])");
+
+        charge_point.handle_ocpp_text(R"([3,"change-config-meter-values-sampled-data",{"status":"Rejected"}])");
+        assert_equal("change_configuration_second_fallback_count", charge_point.messages.size(), 3);
+        assert_equal("change_configuration_second_fallback", charge_point.messages[2].payload,
+                     R"([2,"change-config-meter-values-sampled-data","ChangeConfiguration",{"key":"MeterValuesSampledData","value":"Current.Import,Power.Active.Import"}])");
+
+        charge_point.handle_ocpp_text(R"([3,"change-config-meter-values-sampled-data",{"status":"Accepted"}])");
+        assert_equal("change_configuration_interval_request_count", charge_point.messages.size(), 4);
+        assert_equal("change_configuration_interval_request", charge_point.messages[3].payload,
+                     R"([2,"change-config-meter-value-sample-interval","ChangeConfiguration",{"key":"MeterValueSampleInterval","value":"5"}])");
+    }
+
+    {
+        // Exhausting all MeterValuesSampledData fallbacks still proceeds to MeterValueSampleInterval
+        TestChargePoint charge_point;
+        charge_point.on_connected("A99999");
+        charge_point.handle_ocpp_text(
+            R"([3,"get-configuration",{"configurationKey":[{"key":"MeterValueSampleInterval","readonly":false,"value":"60"}]}])");
+        charge_point.handle_ocpp_text(R"([3,"change-config-meter-values-sampled-data",{"status":"Rejected"}])");
+        charge_point.handle_ocpp_text(R"([3,"change-config-meter-values-sampled-data",{"status":"Rejected"}])");
+        charge_point.handle_ocpp_text(R"([3,"change-config-meter-values-sampled-data",{"status":"Rejected"}])");
+        charge_point.handle_ocpp_text(R"([3,"change-config-meter-values-sampled-data",{"status":"Rejected"}])");
+        assert_equal("change_configuration_interval_after_all_fallbacks_count", charge_point.messages.size(), 5);
+        assert_equal("change_configuration_interval_after_all_fallbacks", charge_point.messages[4].payload,
+                     R"([2,"change-config-meter-value-sample-interval","ChangeConfiguration",{"key":"MeterValueSampleInterval","value":"5"}])");
     }
 
     {

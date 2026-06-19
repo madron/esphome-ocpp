@@ -26,6 +26,12 @@ class ChargePoint {
         static constexpr uint32_t DEFAULT_STARTUP_NOTIFICATIONS_DELAY_MS = 300000;
         static constexpr uint32_t DEFAULT_CALL_TIMEOUT_MS = 60000;
 
+        enum class ChangeConfigurationStage : uint8_t {
+            IDLE = 0,
+            METER_VALUES_SAMPLED_DATA,
+            METER_VALUE_SAMPLE_INTERVAL,
+        };
+
         void set_charge_point_id(std::string charge_point_id);
         const std::string &get_charge_point_id() const;
         void set_connection_id(std::string connection_id);
@@ -66,8 +72,11 @@ class ChargePoint {
         void handle_ocpp_message_(const OcppMessage &message);
         void handle_ocpp_call_(const OcppMessage &call);
         void handle_ocpp_call_reply_(const OcppMessage &message);
+        void handle_change_configuration_reply_(const OcppMessage &message);
         void handle_get_configuration_response_(const GetConfigurationResponse &message);
         void handle_startup_notification_trigger_reply_(const OcppMessage &message);
+        bool send_meter_value_sample_interval_change_request_();
+        bool send_meter_values_sampled_data_change_request_();
         void send_get_configuration_request_();
         void send_startup_notification_triggers_();
         void send_boot_notification_trigger_();
@@ -98,6 +107,8 @@ class ChargePoint {
         bool connected_{false};
         bool online_{false};
         uint32_t connected_at_millis_{0};
+        ChangeConfigurationStage change_configuration_stage_{ChangeConfigurationStage::IDLE};
+        size_t meter_values_sampled_data_fallback_index_{0};
 };
 
 }  // namespace esphome::ocpp
