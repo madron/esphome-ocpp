@@ -229,17 +229,11 @@ void ChargePoint::handle_startup_notification_trigger_reply_(const OcppMessage &
 }
 
 void ChargePoint::send_get_configuration_request_() {
-    if (this->get_configuration_requested_)
-        return;
-
     std::string request = this->protocol_.make_get_configuration_request(GET_CONFIGURATION_UNIQUE_ID);
     if (request.empty())
         return;
 
-    if (!this->send_message_({std::move(request), OcppMessageType::CALL, GET_CONFIGURATION_UNIQUE_ID, "GetConfiguration"}))
-        return;
-
-    this->get_configuration_requested_ = true;
+    this->send_message_({std::move(request), OcppMessageType::CALL, GET_CONFIGURATION_UNIQUE_ID, "GetConfiguration"});
 }
 
 void ChargePoint::send_startup_notification_triggers_() {

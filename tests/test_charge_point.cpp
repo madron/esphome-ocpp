@@ -102,7 +102,7 @@ int main() {
     }
 
     {
-        // GetConfiguration is sent only once per charge point, even across reconnects
+        // GetConfiguration is sent after every BootNotification, including reconnects
         TestChargePoint charge_point;
         charge_point.on_connected("A99999");
         charge_point.handle_ocpp_text(R"([2,"boot-1","BootNotification",{"chargePointVendor":"Acme","chargePointModel":"Wallbox"}])");
@@ -111,9 +111,17 @@ int main() {
         charge_point.on_disconnected();
         charge_point.on_connected("A99999");
         charge_point.handle_ocpp_text(R"([2,"boot-2","BootNotification",{"chargePointVendor":"Acme","chargePointModel":"Wallbox"}])");
-        assert_equal("get_configuration_second_boot_count", charge_point.messages.size(), 1);
+        assert_equal("get_configuration_second_boot_count", charge_point.messages.size(), 2);
         assert_equal("get_configuration_second_boot_response", charge_point.messages[0].payload,
                      R"([3,"boot-2",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
+        assert_equal("get_configuration_second_boot_request", charge_point.messages[1].payload,
+                     R"([2,"get-configuration","GetConfiguration",{"key":["MeterValueSampleInterval","MeterValuesSampledData","ConnectorSwitch3to1PhaseSupported"]}])");
+
+        charge_point.messages.clear();
+        charge_point.handle_ocpp_text(R"([2,"boot-3","BootNotification",{"chargePointVendor":"Acme","chargePointModel":"Wallbox"}])");
+        assert_equal("get_configuration_third_boot_count", charge_point.messages.size(), 2);
+        assert_equal("get_configuration_third_boot_request", charge_point.messages[1].payload,
+                     R"([2,"get-configuration","GetConfiguration",{"key":["MeterValueSampleInterval","MeterValuesSampledData","ConnectorSwitch3to1PhaseSupported"]}])");
     }
 
     {

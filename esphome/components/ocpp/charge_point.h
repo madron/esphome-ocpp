@@ -93,7 +93,6 @@ class ChargePoint {
         uint32_t startup_notifications_delay_ms_{DEFAULT_STARTUP_NOTIFICATIONS_DELAY_MS};
         bool boot_notification_pending_{true};
         bool status_notification_pending_{true};
-        bool get_configuration_requested_{false};
         bool boot_notification_trigger_in_flight_{false};
         bool status_notification_trigger_in_flight_{false};
         bool connected_{false};
