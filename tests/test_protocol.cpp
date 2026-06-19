@@ -6,6 +6,7 @@
 #include <string>
 
 using esphome::ocpp::BootNotification;
+using esphome::ocpp::GetConfigurationResponse;
 using esphome::ocpp::OcppMessage;
 using esphome::ocpp::OcppMessageType;
 using esphome::ocpp::OcppProtocol;
@@ -51,6 +52,23 @@ int main() {
     assert_equal("invalid_call_payload_rejected", protocol.parse_message(R"([2,"bad","BootNotification",[]])") == nullptr, true);
 
     assert_equal("unsupported_protocol", protocol.set_websocket_protocol("ocpp9.9"), false);
+    assert_equal("reset_ocpp16", protocol.set_websocket_protocol("ocpp1.6"), true);
+    assert_equal("get_configuration_request", protocol.make_get_configuration_request("get-configuration"),
+                 R"([2,"get-configuration","GetConfiguration",{"key":["MeterValueSampleInterval","MeterValuesSampledData","ConnectorSwitch3to1PhaseSupported"]}])");
+    std::unique_ptr<OcppMessage> get_configuration_message = protocol.parse_message(
+        R"([3,"get-configuration",{"configurationKey":[{"key":"MeterValueSampleInterval","readonly":false,"value":"5"},{"key":"MeterValuesSampledData","readonly":false,"value":"Power.Active.Import,Current.Import,Voltage"},{"key":"ConnectorSwitch3to1PhaseSupported","readonly":true,"value":"false"}]}])"
+    );
+    auto *get_configuration_response = dynamic_cast<GetConfigurationResponse *>(get_configuration_message.get());
+    assert_equal("get_configuration_response_exists", get_configuration_response != nullptr, true);
+    assert_equal("get_configuration_response_interval", get_configuration_response->meter_value_sample_interval,
+                 std::string("5"));
+    assert_equal("get_configuration_response_sampled_data", get_configuration_response->meter_values_sampled_data,
+                 std::string("Power.Active.Import,Current.Import,Voltage"));
+    assert_equal("get_configuration_response_phase_switch", get_configuration_response->connector_switch_3_to_1_phase_supported,
+                 std::string("false"));
+    assert_equal("get_configuration_request_unsupported_on_ocpp201", protocol.set_websocket_protocol("ocpp2.0.1"), true);
+    assert_equal("get_configuration_request_ocpp201_empty", protocol.make_get_configuration_request("get-configuration"),
+                 std::string(""));
     assert_equal("boot_response", protocol.make_boot_notification_response("boot-1"),
                  R"([3,"boot-1",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
 }

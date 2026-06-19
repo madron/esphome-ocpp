@@ -18,6 +18,7 @@ class OcppProtocol {
         bool set_websocket_protocol(const std::string &protocol);
         OcppProtocolVersion get_version() const;
         std::unique_ptr<OcppMessage> parse_message(const std::string &message) const;
+        std::string make_get_configuration_request(const std::string &unique_id) const;
         std::string make_boot_notification_response(const std::string &unique_id) const;
         std::string make_heartbeat_response(const std::string &unique_id) const;
         std::string make_status_notification_response(const std::string &unique_id) const;

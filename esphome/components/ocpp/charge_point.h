@@ -46,6 +46,11 @@ class ChargePoint {
         void set_startup_notifications_delay(uint32_t startup_notifications_delay_ms);
         uint32_t get_startup_notifications_delay() const;
         bool is_online() const;
+        const std::string &get_meter_value_sample_interval() const { return this->meter_value_sample_interval_; }
+        const std::string &get_meter_values_sampled_data() const { return this->meter_values_sampled_data_; }
+        const std::string &get_connector_switch_3_to_1_phase_supported() const {
+            return this->connector_switch_3_to_1_phase_supported_;
+        }
         void set_max_queued_messages(size_t max_queued_messages) { this->max_queued_messages_ = max_queued_messages; }
         size_t get_max_queued_messages() const { return this->max_queued_messages_; }
 
@@ -57,11 +62,13 @@ class ChargePoint {
         bool pop_queued_message(std::string *message, uint32_t now_millis = 0);
 
     protected:
-        void send_message_(QueuedMessage message);
+        bool send_message_(QueuedMessage message);
         void handle_ocpp_message_(const OcppMessage &message);
         void handle_ocpp_call_(const OcppMessage &call);
         void handle_ocpp_call_reply_(const OcppMessage &message);
+        void handle_get_configuration_response_(const GetConfigurationResponse &message);
         void handle_startup_notification_trigger_reply_(const OcppMessage &message);
+        void send_get_configuration_request_();
         void send_startup_notification_triggers_();
         void send_boot_notification_trigger_();
         void send_status_notification_trigger_();
@@ -75,6 +82,9 @@ class ChargePoint {
         OcppProtocol protocol_;
         std::vector<QueuedMessage> messages_;
         std::unique_ptr<QueuedMessage> in_flight_call_;
+        std::string meter_value_sample_interval_;
+        std::string meter_values_sampled_data_;
+        std::string connector_switch_3_to_1_phase_supported_;
         binary_sensor::BinarySensor *online_binary_sensor_{nullptr};
         text_sensor::TextSensor *protocol_text_sensor_{nullptr};
         text_sensor::TextSensor *charger_info_text_sensor_{nullptr};
@@ -83,6 +93,7 @@ class ChargePoint {
         uint32_t startup_notifications_delay_ms_{DEFAULT_STARTUP_NOTIFICATIONS_DELAY_MS};
         bool boot_notification_pending_{true};
         bool status_notification_pending_{true};
+        bool get_configuration_requested_{false};
         bool boot_notification_trigger_in_flight_{false};
         bool status_notification_trigger_in_flight_{false};
         bool connected_{false};

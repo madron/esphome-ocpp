@@ -14,8 +14,11 @@ namespace esphome::ocpp {
 namespace {
 
 static const char *const TAG = "ocpp.server";
-static constexpr size_t MAX_RX_BUFFER = 4096;
-static constexpr size_t MAX_WS_PAYLOAD = 2048;
+// OCPP-J does not define a hard WebSocket payload limit. Keep a bounded
+// implementation limit large enough for typical GetConfiguration responses.
+static constexpr size_t MAX_WS_PAYLOAD = 16384;
+static constexpr size_t MAX_WS_FRAME_HEADER = 8;
+static constexpr size_t MAX_RX_BUFFER = MAX_WS_PAYLOAD + MAX_WS_FRAME_HEADER;
 static constexpr size_t MAX_WS_FRAMES_PER_LOOP = 1;
 static constexpr const char *WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
@@ -386,8 +389,14 @@ bool OcppServer::handle_ws_frames_(ClientSessions::iterator client) {
             this->close_client_(client);
             return false;
         }
-        if (!masked || payload_len > MAX_WS_PAYLOAD) {
-            ESP_LOGW(TAG, "Closing WebSocket connection with invalid frame");
+        if (!masked) {
+            ESP_LOGW(TAG, "Closing WebSocket connection with unmasked client frame");
+            this->close_client_(client);
+            return false;
+        }
+        if (payload_len > MAX_WS_PAYLOAD) {
+            ESP_LOGW(TAG, "Closing WebSocket connection with oversized frame: payload_len=%u max=%u",
+                    static_cast<unsigned>(payload_len), static_cast<unsigned>(MAX_WS_PAYLOAD));
             this->close_client_(client);
             return false;
         }

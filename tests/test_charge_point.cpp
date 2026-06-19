@@ -79,7 +79,7 @@ int main() {
     }
 
     {
-        // BootNotification updates online state and emits a response
+        // BootNotification updates online state, emits a response, and requests configuration once
         TestChargePoint charge_point;
         charge_point.on_connected("A99999");
         assert_equal("online_before_boot", charge_point.is_online(), false);
@@ -89,14 +89,45 @@ int main() {
         assert_equal("online_sensor_after boot", charge_point.online_sensor.state, true);
         assert_equal("charger_info_after_boot", charge_point.charger_info_sensor.state,
                      std::string("vendor: Acme, model: Wallbox"));
-        assert_equal("boot_response_count", charge_point.messages.size(), 1);
+        assert_equal("boot_response_count", charge_point.messages.size(), 2);
         assert_equal("boot_response", charge_point.messages[0].payload, R"([3,"boot-1",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
+        assert_equal("boot_get_configuration", charge_point.messages[1].payload,
+                     R"([2,"get-configuration","GetConfiguration",{"key":["MeterValueSampleInterval","MeterValuesSampledData","ConnectorSwitch3to1PhaseSupported"]}])");
 
         charge_point.on_disconnected();
         assert_equal("online_after_disconnect", charge_point.is_online(), false);
         assert_equal("online_sensor_after_disconnect", charge_point.online_sensor.state, false);
         assert_equal("charger_info_after_disconnect", charge_point.charger_info_sensor.state, std::string(""));
         assert_equal("queued_messages_cleared_after_disconnect", charge_point.messages.size(), 0);
+    }
+
+    {
+        // GetConfiguration is sent only once per charge point, even across reconnects
+        TestChargePoint charge_point;
+        charge_point.on_connected("A99999");
+        charge_point.handle_ocpp_text(R"([2,"boot-1","BootNotification",{"chargePointVendor":"Acme","chargePointModel":"Wallbox"}])");
+        assert_equal("get_configuration_first_boot_count", charge_point.messages.size(), 2);
+
+        charge_point.on_disconnected();
+        charge_point.on_connected("A99999");
+        charge_point.handle_ocpp_text(R"([2,"boot-2","BootNotification",{"chargePointVendor":"Acme","chargePointModel":"Wallbox"}])");
+        assert_equal("get_configuration_second_boot_count", charge_point.messages.size(), 1);
+        assert_equal("get_configuration_second_boot_response", charge_point.messages[0].payload,
+                     R"([3,"boot-2",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
+    }
+
+    {
+        // Targeted GetConfiguration response values are captured for later use/diagnostics
+        TestChargePoint charge_point;
+        charge_point.on_connected("A99999");
+        charge_point.handle_ocpp_text(
+            R"([3,"get-configuration",{"configurationKey":[{"key":"MeterValueSampleInterval","readonly":false,"value":"5"},{"key":"MeterValuesSampledData","readonly":false,"value":"Power.Active.Import,Current.Import,Voltage"},{"key":"ConnectorSwitch3to1PhaseSupported","readonly":true,"value":"false"}]}])");
+        assert_equal("get_configuration_meter_value_sample_interval", charge_point.get_meter_value_sample_interval(),
+                     std::string("5"));
+        assert_equal("get_configuration_meter_values_sampled_data", charge_point.get_meter_values_sampled_data(),
+                     std::string("Power.Active.Import,Current.Import,Voltage"));
+        assert_equal("get_configuration_connector_switch_3_to_1_phase_supported",
+                     charge_point.get_connector_switch_3_to_1_phase_supported(), std::string("false"));
     }
 
     {
@@ -159,9 +190,15 @@ int main() {
         assert_equal("startup_status_waits_for_boot_trigger_reply", charge_point.messages.size(), 1);
         std::string startup_boot_trigger;
         assert_equal("startup_boot_trigger_dequeued", charge_point.pop_queued_message(&startup_boot_trigger), true);
+        charge_point.handle_ocpp_text(R"([2,"boot-1","BootNotification",{"chargePointVendor":"Acme","chargePointModel":"Wallbox"}])");
+        assert_equal("startup_boot_response_and_get_configuration_count", charge_point.messages.size(), 2);
+        assert_equal("startup_boot_response", charge_point.messages[0].payload,
+                     R"([3,"boot-1",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
+        assert_equal("startup_get_configuration_before_status_trigger", charge_point.messages[1].payload,
+                     R"([2,"get-configuration","GetConfiguration",{"key":["MeterValueSampleInterval","MeterValuesSampledData","ConnectorSwitch3to1PhaseSupported"]}])");
         charge_point.handle_ocpp_text(R"([3,"trigger-boot-notification",{"status":"Accepted"}])");
-        assert_equal("startup_status_trigger_after_boot_reply", charge_point.messages.size(), 1);
-        assert_equal("startup_status_trigger", charge_point.messages[0].payload,
+        assert_equal("startup_status_trigger_after_boot_reply", charge_point.messages.size(), 3);
+        assert_equal("startup_status_trigger", charge_point.messages[2].payload,
                      R"([2,"trigger-status-notification","TriggerMessage",{"requestedMessage":"StatusNotification"}])");
     }
 
@@ -171,6 +208,8 @@ int main() {
         charge_point.on_connected("A99999");
         charge_point.handle_ocpp_text(R"([2,"boot-1","BootNotification",{"chargePointVendor":"Acme","chargePointModel":"Wallbox"}])");
         assert_equal("natural_boot_response", charge_point.messages[0].payload, R"([3,"boot-1",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
+        assert_equal("natural_boot_get_configuration", charge_point.messages[1].payload,
+                     R"([2,"get-configuration","GetConfiguration",{"key":["MeterValueSampleInterval","MeterValuesSampledData","ConnectorSwitch3to1PhaseSupported"]}])");
         charge_point.messages.clear();
         charge_point.loop(300000);
         assert_equal("natural_boot_status_trigger_count", charge_point.messages.size(), 1);
@@ -226,9 +265,11 @@ int main() {
                      R"([2,"trigger-boot-notification","TriggerMessage",{"requestedMessage":"BootNotification"}])");
 
         charge_point.handle_ocpp_text(R"([2,"boot-1","BootNotification",{"chargePointVendor":"Acme","chargePointModel":"Wallbox"}])");
-        assert_equal("in_flight_queue_count", charge_point.messages.size(), 1);
+        assert_equal("in_flight_queue_count", charge_point.messages.size(), 2);
         assert_equal("in_flight_response_before_call", charge_point.messages[0].payload,
                      R"([3,"boot-1",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
+        assert_equal("in_flight_get_configuration_before_status_trigger", charge_point.messages[1].payload,
+                     R"([2,"get-configuration","GetConfiguration",{"key":["MeterValueSampleInterval","MeterValuesSampledData","ConnectorSwitch3to1PhaseSupported"]}])");
 
         std::string boot_response;
         assert_equal("in_flight_response_dequeued", charge_point.pop_queued_message(&boot_response, 300001), true);
@@ -238,9 +279,13 @@ int main() {
         std::string blocked_status_trigger;
         assert_equal("in_flight_blocks_next_call", charge_point.pop_queued_message(&blocked_status_trigger, 300002), false);
         charge_point.handle_ocpp_text(R"([3,"trigger-boot-notification",{"status":"Accepted"}])");
-        assert_equal("in_flight_queues_next_call_after_reply", charge_point.messages.size(), 1);
+        assert_equal("in_flight_queues_next_call_after_reply", charge_point.messages.size(), 2);
         assert_equal("in_flight_next_call_after_reply", charge_point.pop_queued_message(&blocked_status_trigger, 300003), true);
         assert_equal("in_flight_next_call_payload", blocked_status_trigger,
+                     R"([2,"get-configuration","GetConfiguration",{"key":["MeterValueSampleInterval","MeterValuesSampledData","ConnectorSwitch3to1PhaseSupported"]}])");
+
+        assert_equal("in_flight_status_trigger_waits_for_get_configuration_count", charge_point.messages.size(), 1);
+        assert_equal("in_flight_status_trigger_waits_for_get_configuration", charge_point.messages[0].payload,
                      R"([2,"trigger-status-notification","TriggerMessage",{"requestedMessage":"StatusNotification"}])");
     }
 

@@ -71,4 +71,22 @@ class BootNotification : public OcppCall {
         std::string firmware_version;
 };
 
+class GetConfigurationResponse : public OcppMessage {
+    public:
+        GetConfigurationResponse(
+            std::string unique_id = "",
+            std::string meter_value_sample_interval = "",
+            std::string meter_values_sampled_data = "",
+            std::string connector_switch_3_to_1_phase_supported = ""
+        )
+            : OcppMessage(OcppMessageType::CALL_RESULT, std::move(unique_id), "GetConfiguration"),
+              meter_value_sample_interval(std::move(meter_value_sample_interval)),
+              meter_values_sampled_data(std::move(meter_values_sampled_data)),
+              connector_switch_3_to_1_phase_supported(std::move(connector_switch_3_to_1_phase_supported)) {}
+
+        std::string meter_value_sample_interval;
+        std::string meter_values_sampled_data;
+        std::string connector_switch_3_to_1_phase_supported;
+};
+
 }  // namespace esphome::ocpp

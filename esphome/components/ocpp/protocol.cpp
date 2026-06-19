@@ -10,6 +10,11 @@ namespace {
 
 static const char *const TAG = "ocpp";
 static constexpr const char *CURRENT_TIME = "1970-01-01T00:00:00Z";
+static const char *const GET_CONFIGURATION_UNIQUE_ID = "get-configuration";
+static const char *const GET_CONFIGURATION_KEY_CONNECTOR_SWITCH_3_TO_1_PHASE_SUPPORTED =
+    "ConnectorSwitch3to1PhaseSupported";
+static const char *const GET_CONFIGURATION_KEY_METER_VALUE_SAMPLE_INTERVAL = "MeterValueSampleInterval";
+static const char *const GET_CONFIGURATION_KEY_METER_VALUES_SAMPLED_DATA = "MeterValuesSampledData";
 
 std::string json_escape(const std::string &value) {
     std::string out;
@@ -72,6 +77,36 @@ std::unique_ptr<OcppMessage> parse_boot_notification_2_0_1(const std::string &un
     ));
 }
 
+std::unique_ptr<OcppMessage> parse_get_configuration_response(const std::string &unique_id, const JsonObject &payload) {
+    std::string meter_value_sample_interval;
+    std::string meter_values_sampled_data;
+    std::string connector_switch_3_to_1_phase_supported;
+
+    JsonVariant configuration_key = payload["configurationKey"];
+    if (configuration_key.is<JsonArray>()) {
+        for (JsonVariant item_variant : configuration_key.as<JsonArray>()) {
+            if (!item_variant.is<JsonObject>())
+                continue;
+            JsonObject item = item_variant.as<JsonObject>();
+            std::string key = json_string_or_empty(item["key"]);
+            std::string value = json_string_or_empty(item["value"]);
+            if (key == GET_CONFIGURATION_KEY_METER_VALUE_SAMPLE_INTERVAL)
+                meter_value_sample_interval = std::move(value);
+            else if (key == GET_CONFIGURATION_KEY_METER_VALUES_SAMPLED_DATA)
+                meter_values_sampled_data = std::move(value);
+            else if (key == GET_CONFIGURATION_KEY_CONNECTOR_SWITCH_3_TO_1_PHASE_SUPPORTED)
+                connector_switch_3_to_1_phase_supported = std::move(value);
+        }
+    }
+
+    return std::unique_ptr<OcppMessage>(new GetConfigurationResponse(
+        unique_id,
+        meter_value_sample_interval,
+        meter_values_sampled_data,
+        connector_switch_3_to_1_phase_supported
+    ));
+}
+
 }  // namespace
 
 bool OcppProtocol::set_websocket_protocol(const std::string &protocol) {
@@ -108,8 +143,12 @@ std::unique_ptr<OcppMessage> OcppProtocol::parse_message(const std::string &mess
     }
 
     std::string unique_id = frame[static_cast<size_t>(1)].as<std::string>();
-    if (message_type_id != OcppMessageType::CALL)
+    if (message_type_id != OcppMessageType::CALL) {
+        if (message_type_id == OcppMessageType::CALL_RESULT && unique_id == GET_CONFIGURATION_UNIQUE_ID &&
+            frame.size() >= 3 && frame[static_cast<size_t>(2)].is<JsonObject>())
+            return parse_get_configuration_response(unique_id, frame[static_cast<size_t>(2)].as<JsonObject>());
         return std::unique_ptr<OcppMessage>(new OcppMessage(message_type_id, unique_id));
+    }
 
     if (frame.size() < 4 || !frame[static_cast<size_t>(2)].is<const char *>() || !frame[static_cast<size_t>(3)].is<JsonObject>()) {
         ESP_LOGW(TAG, "Ignoring invalid OCPP CALL frame: %s", message.c_str());
@@ -126,6 +165,18 @@ std::unique_ptr<OcppMessage> OcppProtocol::parse_message(const std::string &mess
     }
 
     return std::unique_ptr<OcppMessage>(new OcppCall(action, unique_id));
+}
+
+std::string OcppProtocol::make_get_configuration_request(const std::string &unique_id) const {
+    if (this->version_ != OcppProtocolVersion::OCPP_1_6)
+        return "";
+    // Request only values used by the component. Other useful diagnostics seen
+    // during charger commissioning, but intentionally not requested by default:
+    // StopTxnSampledData, ConnectorPhaseRotation, NumberOfConnectors,
+    // SupportedFeatureProfiles, ChargingScheduleAllowedChargingRateUnit,
+    // ChargingScheduleMaxPeriods.
+    return "[2,\"" + json_escape(unique_id) + "\",\"GetConfiguration\",{\"key\":[\"MeterValueSampleInterval\","
+           "\"MeterValuesSampledData\",\"ConnectorSwitch3to1PhaseSupported\"]}]";
 }
 
 std::string OcppProtocol::make_boot_notification_response(const std::string &unique_id) const {
