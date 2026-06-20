@@ -50,8 +50,10 @@ ocpp:
           current_limit:
             name: Garage Current Limit
             max_value: 16
-          current_control:
-            name: Garage Current Control
+          requested_current:
+            name: Garage Requested Current
+          control_current:
+            name: Garage Control Current
           power:
             name: Garage Power
           total_energy:
@@ -76,7 +78,27 @@ Connector `session_energy` and `session_time` reset to `0` when a car is plugged
 
 Set connector `log_meter_values: true` to log a compact info-level summary of present sampled values, for example `A99999 MeterValues 1 Current: 10 A - Power: 6940 W - Energy: 7358900 Wh`. If a charger includes `phase`, the phase is shown next to that sampled value, for example `Current: L1=10 A, L2=10 A, L3=10 A`.
 
-Connector `current_limit` and `current_control` number entities are local current values in `A`. By default, both accept values from `0` to the charge point `max_current`; `current_limit` can lower its own maximum with `max_value`. `current_limit` uses whole-Amperes steps and `current_control` uses `0.1 A` steps.
+### Current control model
+
+Connector current control separates the current requested by a user or automation from the current that is actually applied to the wallbox with `SetChargingProfile`. The applied value is limited by the connector `current_limit`, by the charge point `max_current`, and, for multi-connector charge points, by the current reserved for other connectors.
+
+| Concept                  | Suggested name      | Meaning |
+| ---                      | ---                 | --- |
+| Hard charge-point cap    | `max_current`       | Physical or installation maximum for the whole charge point in `A`. |
+| Connector/user cap       | `current_limit`     | Local limit for one connector in `A`; useful for safety limits or automations. |
+| Requested connector amps | `requested_current` | Desired current in `A` set dynamically by a user, Home Assistant automation, or another component. |
+| Applied OCPP limit       | `control_current`   | Current in `A` actually applied to the connector after all limiting and sharing logic. |
+
+For each connector, the component first computes `min(requested_current, current_limit)`. If the sum of all connector requests is higher than the charge point `max_current`, the available current is shared fairly between the requesting connectors without exceeding each connector's request.
+
+| Connector 1 request | Connector 2 request | `max_current` | `control_current` result |
+| ---                 | ---                 | ---           | ---                      |
+| `20 A`              | `32 A`              | `32 A`        | `16 A` / `16 A`          |
+| `6 A`               | `32 A`              | `32 A`        | `6 A` / `26 A`           |
+| `10 A`              | `10 A`              | `32 A`        | `10 A` / `10 A`          |
+| `0 A`               | `32 A`              | `32 A`        | `0 A` / `32 A`           |
+
+OCPP charging profiles cannot request a charging current below `6 A`. When the computed applied value is greater than `0 A` but lower than `6 A`, `requested_current` keeps the requested value, but `control_current` is published as `0 A` and the connector is treated as disabled instead of applying an invalid sub-`6 A` profile.
 
 Connector `status` and `error` text sensors are populated from `StatusNotification` messages whose `connectorId` matches the connector's `connector_id`. `errorCode: NoError` is exposed as an empty string.
 
@@ -104,7 +126,8 @@ Connector `status` and `error` text sensors are populated from `StatusNotificati
 | `log_meter_values` (Optional)  | Logs a compact info-level summary of received `MeterValues` sampled values for this connector. Defaults to `false`. |
 | `current` (Optional)           | Sensor populated from `Current.Import` `MeterValues` in `A`. Missing values are published as unavailable/unknown. |
 | `current_limit` (Optional)     | Number entity for the connector current limit in `A`. Range is `0` to `max_value` when set, otherwise `0` to the charge point `max_current`, with a step of `1 A`. `max_value` must be less than or equal to the charge point `max_current`. |
-| `current_control` (Optional)   | Number entity for connector current control in `A`. Range is `0` to the charge point `max_current`, with a step of `0.1 A`. |
+| `requested_current` (Optional) | Number entity for connector requested current in `A`. Range is `0` to the charge point `max_current`, with a step of `0.1 A`. |
+| `control_current` (Optional)   | Sensor populated with the connector current in `A` actually applied through `SetChargingProfile` after limiting and sharing logic. |
 | `power` (Optional)             | Sensor populated from `Power.Active.Import` `MeterValues` in `W`. Missing values are published as unavailable/unknown. |
 | `total_energy` (Optional)      | Sensor populated from the connector lifetime `Energy.Active.Import.Register` `MeterValues` in `kWh`. OCPP `Wh` values are converted to `kWh`. Missing values are published as unavailable/unknown. |
 | `session_energy` (Optional)    | Sensor reset to `0 kWh` when a car is plugged in. While plugged in, it reports the difference from the total energy baseline at session start in `kWh`; after unplugging, it keeps the last session value. |
