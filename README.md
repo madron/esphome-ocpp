@@ -59,7 +59,7 @@ ocpp:
 
 Connector `current`, `power`, `energy`, and `voltage` sensors are populated from OCPP `MeterValues` messages whose `connectorId` matches the connector's `connector_id`. The component asks the charger to report `Current.Import`, `Power.Active.Import`, `Energy.Active.Import.Register`, and `Voltage`. If the charger omits one of those values, the corresponding sensor is published as unavailable/unknown instead of `0` so unsupported values are not confused with real zero measurements. Energy is exposed in `kWh`.
 
-Connector `status` and `error` text sensors are populated from `StatusNotification` messages whose `connectorId` matches the connector's `connector_id`.
+Connector `status` and `error` text sensors are populated from `StatusNotification` messages whose `connectorId` matches the connector's `connector_id`. `errorCode: NoError` is exposed as an empty string.
 
 ### Charge point options
 
@@ -85,7 +85,7 @@ Connector `status` and `error` text sensors are populated from `StatusNotificati
 | `energy` (Optional)               | Sensor populated from `Energy.Active.Import.Register` `MeterValues` in `kWh`. OCPP `Wh` values are converted to `kWh`. Missing values are published as unavailable/unknown. |
 | `voltage` (Optional)              | Sensor populated from `Voltage` `MeterValues` in `V`. Missing values are published as unavailable/unknown. |
 | `status` (Optional)               | Text sensor populated from `StatusNotification.status` for OCPP 1.6 or `StatusNotification.connectorStatus` for OCPP 2.0.1. Clears after disconnect. |
-| `error` (Optional)                | Text sensor populated from `StatusNotification.errorCode` when the charger provides it. Clears after disconnect. |
+| `error` (Optional)                | Text sensor populated from `StatusNotification.errorCode` when the charger provides it. `NoError` is published as an empty string. Clears after disconnect. |
 
 ### Charger configuration
 

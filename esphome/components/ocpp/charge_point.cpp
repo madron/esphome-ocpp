@@ -59,8 +59,11 @@ void Connector::publish_meter_values(const MeterValues &meter_values) {
 void Connector::publish_status_notification(const StatusNotification &status_notification) {
     if (this->status_text_sensor_ != nullptr)
         this->status_text_sensor_->publish_state(status_notification.status);
+    std::string error_code = status_notification.error_code;
+    if (error_code == "NoError")
+        error_code.clear();
     if (this->error_text_sensor_ != nullptr)
-        this->error_text_sensor_->publish_state(status_notification.error_code);
+        this->error_text_sensor_->publish_state(error_code);
 }
 
 void Connector::publish_unavailable() {

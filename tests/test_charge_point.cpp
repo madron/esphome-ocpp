@@ -279,13 +279,20 @@ int main() {
             R"([2,"status-1","StatusNotification",{"connectorId":1,"errorCode":"NoError","status":"Available"}])");
         assert_equal("online_after_status_notification", charge_point.is_online(), true);
         assert_equal("status_notification_status_sensor", charge_point.status_sensor.state, std::string("Available"));
-        assert_equal("status_notification_error_sensor", charge_point.error_sensor.state, std::string("NoError"));
+        assert_equal("status_notification_error_sensor", charge_point.error_sensor.state, std::string(""));
         assert_equal("status_notification_second_status_sensor_unchanged", charge_point.second_status_sensor.state,
                      std::string(""));
         assert_equal("status_notification_second_error_sensor_unchanged", charge_point.second_error_sensor.state,
                      std::string(""));
-        assert_equal("status_notification_response_count", charge_point.messages.size(), 1);
+
+        charge_point.handle_ocpp_text(
+            R"([2,"status-2","StatusNotification",{"connectorId":1,"errorCode":"GroundFailure","status":"Faulted"}])");
+        assert_equal("status_notification_fault_status_sensor", charge_point.status_sensor.state, std::string("Faulted"));
+        assert_equal("status_notification_fault_error_sensor", charge_point.error_sensor.state,
+                     std::string("GroundFailure"));
+        assert_equal("status_notification_response_count", charge_point.messages.size(), 2);
         assert_equal("status_notification_response", charge_point.messages[0].payload, R"([3,"status-1",{}])");
+        assert_equal("status_notification_fault_response", charge_point.messages[1].payload, R"([3,"status-2",{}])");
 
         charge_point.on_disconnected();
         assert_equal("status_notification_status_sensor_after_disconnect", charge_point.status_sensor.state,
