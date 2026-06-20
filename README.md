@@ -37,6 +37,8 @@ ocpp:
       charge_point_id: A99999
       max_current: 32
       debug_ocpp_messages: true
+      debug_ocpp_exclude_actions:
+        - MeterValues
       startup_notifications_delay: 300
       charger_info:
         name: Garage Charger Info
@@ -61,7 +63,7 @@ ocpp:
             name: Garage Error
 ```
 
-`debug_ocpp_messages` is optional per `charge_point`. When enabled, raw OCPP RX/TX payloads for that charger are logged at the ESPHome debug log level.
+`debug_ocpp_messages` is optional per `charge_point`. When enabled, raw OCPP RX/TX payloads for that charger are logged at the ESPHome debug log level. Use `debug_ocpp_exclude_actions` to keep debug logging enabled while suppressing noisy action payloads, such as `MeterValues`, and their known related responses.
 
 Connector `current`, `power`, `energy`, and `voltage` sensors are populated from OCPP `MeterValues` messages whose `connectorId` matches the connector's `connector_id`. The component asks the charger to report `Current.Import`, `Power.Active.Import`, `Energy.Active.Import.Register`, and `Voltage`. If the charger omits one of those values, the corresponding sensor is published as unavailable/unknown instead of `0` so unsupported values are not confused with real zero measurements. Energy is exposed in `kWh`.
 
@@ -78,6 +80,7 @@ Connector `status` and `error` text sensors are populated from `StatusNotificati
 | `charge_point_id` (Optional)             | OCPP/WebSocket identity expected from the charger. When omitted, the first free dynamic charge point slot is used. |
 | `connectors` (Optional)                  | List of OCPP connectors for this charge point. Defaults to one connector with `connector_id: 1`. Connector IDs must be unique within the charge point. |
 | `debug_ocpp_messages` (Optional)         | Logs raw OCPP RX/TX payloads at debug level. Defaults to `false`. |
+| `debug_ocpp_exclude_actions` (Optional)  | List of exact, case-sensitive OCPP action names excluded from raw debug payload logging. Known related responses are also excluded. Defaults to an empty list. |
 | `startup_notifications_delay` (Optional) | Delay in seconds before sending `TriggerMessage` requests for missing startup notifications. `BootNotification` and `StatusNotification` are tracked independently; if both are missing, `BootNotification` is requested first and `StatusNotification` after its reply. Defaults to `300`. Set to `0` to disable. |
 | `charger_info` (Optional)                | Text sensor that reports charger vendor, model, and firmware from `BootNotification`, and clears after disconnect. |
 | `online` (Optional)                      | Binary sensor that is `on` after `BootNotification`, `Heartbeat`, or `StatusNotification`, and `off` after disconnect. |

@@ -1,6 +1,7 @@
 #include "charge_point.h"
 #include "esphome/core/log.h"
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <utility>
@@ -168,6 +169,16 @@ const std::string &ChargePoint::get_connection_id() const { return this->connect
 void ChargePoint::set_force_protocol(std::string force_protocol) { this->forced_protocol_ = std::move(force_protocol); }
 const std::string &ChargePoint::get_force_protocol() const { return this->forced_protocol_; }
 
+void ChargePoint::add_debug_ocpp_exclude_action(std::string action) {
+    if (!this->is_debug_ocpp_action_excluded(action))
+        this->debug_ocpp_exclude_actions_.push_back(std::move(action));
+}
+
+bool ChargePoint::is_debug_ocpp_action_excluded(const std::string &action) const {
+    return std::find(this->debug_ocpp_exclude_actions_.begin(), this->debug_ocpp_exclude_actions_.end(), action) !=
+           this->debug_ocpp_exclude_actions_.end();
+}
+
 void ChargePoint::set_debug_ocpp_messages(bool debug_ocpp_messages) { this->debug_ocpp_messages_ = debug_ocpp_messages; }
 bool ChargePoint::get_debug_ocpp_messages() const { return this->debug_ocpp_messages_; }
 void ChargePoint::set_max_current(uint32_t max_current) {
@@ -218,9 +229,10 @@ void ChargePoint::on_disconnected() {
 }
 
 void ChargePoint::handle_ocpp_text(const std::string &message) {
-    if (this->debug_ocpp_messages_)
-        log_ocpp_debug_message(this->connection_id_, "<<", message);
     std::unique_ptr<OcppMessage> ocpp_message = this->protocol_.parse_message(message);
+    if (this->debug_ocpp_messages_ &&
+        (ocpp_message == nullptr || this->should_log_debug_ocpp_message_(*ocpp_message)))
+        log_ocpp_debug_message(this->connection_id_, "<<", message);
     if (ocpp_message == nullptr)
         return;
     this->handle_ocpp_message_(*ocpp_message);
@@ -257,7 +269,7 @@ bool ChargePoint::pop_queued_message(std::string *message, uint32_t now_millis) 
         queued_message.sent_at_millis = now_millis;
         this->in_flight_call_.reset(new QueuedMessage(queued_message));
     }
-    if (this->debug_ocpp_messages_)
+    if (this->debug_ocpp_messages_ && this->should_log_debug_ocpp_message_(queued_message))
         log_ocpp_debug_message(this->connection_id_, ">>", queued_message.payload);
     *message = std::move(queued_message.payload);
     return true;
@@ -314,7 +326,7 @@ void ChargePoint::handle_ocpp_call_(const OcppMessage &call) {
         const auto &boot_notification = static_cast<const BootNotification &>(call);
         this->publish_charger_info_(boot_notification);
         bool boot_response_queued = this->send_message_({this->protocol_.make_boot_notification_response(call.unique_id),
-                                                         OcppMessageType::CALL_RESULT, call.unique_id});
+                                                         OcppMessageType::CALL_RESULT, call.unique_id, call.action});
         if (boot_response_queued)
             this->send_get_configuration_request_();
         if (was_boot_trigger_in_flight)
@@ -322,7 +334,7 @@ void ChargePoint::handle_ocpp_call_(const OcppMessage &call) {
     } else if (call.action == "Heartbeat") {
         this->set_online_(true);
         this->send_message_({this->protocol_.make_heartbeat_response(call.unique_id), OcppMessageType::CALL_RESULT,
-                             call.unique_id});
+                             call.unique_id, call.action});
     } else if (this->protocol_.get_version() == OcppProtocolVersion::OCPP_1_6 && call.action == "Authorize") {
         this->set_online_(true);
         this->handle_authorize_(static_cast<const Authorize &>(call));
@@ -337,7 +349,7 @@ void ChargePoint::handle_ocpp_call_(const OcppMessage &call) {
         const auto &meter_values = static_cast<const MeterValues &>(call);
         this->publish_meter_values_(meter_values);
         this->send_message_({this->protocol_.make_meter_values_response(call.unique_id), OcppMessageType::CALL_RESULT,
-                             call.unique_id});
+                             call.unique_id, call.action});
     } else if (call.action == "StatusNotification") {
         this->status_notification_pending_ = false;
         this->status_notification_trigger_in_flight_ = false;
@@ -345,19 +357,19 @@ void ChargePoint::handle_ocpp_call_(const OcppMessage &call) {
         const auto &status_notification = static_cast<const StatusNotification &>(call);
         this->publish_status_notification_(status_notification);
         this->send_message_({this->protocol_.make_status_notification_response(call.unique_id), OcppMessageType::CALL_RESULT,
-                             call.unique_id});
+                             call.unique_id, call.action});
     } else {
         ESP_LOGW(TAG, "Unsupported OCPP action '%s' from charge point '%s'", call.action.c_str(),
                 this->connection_id_.c_str());
         this->send_message_({this->protocol_.make_ocpp_error(call.unique_id, "NotImplemented",
                                                             "This OCPP action is not implemented"),
-                             OcppMessageType::CALL_ERROR, call.unique_id});
+                             OcppMessageType::CALL_ERROR, call.unique_id, call.action});
     }
 }
 
 void ChargePoint::handle_authorize_(const Authorize &authorize) {
     this->send_message_({this->protocol_.make_authorize_response(authorize.unique_id), OcppMessageType::CALL_RESULT,
-                         authorize.unique_id});
+                         authorize.unique_id, authorize.action});
 }
 
 void ChargePoint::handle_ocpp_call_reply_(const OcppMessage &message) {
@@ -379,7 +391,7 @@ void ChargePoint::handle_start_transaction_(const StartTransaction &start_transa
     }
 
     this->send_message_({this->protocol_.make_start_transaction_response(start_transaction.unique_id, transaction_id),
-                         OcppMessageType::CALL_RESULT, start_transaction.unique_id});
+                         OcppMessageType::CALL_RESULT, start_transaction.unique_id, start_transaction.action});
 }
 
 void ChargePoint::handle_stop_transaction_(const StopTransaction &stop_transaction) {
@@ -392,7 +404,24 @@ void ChargePoint::handle_stop_transaction_(const StopTransaction &stop_transacti
     }
 
     this->send_message_({this->protocol_.make_stop_transaction_response(stop_transaction.unique_id),
-                         OcppMessageType::CALL_RESULT, stop_transaction.unique_id});
+                         OcppMessageType::CALL_RESULT, stop_transaction.unique_id, stop_transaction.action});
+}
+
+const std::string &ChargePoint::debug_action_for_message_(const OcppMessage &message) const {
+    if (!message.action.empty())
+        return message.action;
+    if (this->in_flight_call_ != nullptr && message.unique_id == this->in_flight_call_->unique_id)
+        return this->in_flight_call_->action;
+    return message.action;
+}
+
+bool ChargePoint::should_log_debug_ocpp_message_(const OcppMessage &message) const {
+    const std::string &action = this->debug_action_for_message_(message);
+    return action.empty() || !this->is_debug_ocpp_action_excluded(action);
+}
+
+bool ChargePoint::should_log_debug_ocpp_message_(const QueuedMessage &message) const {
+    return message.action.empty() || !this->is_debug_ocpp_action_excluded(message.action);
 }
 
 void ChargePoint::handle_get_configuration_response_(const GetConfigurationResponse &message) {

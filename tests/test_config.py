@@ -22,6 +22,7 @@ class ChargePointSchemaTests(unittest.TestCase):
         )
 
         self.assertFalse(validated["charge_points"][0]["debug_ocpp_messages"])
+        self.assertEqual(validated["charge_points"][0]["debug_ocpp_exclude_actions"], [])
         self.assertEqual(validated["charge_points"][0]["startup_notifications_delay"], 300)
 
     def test_debug_ocpp_messages_enabled(self):
@@ -40,6 +41,40 @@ class ChargePointSchemaTests(unittest.TestCase):
         )
 
         self.assertTrue(validated["charge_points"][0]["debug_ocpp_messages"])
+
+    def test_debug_ocpp_exclude_actions_configured(self):
+        validated = CONFIG_SCHEMA(
+            {
+                "id": "ocpp_id",
+                "charge_points": [
+                    {
+                        "id": "garage_left",
+                        "charge_point_id": "A99999",
+                        "max_current": 32,
+                        "debug_ocpp_messages": True,
+                        "debug_ocpp_exclude_actions": ["MeterValues", "Heartbeat"],
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(validated["charge_points"][0]["debug_ocpp_exclude_actions"], ["MeterValues", "Heartbeat"])
+
+    def test_debug_ocpp_exclude_actions_rejects_empty_action(self):
+        with self.assertRaises(Exception):
+            CONFIG_SCHEMA(
+                {
+                    "id": "ocpp_id",
+                    "charge_points": [
+                        {
+                            "id": "garage_left",
+                            "charge_point_id": "A99999",
+                            "max_current": 32,
+                            "debug_ocpp_exclude_actions": ["MeterValues", ""],
+                        }
+                    ],
+                }
+            )
 
     def test_startup_notifications_delay_configured(self):
         validated = CONFIG_SCHEMA(

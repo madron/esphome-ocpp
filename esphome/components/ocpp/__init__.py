@@ -13,6 +13,7 @@ CONF_CONNECTORS = "connectors"
 CONF_CURRENT = "current"
 CONF_CURRENT_CONTROL = "current_control"
 CONF_CURRENT_LIMIT = "current_limit"
+CONF_DEBUG_OCPP_EXCLUDE_ACTIONS = "debug_ocpp_exclude_actions"
 CONF_DEBUG_OCPP_MESSAGES = "debug_ocpp_messages"
 CONF_ENERGY = "energy"
 CONF_ERROR = "error"
@@ -129,11 +130,19 @@ def validate_protocol(value):
     return value
 
 
+def validate_ocpp_action(value):
+    value = cv.string(value).strip()
+    if not value:
+        raise cv.Invalid("OCPP action name must not be empty")
+    return value
+
+
 CHARGE_POINT_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(ChargePoint),
         cv.Optional(CONF_CHARGE_POINT_ID): validate_charge_point_id,
         cv.Optional(CONF_CONNECTORS, default=[{}]): cv.ensure_list(CONNECTOR_SCHEMA),
+        cv.Optional(CONF_DEBUG_OCPP_EXCLUDE_ACTIONS, default=[]): cv.ensure_list(validate_ocpp_action),
         cv.Optional(CONF_DEBUG_OCPP_MESSAGES, default=False): cv.boolean,
         cv.Optional(CONF_FORCE_PROTOCOL): validate_protocol,
         cv.Optional(CONF_CHARGER_INFO): text_sensor.text_sensor_schema(),
@@ -267,6 +276,8 @@ async def to_code(config):
                 sens = await text_sensor.new_text_sensor(connector_conf[CONF_ERROR])
                 cg.add(connector.set_error_text_sensor(sens))
             cg.add(charge_point.add_connector(connector))
+        for action in charge_point_conf[CONF_DEBUG_OCPP_EXCLUDE_ACTIONS]:
+            cg.add(charge_point.add_debug_ocpp_exclude_action(action))
         cg.add(charge_point.set_debug_ocpp_messages(charge_point_conf[CONF_DEBUG_OCPP_MESSAGES]))
         cg.add(charge_point.set_startup_notifications_delay(charge_point_conf[CONF_STARTUP_NOTIFICATIONS_DELAY] * 1000))
         cg.add(var.add_charge_point(charge_point))

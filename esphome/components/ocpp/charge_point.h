@@ -124,6 +124,8 @@ class ChargePoint {
         void set_charger_info_text_sensor(text_sensor::TextSensor *charger_info_text_sensor) {
             this->charger_info_text_sensor_ = charger_info_text_sensor;
         }
+        void add_debug_ocpp_exclude_action(std::string action);
+        bool is_debug_ocpp_action_excluded(const std::string &action) const;
         void set_debug_ocpp_messages(bool debug_ocpp_messages);
         bool get_debug_ocpp_messages() const;
         void set_max_current(uint32_t max_current);
@@ -162,6 +164,9 @@ class ChargePoint {
         void handle_start_transaction_(const StartTransaction &start_transaction);
         void handle_startup_notification_trigger_reply_(const OcppMessage &message);
         void handle_stop_transaction_(const StopTransaction &stop_transaction);
+        bool should_log_debug_ocpp_message_(const OcppMessage &message) const;
+        bool should_log_debug_ocpp_message_(const QueuedMessage &message) const;
+        const std::string &debug_action_for_message_(const OcppMessage &message) const;
         bool send_meter_value_sample_interval_change_request_();
         bool send_meter_values_sampled_data_change_request_();
         void send_get_configuration_request_();
@@ -189,6 +194,7 @@ class ChargePoint {
         text_sensor::TextSensor *protocol_text_sensor_{nullptr};
         text_sensor::TextSensor *charger_info_text_sensor_{nullptr};
         std::vector<Connector *> connectors_;
+        std::vector<std::string> debug_ocpp_exclude_actions_;
         uint32_t max_current_{0};
         size_t max_queued_messages_{DEFAULT_MAX_QUEUED_MESSAGES};
         bool debug_ocpp_messages_{false};

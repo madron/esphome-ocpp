@@ -9,6 +9,8 @@ using esphome::ocpp::ChargePoint;
 using esphome::ocpp::Connector;
 using esphome::ocpp::CurrentControl;
 using esphome::ocpp::CurrentLimit;
+using esphome::ocpp::OcppMessage;
+using esphome::ocpp::OcppMessageType;
 using esphome::ocpp::QueuedMessage;
 using esphome::binary_sensor::BinarySensor;
 using esphome::sensor::Sensor;
@@ -16,6 +18,9 @@ using esphome::text_sensor::TextSensor;
 
 class TestChargePoint : public ChargePoint {
  public:
+    using ChargePoint::debug_action_for_message_;
+    using ChargePoint::should_log_debug_ocpp_message_;
+
     TestChargePoint() {
         this->set_online_binary_sensor(&this->online_sensor);
         this->set_protocol_text_sensor(&this->protocol_sensor);
@@ -146,6 +151,7 @@ int main() {
 
         // get_debug_ocpp_messages
         assert_equal("get_debug_ocpp_messages", charge_point.get_debug_ocpp_messages(), false);
+        assert_equal("debug_meter_values_not_excluded", charge_point.is_debug_ocpp_action_excluded("MeterValues"), false);
         assert_equal("get_startup_notifications_delay", charge_point.get_startup_notifications_delay(), 300000U);
         assert_equal("get_max_current", charge_point.get_max_current(), 0U);
         assert_equal("get_max_queued_messages", charge_point.get_max_queued_messages(), 8);
@@ -158,6 +164,12 @@ int main() {
         // set_debug_ocpp_messages
         charge_point.set_debug_ocpp_messages(true);
         assert_equal("set_debug_ocpp_messages", charge_point.get_debug_ocpp_messages(), true);
+
+        // add_debug_ocpp_exclude_action
+        charge_point.add_debug_ocpp_exclude_action("MeterValues");
+        charge_point.add_debug_ocpp_exclude_action("MeterValues");
+        assert_equal("debug_meter_values_excluded", charge_point.is_debug_ocpp_action_excluded("MeterValues"), true);
+        assert_equal("debug_meter_values_case_sensitive", charge_point.is_debug_ocpp_action_excluded("metervalues"), false);
 
         // set_startup_notifications_delay
         charge_point.set_startup_notifications_delay(0);
@@ -382,6 +394,7 @@ int main() {
         assert_equal("meter_values_second_current_sensor_nan", std::isnan(charge_point.second_current_sensor.state), true);
         assert_equal("meter_values_response_count", charge_point.messages.size(), 1);
         assert_equal("meter_values_response", charge_point.messages[0].payload, R"([3,"meter-1",{}])");
+        assert_equal("meter_values_response_action", charge_point.messages[0].action, std::string("MeterValues"));
 
         charge_point.handle_ocpp_text(
             R"([2,"meter-2","MeterValues",{"connectorId":2,"meterValue":[{"sampledValue":[{"value":"230.5","measurand":"Voltage","unit":"V"}]}]}])");
@@ -476,6 +489,28 @@ int main() {
         assert_equal("natural_boot_status_trigger_count", charge_point.messages.size(), 1);
         assert_equal("natural_boot_status_trigger", charge_point.messages[0].payload,
                      R"([2,"trigger-status-notification","TriggerMessage",{"requestedMessage":"StatusNotification"}])");
+    }
+
+    {
+        // Debug payload filters match actions and related queued/in-flight responses
+        TestChargePoint charge_point;
+        charge_point.add_debug_ocpp_exclude_action("MeterValues");
+        OcppMessage meter_call(OcppMessageType::CALL, "meter-1", "MeterValues");
+        OcppMessage heartbeat_call(OcppMessageType::CALL, "heartbeat-1", "Heartbeat");
+        QueuedMessage meter_response{"[3,\"meter-1\",{}]", OcppMessageType::CALL_RESULT, "meter-1", "MeterValues"};
+        assert_equal("debug_meter_call_suppressed", charge_point.should_log_debug_ocpp_message_(meter_call), false);
+        assert_equal("debug_heartbeat_call_logged", charge_point.should_log_debug_ocpp_message_(heartbeat_call), true);
+        assert_equal("debug_meter_response_suppressed", charge_point.should_log_debug_ocpp_message_(meter_response), false);
+
+        charge_point.add_debug_ocpp_exclude_action("TriggerMessage");
+        charge_point.on_connected("A99999");
+        charge_point.loop(300000);
+        std::string startup_boot_trigger;
+        assert_equal("debug_trigger_dequeued", charge_point.pop_queued_message(&startup_boot_trigger, 300000), true);
+        OcppMessage trigger_result(OcppMessageType::CALL_RESULT, "trigger-boot-notification");
+        assert_equal("debug_trigger_result_action", charge_point.debug_action_for_message_(trigger_result),
+                     std::string("TriggerMessage"));
+        assert_equal("debug_trigger_result_suppressed", charge_point.should_log_debug_ocpp_message_(trigger_result), false);
     }
 
     {
