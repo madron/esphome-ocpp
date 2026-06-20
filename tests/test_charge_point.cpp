@@ -12,6 +12,7 @@ using esphome::ocpp::CurrentLimit;
 using esphome::ocpp::OcppMessage;
 using esphome::ocpp::OcppMessageType;
 using esphome::ocpp::QueuedMessage;
+using esphome::ocpp::StatusNotification;
 using esphome::binary_sensor::BinarySensor;
 using esphome::sensor::Sensor;
 using esphome::text_sensor::TextSensor;
@@ -31,6 +32,7 @@ class TestChargePoint : public ChargePoint {
         this->connector.set_voltage_sensor(&this->voltage_sensor);
         this->connector.set_status_text_sensor(&this->status_sensor);
         this->connector.set_error_text_sensor(&this->error_sensor);
+        this->connector.set_plugged_binary_sensor(&this->plugged_sensor);
         this->add_connector(&this->connector);
         this->second_connector.set_connector_id(2);
         this->second_connector.set_current_sensor(&this->second_current_sensor);
@@ -39,6 +41,7 @@ class TestChargePoint : public ChargePoint {
         this->second_connector.set_voltage_sensor(&this->second_voltage_sensor);
         this->second_connector.set_status_text_sensor(&this->second_status_sensor);
         this->second_connector.set_error_text_sensor(&this->second_error_sensor);
+        this->second_connector.set_plugged_binary_sensor(&this->second_plugged_sensor);
         this->add_connector(&this->second_connector);
     }
 
@@ -59,6 +62,8 @@ class TestChargePoint : public ChargePoint {
     Sensor second_voltage_sensor;
     TextSensor protocol_sensor;
     TextSensor charger_info_sensor;
+    BinarySensor plugged_sensor;
+    BinarySensor second_plugged_sensor;
     TextSensor status_sensor;
     TextSensor error_sensor;
     TextSensor second_status_sensor;
@@ -420,30 +425,70 @@ int main() {
         TestChargePoint charge_point;
         charge_point.on_connected("A99999");
         assert_equal("offline_before_status_notification", charge_point.is_online(), false);
+        assert_equal("plugged_has_state_before_first_status", charge_point.plugged_sensor.has_state, true);
+        assert_equal("plugged_off_before_first_status", charge_point.plugged_sensor.state, false);
+        assert_equal("second_plugged_has_state_before_first_status", charge_point.second_plugged_sensor.has_state, true);
+        assert_equal("second_plugged_off_before_first_status", charge_point.second_plugged_sensor.state, false);
         charge_point.handle_ocpp_text(
             R"([2,"status-1","StatusNotification",{"connectorId":1,"errorCode":"NoError","status":"Available"}])");
         assert_equal("online_after_status_notification", charge_point.is_online(), true);
         assert_equal("status_notification_status_sensor", charge_point.status_sensor.state, std::string("Available"));
         assert_equal("status_notification_error_sensor", charge_point.error_sensor.state, std::string(""));
+        assert_equal("status_notification_plugged_has_state", charge_point.plugged_sensor.has_state, true);
+        assert_equal("status_notification_plugged_false", charge_point.plugged_sensor.state, false);
+        assert_equal("status_notification_internal_plugged_false", charge_point.connector.is_plugged(), false);
+        assert_equal("status_notification_second_plugged_has_state", charge_point.second_plugged_sensor.has_state, true);
+        assert_equal("status_notification_second_plugged_false", charge_point.second_plugged_sensor.state, false);
         assert_equal("status_notification_second_status_sensor_unchanged", charge_point.second_status_sensor.state,
                      std::string(""));
         assert_equal("status_notification_second_error_sensor_unchanged", charge_point.second_error_sensor.state,
                      std::string(""));
 
         charge_point.handle_ocpp_text(
+            R"([2,"status-prepare","StatusNotification",{"connectorId":1,"errorCode":"NoError","status":"Preparing"}])");
+        assert_equal("status_notification_preparing_plugged_true", charge_point.plugged_sensor.state, true);
+        assert_equal("status_notification_preparing_internal_plugged_true", charge_point.connector.is_plugged(), true);
+
+        charge_point.handle_ocpp_text(
             R"([2,"status-2","StatusNotification",{"connectorId":1,"errorCode":"GroundFailure","status":"Faulted"}])");
         assert_equal("status_notification_fault_status_sensor", charge_point.status_sensor.state, std::string("Faulted"));
         assert_equal("status_notification_fault_error_sensor", charge_point.error_sensor.state,
                      std::string("GroundFailure"));
-        assert_equal("status_notification_response_count", charge_point.messages.size(), 2);
+        assert_equal("status_notification_fault_plugged_unchanged", charge_point.plugged_sensor.state, true);
+        assert_equal("status_notification_fault_internal_plugged_unchanged", charge_point.connector.is_plugged(), true);
+        assert_equal("status_notification_response_count", charge_point.messages.size(), 3);
         assert_equal("status_notification_response", charge_point.messages[0].payload, R"([3,"status-1",{}])");
-        assert_equal("status_notification_fault_response", charge_point.messages[1].payload, R"([3,"status-2",{}])");
+        assert_equal("status_notification_preparing_response", charge_point.messages[1].payload, R"([3,"status-prepare",{}])");
+        assert_equal("status_notification_fault_response", charge_point.messages[2].payload, R"([3,"status-2",{}])");
 
         charge_point.on_disconnected();
         assert_equal("status_notification_status_sensor_after_disconnect", charge_point.status_sensor.state,
                      std::string(""));
         assert_equal("status_notification_error_sensor_after_disconnect", charge_point.error_sensor.state,
                      std::string(""));
+        assert_equal("status_notification_plugged_after_disconnect_kept", charge_point.plugged_sensor.state, true);
+    }
+
+    {
+        // Plugged binary sensor starts OFF when configured before any StatusNotification
+        Connector connector;
+        BinarySensor plugged_sensor;
+        plugged_sensor.publish_state(true);
+        connector.set_plugged_binary_sensor(&plugged_sensor);
+        assert_equal("plugged_sensor_has_initial_state_when_configured", plugged_sensor.has_state, true);
+        assert_equal("plugged_sensor_off_when_configured", plugged_sensor.state, false);
+    }
+
+    {
+        // StatusNotification keeps internal plugged state even without a configured sensor
+        Connector connector_without_sensor;
+        assert_equal("connector_without_sensor_initial_plugged", connector_without_sensor.is_plugged(), false);
+        connector_without_sensor.publish_status_notification(StatusNotification("", 1, "NoError", "Preparing"));
+        assert_equal("connector_without_sensor_preparing_plugged", connector_without_sensor.is_plugged(), true);
+        connector_without_sensor.publish_status_notification(StatusNotification("", 1, "GroundFailure", "Faulted"));
+        assert_equal("connector_without_sensor_faulted_plugged_unchanged", connector_without_sensor.is_plugged(), true);
+        connector_without_sensor.publish_status_notification(StatusNotification("", 1, "NoError", "Available"));
+        assert_equal("connector_without_sensor_available_unplugged", connector_without_sensor.is_plugged(), false);
     }
 
     {

@@ -202,6 +202,7 @@ class ChargePointSchemaTests(unittest.TestCase):
                         "connectors": [
                             {
                                 "connector_id": 2,
+                                "plugged": {"name": "Garage Plugged"},
                                 "status": {"name": "Garage Status"},
                                 "error": {"name": "Garage Error"},
                             }
@@ -213,6 +214,7 @@ class ChargePointSchemaTests(unittest.TestCase):
 
         connector = validated["charge_points"][0]["connectors"][0]
         self.assertEqual(connector["connector_id"], 2)
+        self.assertIn("plugged", connector)
         self.assertIn("status", connector)
         self.assertIn("error", connector)
 

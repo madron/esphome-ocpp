@@ -24,6 +24,7 @@ CONF_MAX_CURRENT = "max_current"
 CONF_ONLINE = "online"
 CONF_PHASE_VOLTAGE = "phase_voltage"
 CONF_PHASES = "phases"
+CONF_PLUGGED = "plugged"
 CONF_POWER = "power"
 CONF_PROTOCOL = "protocol"
 CONF_SERVER = "server"
@@ -126,6 +127,9 @@ CONNECTOR_SCHEMA = cv.Schema(
             state_class="total_increasing",
         ),
         cv.Optional(CONF_ERROR): text_sensor.text_sensor_schema(),
+        cv.Optional(CONF_PLUGGED): binary_sensor.binary_sensor_schema(
+            device_class="plug",
+        ),
         cv.Optional(CONF_POWER): sensor.sensor_schema(
             unit_of_measurement="W",
             accuracy_decimals=0,
@@ -358,6 +362,9 @@ async def to_code(config):
             if CONF_ERROR in connector_conf:
                 sens = await text_sensor.new_text_sensor(connector_conf[CONF_ERROR])
                 cg.add(connector.set_error_text_sensor(sens))
+            if CONF_PLUGGED in connector_conf:
+                sens = await binary_sensor.new_binary_sensor(connector_conf[CONF_PLUGGED])
+                cg.add(connector.set_plugged_binary_sensor(sens))
             cg.add(charge_point.add_connector(connector))
         for action in charge_point_conf[CONF_DEBUG_OCPP_EXCLUDE_ACTIONS]:
             cg.add(charge_point.add_debug_ocpp_exclude_action(action))

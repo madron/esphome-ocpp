@@ -28,6 +28,19 @@ static const char *const TRIGGER_BOOT_NOTIFICATION_UNIQUE_ID = "trigger-boot-not
 static const char *const TRIGGER_STATUS_NOTIFICATION_UNIQUE_ID = "trigger-status-notification";
 static constexpr size_t DEBUG_OCPP_MESSAGE_CHUNK_SIZE = 360;
 
+bool status_notification_to_plugged(const std::string &status, bool *plugged) {
+    if (status == "Preparing" || status == "Charging" || status == "SuspendedEVSE" || status == "SuspendedEV" ||
+        status == "Finishing" || status == "Occupied") {
+        *plugged = true;
+        return true;
+    }
+    if (status == "Available" || status == "Reserved" || status == "Unavailable") {
+        *plugged = false;
+        return true;
+    }
+    return false;
+}
+
 void log_ocpp_debug_message(const std::string &connection_id, const char *direction, const std::string &message) {
     if (message.size() <= DEBUG_OCPP_MESSAGE_CHUNK_SIZE) {
         ESP_LOGD(TAG, "%s %s %s", connection_id.c_str(), direction, message.c_str());
@@ -177,6 +190,12 @@ void Connector::publish_status_notification(const StatusNotification &status_not
         error_code.clear();
     if (this->error_text_sensor_ != nullptr)
         this->error_text_sensor_->publish_state(error_code);
+    bool plugged = false;
+    if (status_notification_to_plugged(status_notification.status, &plugged)) {
+        this->plugged_ = plugged;
+        if (this->plugged_binary_sensor_ != nullptr)
+            this->plugged_binary_sensor_->publish_state(plugged);
+    }
 }
 
 void Connector::publish_unavailable() {
