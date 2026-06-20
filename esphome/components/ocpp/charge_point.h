@@ -79,6 +79,12 @@ class Connector {
         float clamp_current_(float value) const;
         float clamp_current_limit_(float value) const;
         void set_plugged_(bool plugged);
+        // Called when the connector starts a charging session, which is defined as the car becoming plugged in.
+        // This hook is the place for future per-session initialization such as latching initial meter values.
+        virtual void on_session_start();
+        // Called when the connector stops a charging session, which is defined as the car becoming unplugged.
+        // This hook is the place for future per-session cleanup or summary publishing.
+        virtual void on_session_stop();
 
         uint32_t connector_id_{DEFAULT_CONNECTOR_ID};
         uint8_t phases_{1};

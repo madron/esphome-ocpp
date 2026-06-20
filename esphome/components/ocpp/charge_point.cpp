@@ -148,6 +148,20 @@ void Connector::set_plugged_(bool plugged) {
         this->reset_active_phases();
     if (this->plugged_binary_sensor_ != nullptr)
         this->plugged_binary_sensor_->publish_state(plugged);
+    if (changed) {
+        if (plugged)
+            this->on_session_start();
+        else
+            this->on_session_stop();
+    }
+}
+
+void Connector::on_session_start() {
+    ESP_LOGD(TAG, "Connector %u session started", static_cast<unsigned>(this->connector_id_));
+}
+
+void Connector::on_session_stop() {
+    ESP_LOGD(TAG, "Connector %u session stopped", static_cast<unsigned>(this->connector_id_));
 }
 
 void Connector::publish_meter_values(const std::string &connection_id, const MeterValues &meter_values) {

@@ -82,6 +82,16 @@ class TestCurrentControl : public CurrentControl {
     using CurrentControl::control;
 };
 
+class TestSessionConnector : public Connector {
+    protected:
+        void on_session_start() override { this->session_start_count++; }
+        void on_session_stop() override { this->session_stop_count++; }
+
+    public:
+        uint32_t session_start_count{0};
+        uint32_t session_stop_count{0};
+};
+
 int main() {
     {
         // Authorize accepts any idTag to let the charger continue with the transaction flow
@@ -491,6 +501,24 @@ int main() {
         assert_equal("connector_without_sensor_faulted_plugged_unchanged", connector_without_sensor.is_plugged(), true);
         connector_without_sensor.publish_status_notification(StatusNotification("", 1, "NoError", "Available"));
         assert_equal("connector_without_sensor_available_unplugged", connector_without_sensor.is_plugged(), false);
+    }
+
+    {
+        // A session starts only when plugged changes from false to true and stops only when it changes back to false
+        TestSessionConnector connector;
+        connector.publish_status_notification(StatusNotification("", 1, "NoError", "Available"));
+        assert_equal("session_no_start_when_initially_available", connector.session_start_count, 0U);
+        assert_equal("session_no_stop_when_initially_available", connector.session_stop_count, 0U);
+
+        connector.publish_status_notification(StatusNotification("", 1, "NoError", "Preparing"));
+        assert_equal("session_start_on_plugged", connector.session_start_count, 1U);
+        assert_equal("session_stop_not_called_on_plugged", connector.session_stop_count, 0U);
+        connector.publish_status_notification(StatusNotification("", 1, "NoError", "Charging"));
+        assert_equal("session_start_not_repeated_while_plugged", connector.session_start_count, 1U);
+
+        connector.publish_status_notification(StatusNotification("", 1, "NoError", "Available"));
+        assert_equal("session_start_count_after_unplugged", connector.session_start_count, 1U);
+        assert_equal("session_stop_on_unplugged", connector.session_stop_count, 1U);
     }
 
     {

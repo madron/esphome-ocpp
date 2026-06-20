@@ -130,26 +130,26 @@ ocpp:
             name: 12_garage_plugged
           active_phases:
             name: 20_garage_active_phases
-          current_l1:
-            name: garage_current_1
-          current_l2:
-            name: garage_current_2
-          current_l3:
-            name: garage_current_3
           current_limit:
-            name: garage_current_limit
+            name: 30_garage_current_limit
           current_control:
-            name: garage_current_control
+            name: 31_garage_current_control
+          current_l1:
+            name: 41_garage_current_1
+          current_l2:
+            name: 42_garage_current_2
+          current_l3:
+            name: 43_garage_current_3
           power:
-            name: garage_power
+            name: 50_garage_power
           energy:
-            name: garage_energy
-          voltage_l1:
-            name: garage_voltage_l1
-          voltage_l2:
-            name: garage_voltage_l2
-          voltage_l3:
-            name: garage_voltage_l3
+            name: 51_garage_energy
+          # voltage_l1:
+          #   name: garage_voltage_l1
+          # voltage_l2:
+          #   name: garage_voltage_l2
+          # voltage_l3:
+          #   name: garage_voltage_l3
     - id: unknown
       phases: 3
       max_current: 32
