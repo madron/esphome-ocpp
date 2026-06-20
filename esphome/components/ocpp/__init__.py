@@ -217,7 +217,7 @@ CHARGE_POINT_SCHEMA = cv.Schema(
         cv.Optional(CONF_DEBUG_OCPP_MESSAGES, default=False): cv.boolean,
         cv.Optional(CONF_FORCE_PROTOCOL): validate_protocol,
         cv.Optional(CONF_CHARGER_INFO): text_sensor.text_sensor_schema(),
-        cv.Required(CONF_MAX_CURRENT): cv.int_range(min=6),
+        cv.Required(CONF_MAX_CURRENT): cv.int_range(min=MIN_CHARGING_PROFILE_CURRENT),
         cv.Required(CONF_PHASES): cv.int_range(min=1, max=3),
         cv.Optional(CONF_ONLINE): binary_sensor.binary_sensor_schema(),
         cv.Optional(CONF_PROTOCOL): text_sensor.text_sensor_schema(),
