@@ -2,6 +2,7 @@
 
 #include "protocol.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
+#include "esphome/components/number/number.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 
@@ -12,6 +13,9 @@
 #include <vector>
 
 namespace esphome::ocpp {
+
+class CurrentControl;
+class CurrentLimit;
 
 struct QueuedMessage {
     std::string payload;
@@ -27,7 +31,13 @@ class Connector {
 
         void set_connector_id(uint32_t connector_id) { this->connector_id_ = connector_id; }
         uint32_t get_connector_id() const { return this->connector_id_; }
+        void set_max_current(uint32_t max_current);
+        uint32_t get_max_current() const { return this->max_current_; }
+        void set_current_limit_max(uint32_t current_limit_max);
+        uint32_t get_current_limit_max() const { return this->current_limit_max_; }
         void set_current_sensor(sensor::Sensor *current_sensor) { this->current_sensor_ = current_sensor; }
+        void set_current_limit_number(CurrentLimit *current_limit_number);
+        void set_current_control_number(CurrentControl *current_control_number);
         void set_power_sensor(sensor::Sensor *power_sensor) { this->power_sensor_ = power_sensor; }
         void set_energy_sensor(sensor::Sensor *energy_sensor) { this->energy_sensor_ = energy_sensor; }
         void set_voltage_sensor(sensor::Sensor *voltage_sensor) { this->voltage_sensor_ = voltage_sensor; }
@@ -37,19 +47,54 @@ class Connector {
         uint32_t get_active_transaction_id() const { return this->active_transaction_id_; }
         void set_active_transaction_id(uint32_t active_transaction_id) { this->active_transaction_id_ = active_transaction_id; }
         void clear_active_transaction() { this->active_transaction_id_ = 0; }
+        void set_current_limit(float current_limit);
+        float get_current_limit() const { return this->current_limit_; }
+        void set_current_control(float current_control);
+        float get_current_control() const { return this->current_control_; }
         void publish_meter_values(const MeterValues &meter_values);
         void publish_status_notification(const StatusNotification &status_notification);
         void publish_unavailable();
 
     protected:
+        float clamp_current_(float value) const;
+        float clamp_current_limit_(float value) const;
+
         uint32_t connector_id_{DEFAULT_CONNECTOR_ID};
+        uint32_t max_current_{0};
+        uint32_t current_limit_max_{0};
+        float current_limit_{0.0f};
+        float current_control_{0.0f};
         sensor::Sensor *current_sensor_{nullptr};
+        CurrentLimit *current_limit_number_{nullptr};
+        CurrentControl *current_control_number_{nullptr};
         sensor::Sensor *power_sensor_{nullptr};
         sensor::Sensor *energy_sensor_{nullptr};
         sensor::Sensor *voltage_sensor_{nullptr};
         text_sensor::TextSensor *status_text_sensor_{nullptr};
         text_sensor::TextSensor *error_text_sensor_{nullptr};
         uint32_t active_transaction_id_{0};
+        bool current_limit_has_state_{false};
+        bool current_limit_max_configured_{false};
+};
+
+class CurrentLimit : public number::Number {
+    public:
+        void set_connector(Connector *connector) { this->connector_ = connector; }
+
+    protected:
+        void control(float value) override;
+
+        Connector *connector_{nullptr};
+};
+
+class CurrentControl : public number::Number {
+    public:
+        void set_connector(Connector *connector) { this->connector_ = connector; }
+
+    protected:
+        void control(float value) override;
+
+        Connector *connector_{nullptr};
 };
 
 class ChargePoint {
@@ -81,6 +126,8 @@ class ChargePoint {
         }
         void set_debug_ocpp_messages(bool debug_ocpp_messages);
         bool get_debug_ocpp_messages() const;
+        void set_max_current(uint32_t max_current);
+        uint32_t get_max_current() const { return this->max_current_; }
         void set_startup_notifications_delay(uint32_t startup_notifications_delay_ms);
         uint32_t get_startup_notifications_delay() const;
         bool is_online() const;
@@ -91,7 +138,11 @@ class ChargePoint {
         }
         void set_max_queued_messages(size_t max_queued_messages) { this->max_queued_messages_ = max_queued_messages; }
         size_t get_max_queued_messages() const { return this->max_queued_messages_; }
-        void add_connector(Connector *connector) { this->connectors_.push_back(connector); }
+        void add_connector(Connector *connector) {
+            if (connector != nullptr)
+                connector->set_max_current(this->max_current_);
+            this->connectors_.push_back(connector);
+        }
 
         void on_connected(std::string connection_id, uint32_t now_millis = 0);
         void on_connected(std::string connection_id, std::string protocol, uint32_t now_millis = 0);
@@ -138,6 +189,7 @@ class ChargePoint {
         text_sensor::TextSensor *protocol_text_sensor_{nullptr};
         text_sensor::TextSensor *charger_info_text_sensor_{nullptr};
         std::vector<Connector *> connectors_;
+        uint32_t max_current_{0};
         size_t max_queued_messages_{DEFAULT_MAX_QUEUED_MESSAGES};
         bool debug_ocpp_messages_{false};
         uint32_t startup_notifications_delay_ms_{DEFAULT_STARTUP_NOTIFICATIONS_DELAY_MS};

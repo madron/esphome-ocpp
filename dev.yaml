@@ -105,6 +105,7 @@ ocpp:
   charge_points:
     - id: garage
       charge_point_id: A99999
+      max_current: 32
       debug_ocpp_messages: true
       startup_notifications_delay: 5
       protocol:
@@ -124,6 +125,10 @@ ocpp:
             name: garage_error
           current:
             name: garage_current
+          current_limit:
+            name: garage_current_limit
+          current_control:
+            name: garage_current_control
           power:
             name: garage_power
           energy:
@@ -131,4 +136,5 @@ ocpp:
           voltage:
             name: garage_voltage
     - id: unknown
+      max_current: 32
       debug_ocpp_messages: true

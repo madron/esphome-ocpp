@@ -7,6 +7,8 @@
 
 using esphome::ocpp::ChargePoint;
 using esphome::ocpp::Connector;
+using esphome::ocpp::CurrentControl;
+using esphome::ocpp::CurrentLimit;
 using esphome::ocpp::QueuedMessage;
 using esphome::binary_sensor::BinarySensor;
 using esphome::sensor::Sensor;
@@ -56,6 +58,16 @@ class TestChargePoint : public ChargePoint {
     TextSensor error_sensor;
     TextSensor second_status_sensor;
     TextSensor second_error_sensor;
+};
+
+class TestCurrentLimit : public CurrentLimit {
+ public:
+    using CurrentLimit::control;
+};
+
+class TestCurrentControl : public CurrentControl {
+ public:
+    using CurrentControl::control;
 };
 
 int main() {
@@ -135,6 +147,7 @@ int main() {
         // get_debug_ocpp_messages
         assert_equal("get_debug_ocpp_messages", charge_point.get_debug_ocpp_messages(), false);
         assert_equal("get_startup_notifications_delay", charge_point.get_startup_notifications_delay(), 300000U);
+        assert_equal("get_max_current", charge_point.get_max_current(), 0U);
         assert_equal("get_max_queued_messages", charge_point.get_max_queued_messages(), 8);
         assert_equal("get_force_protocol", charge_point.get_force_protocol(), std::string(""));
         assert_equal("protocol_default", charge_point.protocol_sensor.state, std::string(""));
@@ -150,6 +163,12 @@ int main() {
         charge_point.set_startup_notifications_delay(0);
         assert_equal("set_startup_notifications_delay", charge_point.get_startup_notifications_delay(), 0U);
 
+        // set_max_current propagates to connectors
+        charge_point.set_max_current(32);
+        assert_equal("set_max_current", charge_point.get_max_current(), 32U);
+        assert_equal("set_max_current_connector", charge_point.connector.get_max_current(), 32U);
+        assert_equal("set_max_current_second_connector", charge_point.second_connector.get_max_current(), 32U);
+
         // set_max_queued_messages
         charge_point.set_max_queued_messages(16);
         assert_equal("set_max_queued_messages", charge_point.get_max_queued_messages(), 16);
@@ -157,6 +176,57 @@ int main() {
         // set_force_protocol
         charge_point.set_force_protocol("ocpp1.6");
         assert_equal("set_force_protocol", charge_point.get_force_protocol(), std::string("ocpp1.6"));
+    }
+
+    {
+        // Connector current numbers clamp to max_current; current_limit is integer, current_control has 1 decimal
+        Connector connector;
+        TestCurrentLimit current_limit_number;
+        TestCurrentControl current_control_number;
+        current_limit_number.set_connector(&connector);
+        current_control_number.set_connector(&connector);
+        connector.set_max_current(32);
+        connector.set_current_limit_number(&current_limit_number);
+        connector.set_current_control_number(&current_control_number);
+
+        assert_equal("current_limit_initial", current_limit_number.state, 32.0f);
+        assert_equal("current_control_initial", current_control_number.state, 0.0f);
+
+        current_limit_number.control(16.6f);
+        assert_equal("current_limit_integer", connector.get_current_limit(), 17.0f);
+        assert_equal("current_limit_number_state", current_limit_number.state, 17.0f);
+        current_limit_number.control(40.0f);
+        assert_equal("current_limit_max", connector.get_current_limit(), 32.0f);
+        current_limit_number.control(-1.0f);
+        assert_equal("current_limit_min", connector.get_current_limit(), 0.0f);
+
+        current_control_number.control(12.34f);
+        assert_equal("current_control_one_decimal", connector.get_current_control(), 12.3f);
+        assert_equal("current_control_number_state", current_control_number.state, 12.3f);
+        current_control_number.control(99.0f);
+        assert_equal("current_control_max", connector.get_current_control(), 32.0f);
+        current_control_number.control(-1.0f);
+        assert_equal("current_control_min", connector.get_current_control(), 0.0f);
+    }
+
+    {
+        // current_limit can use a lower connector-specific max while current_control still uses max_current
+        Connector connector;
+        TestCurrentLimit current_limit_number;
+        TestCurrentControl current_control_number;
+        current_limit_number.set_connector(&connector);
+        current_control_number.set_connector(&connector);
+        connector.set_max_current(32);
+        connector.set_current_limit_max(16);
+        connector.set_current_limit_number(&current_limit_number);
+        connector.set_current_control_number(&current_control_number);
+
+        assert_equal("current_limit_override_max", connector.get_current_limit_max(), 16U);
+        assert_equal("current_limit_override_initial", current_limit_number.state, 16.0f);
+        current_limit_number.control(20.0f);
+        assert_equal("current_limit_override_clamp", connector.get_current_limit(), 16.0f);
+        current_control_number.control(20.0f);
+        assert_equal("current_control_ignores_limit_override", connector.get_current_control(), 20.0f);
     }
 
     {

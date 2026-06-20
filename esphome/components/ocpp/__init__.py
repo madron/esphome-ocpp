@@ -1,21 +1,24 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import binary_sensor, sensor, text_sensor
-from esphome.const import CONF_ID, CONF_PORT
+from esphome.components import binary_sensor, number, sensor, text_sensor
+from esphome.const import CONF_ID, CONF_MAX_VALUE, CONF_PORT
 
 DEPENDENCIES = ["network"]
-AUTO_LOAD = ["binary_sensor", "json", "sensor", "socket", "text_sensor"]
+AUTO_LOAD = ["binary_sensor", "json", "number", "sensor", "socket", "text_sensor"]
 
 CONF_CHARGE_POINT_ID = "charge_point_id"
 CONF_CHARGE_POINTS = "charge_points"
 CONF_CONNECTOR_ID = "connector_id"
 CONF_CONNECTORS = "connectors"
 CONF_CURRENT = "current"
+CONF_CURRENT_CONTROL = "current_control"
+CONF_CURRENT_LIMIT = "current_limit"
 CONF_DEBUG_OCPP_MESSAGES = "debug_ocpp_messages"
 CONF_ENERGY = "energy"
 CONF_ERROR = "error"
 CONF_FORCE_PROTOCOL = "force_protocol"
 CONF_CHARGER_INFO = "charger_info"
+CONF_MAX_CURRENT = "max_current"
 CONF_ONLINE = "online"
 CONF_POWER = "power"
 CONF_PROTOCOL = "protocol"
@@ -31,6 +34,8 @@ ocpp_ns = cg.esphome_ns.namespace("ocpp")
 OcppComponent = ocpp_ns.class_("OcppComponent", cg.Component)
 ChargePoint = ocpp_ns.class_("ChargePoint")
 Connector = ocpp_ns.class_("Connector")
+CurrentControl = ocpp_ns.class_("CurrentControl", number.Number)
+CurrentLimit = ocpp_ns.class_("CurrentLimit", number.Number)
 
 #----------------------------------------------------------
 # Server
@@ -64,6 +69,20 @@ CONNECTOR_SCHEMA = cv.Schema(
             accuracy_decimals=1,
             device_class="current",
             state_class="measurement",
+        ),
+        cv.Optional(CONF_CURRENT_CONTROL): number.number_schema(
+            CurrentControl,
+            unit_of_measurement="A",
+            device_class="current",
+        ),
+        cv.Optional(CONF_CURRENT_LIMIT): number.number_schema(
+            CurrentLimit,
+            unit_of_measurement="A",
+            device_class="current",
+        ).extend(
+            {
+                cv.Optional(CONF_MAX_VALUE): cv.int_range(min=0),
+            }
         ),
         cv.Optional(CONF_ENERGY): sensor.sensor_schema(
             unit_of_measurement="kWh",
@@ -118,6 +137,7 @@ CHARGE_POINT_SCHEMA = cv.Schema(
         cv.Optional(CONF_DEBUG_OCPP_MESSAGES, default=False): cv.boolean,
         cv.Optional(CONF_FORCE_PROTOCOL): validate_protocol,
         cv.Optional(CONF_CHARGER_INFO): text_sensor.text_sensor_schema(),
+        cv.Required(CONF_MAX_CURRENT): cv.int_range(min=6),
         cv.Optional(CONF_ONLINE): binary_sensor.binary_sensor_schema(),
         cv.Optional(CONF_PROTOCOL): text_sensor.text_sensor_schema(),
         cv.Optional(CONF_STARTUP_NOTIFICATIONS_DELAY, default=300): cv.int_range(min=0, max=4294967),
@@ -146,6 +166,13 @@ def validate_charge_points(config):
             if connector_id in connector_ids:
                 raise cv.Invalid(f"Duplicate connector_id '{connector_id}' in charge point")
             connector_ids.add(connector_id)
+            if CONF_CURRENT_LIMIT in connector:
+                current_limit = connector[CONF_CURRENT_LIMIT]
+                if (
+                    CONF_MAX_VALUE in current_limit
+                    and current_limit[CONF_MAX_VALUE] > charge_point[CONF_MAX_CURRENT]
+                ):
+                    raise cv.Invalid("current_limit max_value must be less than or equal to max_current")
         if CONF_CHARGE_POINT_ID not in charge_point:
             continue
         charge_point_id = charge_point[CONF_CHARGE_POINT_ID]
@@ -180,6 +207,7 @@ async def to_code(config):
     # charge_points
     for charge_point_conf in config[CONF_CHARGE_POINTS]:
         charge_point = cg.new_Pvariable(charge_point_conf[CONF_ID])
+        cg.add(charge_point.set_max_current(charge_point_conf[CONF_MAX_CURRENT]))
         if CONF_CHARGE_POINT_ID in charge_point_conf:
             cg.add(charge_point.set_charge_point_id(charge_point_conf[CONF_CHARGE_POINT_ID]))
         if CONF_FORCE_PROTOCOL in charge_point_conf:
@@ -196,9 +224,33 @@ async def to_code(config):
         for connector_conf in charge_point_conf[CONF_CONNECTORS]:
             connector = cg.new_Pvariable(connector_conf[CONF_ID])
             cg.add(connector.set_connector_id(connector_conf[CONF_CONNECTOR_ID]))
+            cg.add(connector.set_max_current(charge_point_conf[CONF_MAX_CURRENT]))
             if CONF_CURRENT in connector_conf:
                 sens = await sensor.new_sensor(connector_conf[CONF_CURRENT])
                 cg.add(connector.set_current_sensor(sens))
+            if CONF_CURRENT_LIMIT in connector_conf:
+                current_limit_max_value = connector_conf[CONF_CURRENT_LIMIT].get(
+                    CONF_MAX_VALUE,
+                    charge_point_conf[CONF_MAX_CURRENT],
+                )
+                cg.add(connector.set_current_limit_max(current_limit_max_value))
+                num = await number.new_number(
+                    connector_conf[CONF_CURRENT_LIMIT],
+                    min_value=0,
+                    max_value=current_limit_max_value,
+                    step=1,
+                )
+                cg.add(num.set_connector(connector))
+                cg.add(connector.set_current_limit_number(num))
+            if CONF_CURRENT_CONTROL in connector_conf:
+                num = await number.new_number(
+                    connector_conf[CONF_CURRENT_CONTROL],
+                    min_value=0,
+                    max_value=charge_point_conf[CONF_MAX_CURRENT],
+                    step=0.1,
+                )
+                cg.add(num.set_connector(connector))
+                cg.add(connector.set_current_control_number(num))
             if CONF_POWER in connector_conf:
                 sens = await sensor.new_sensor(connector_conf[CONF_POWER])
                 cg.add(connector.set_power_sensor(sens))

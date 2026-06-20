@@ -35,6 +35,7 @@ ocpp:
   charge_points:
     - id: garage_left
       charge_point_id: A99999
+      max_current: 32
       debug_ocpp_messages: true
       startup_notifications_delay: 300
       charger_info:
@@ -43,6 +44,11 @@ ocpp:
         - connector_id: 1
           current:
             name: Garage Current
+          current_limit:
+            name: Garage Current Limit
+            max_value: 16
+          current_control:
+            name: Garage Current Control
           power:
             name: Garage Power
           energy:
@@ -59,6 +65,8 @@ ocpp:
 
 Connector `current`, `power`, `energy`, and `voltage` sensors are populated from OCPP `MeterValues` messages whose `connectorId` matches the connector's `connector_id`. The component asks the charger to report `Current.Import`, `Power.Active.Import`, `Energy.Active.Import.Register`, and `Voltage`. If the charger omits one of those values, the corresponding sensor is published as unavailable/unknown instead of `0` so unsupported values are not confused with real zero measurements. Energy is exposed in `kWh`.
 
+Connector `current_limit` and `current_control` number entities are local current values in `A`. By default, both accept values from `0` to the charge point `max_current`; `current_limit` can lower its own maximum with `max_value`. `current_limit` uses whole-Amperes steps and `current_control` uses `0.1 A` steps.
+
 Connector `status` and `error` text sensors are populated from `StatusNotification` messages whose `connectorId` matches the connector's `connector_id`. `errorCode: NoError` is exposed as an empty string.
 
 ### Charge point options
@@ -66,6 +74,7 @@ Connector `status` and `error` text sensors are populated from `StatusNotificati
 | Option                                   | Description |
 | ---                                      | --- |
 | `id` (Required)                          | ESPHome ID for this charge point. |
+| `max_current` (Required)                 | Maximum configured current for this charge point in `A`. Must be at least `6`; no upper limit is enforced. |
 | `charge_point_id` (Optional)             | OCPP/WebSocket identity expected from the charger. When omitted, the first free dynamic charge point slot is used. |
 | `connectors` (Optional)                  | List of OCPP connectors for this charge point. Defaults to one connector with `connector_id: 1`. Connector IDs must be unique within the charge point. |
 | `debug_ocpp_messages` (Optional)         | Logs raw OCPP RX/TX payloads at debug level. Defaults to `false`. |
@@ -81,6 +90,8 @@ Connector `status` and `error` text sensors are populated from `StatusNotificati
 | `id` (Optional)                   | ESPHome internal ID for this connector. Usually omit this and let ESPHome generate it. |
 | `connector_id` (Optional)         | Numeric OCPP connector ID used in `MeterValues.connectorId`. Defaults to `1`. Must be unique within the charge point. |
 | `current` (Optional)              | Sensor populated from `Current.Import` `MeterValues` in `A`. Missing values are published as unavailable/unknown. |
+| `current_limit` (Optional)        | Number entity for the connector current limit in `A`. Range is `0` to `max_value` when set, otherwise `0` to the charge point `max_current`, with a step of `1 A`. `max_value` must be less than or equal to the charge point `max_current`. |
+| `current_control` (Optional)      | Number entity for connector current control in `A`. Range is `0` to the charge point `max_current`, with a step of `0.1 A`. |
 | `power` (Optional)                | Sensor populated from `Power.Active.Import` `MeterValues` in `W`. Missing values are published as unavailable/unknown. |
 | `energy` (Optional)               | Sensor populated from `Energy.Active.Import.Register` `MeterValues` in `kWh`. OCPP `Wh` values are converted to `kWh`. Missing values are published as unavailable/unknown. |
 | `voltage` (Optional)              | Sensor populated from `Voltage` `MeterValues` in `V`. Missing values are published as unavailable/unknown. |

@@ -1,6 +1,7 @@
 #include "charge_point.h"
 #include "esphome/core/log.h"
 
+#include <cmath>
 #include <memory>
 #include <utility>
 
@@ -45,6 +46,77 @@ void log_ocpp_debug_message(const std::string &connection_id, const char *direct
 
 }  // namespace
 
+void Connector::set_max_current(uint32_t max_current) {
+    this->max_current_ = max_current;
+    if (!this->current_limit_max_configured_)
+        this->current_limit_max_ = max_current;
+    else if (this->current_limit_max_ > max_current)
+        this->current_limit_max_ = max_current;
+    if (!this->current_limit_has_state_)
+        this->current_limit_ = static_cast<float>(this->current_limit_max_);
+    else
+        this->current_limit_ = this->clamp_current_limit_(this->current_limit_);
+    this->current_control_ = this->clamp_current_(this->current_control_);
+    if (this->current_limit_number_ != nullptr)
+        this->current_limit_number_->publish_state(this->current_limit_);
+    if (this->current_control_number_ != nullptr)
+        this->current_control_number_->publish_state(this->current_control_);
+}
+
+void Connector::set_current_limit_max(uint32_t current_limit_max) {
+    this->current_limit_max_configured_ = true;
+    if (this->max_current_ > 0 && current_limit_max > this->max_current_)
+        current_limit_max = this->max_current_;
+    this->current_limit_max_ = current_limit_max;
+    if (!this->current_limit_has_state_)
+        this->current_limit_ = static_cast<float>(current_limit_max);
+    else
+        this->current_limit_ = this->clamp_current_limit_(this->current_limit_);
+    if (this->current_limit_number_ != nullptr)
+        this->current_limit_number_->publish_state(this->current_limit_);
+}
+
+void Connector::set_current_limit_number(CurrentLimit *current_limit_number) {
+    this->current_limit_number_ = current_limit_number;
+    if (this->current_limit_number_ != nullptr)
+        this->current_limit_number_->publish_state(this->current_limit_);
+}
+
+void Connector::set_current_control_number(CurrentControl *current_control_number) {
+    this->current_control_number_ = current_control_number;
+    if (this->current_control_number_ != nullptr)
+        this->current_control_number_->publish_state(this->current_control_);
+}
+
+void Connector::set_current_limit(float current_limit) {
+    this->current_limit_has_state_ = true;
+    this->current_limit_ = this->clamp_current_limit_(std::round(current_limit));
+    if (this->current_limit_number_ != nullptr)
+        this->current_limit_number_->publish_state(this->current_limit_);
+}
+
+void Connector::set_current_control(float current_control) {
+    this->current_control_ = this->clamp_current_(std::round(current_control * 10.0f) / 10.0f);
+    if (this->current_control_number_ != nullptr)
+        this->current_control_number_->publish_state(this->current_control_);
+}
+
+float Connector::clamp_current_(float value) const {
+    if (value < 0.0f)
+        return 0.0f;
+    if (this->max_current_ > 0 && value > static_cast<float>(this->max_current_))
+        return static_cast<float>(this->max_current_);
+    return value;
+}
+
+float Connector::clamp_current_limit_(float value) const {
+    if (value < 0.0f)
+        return 0.0f;
+    if (this->current_limit_max_ > 0 && value > static_cast<float>(this->current_limit_max_))
+        return static_cast<float>(this->current_limit_max_);
+    return this->clamp_current_(value);
+}
+
 void Connector::publish_meter_values(const MeterValues &meter_values) {
     if (this->current_sensor_ != nullptr)
         this->current_sensor_->publish_state(meter_values.current);
@@ -72,6 +144,18 @@ void Connector::publish_unavailable() {
     this->publish_status_notification(StatusNotification("", this->connector_id_));
 }
 
+void CurrentLimit::control(float value) {
+    if (this->connector_ == nullptr)
+        return;
+    this->connector_->set_current_limit(value);
+}
+
+void CurrentControl::control(float value) {
+    if (this->connector_ == nullptr)
+        return;
+    this->connector_->set_current_control(value);
+}
+
 void ChargePoint::set_charge_point_id(std::string charge_point_id) {
     this->charge_point_id_ = std::move(charge_point_id);
     this->connection_id_ = this->charge_point_id_;
@@ -86,6 +170,13 @@ const std::string &ChargePoint::get_force_protocol() const { return this->forced
 
 void ChargePoint::set_debug_ocpp_messages(bool debug_ocpp_messages) { this->debug_ocpp_messages_ = debug_ocpp_messages; }
 bool ChargePoint::get_debug_ocpp_messages() const { return this->debug_ocpp_messages_; }
+void ChargePoint::set_max_current(uint32_t max_current) {
+    this->max_current_ = max_current;
+    for (auto *connector : this->connectors_) {
+        if (connector != nullptr)
+            connector->set_max_current(max_current);
+    }
+}
 void ChargePoint::set_startup_notifications_delay(uint32_t startup_notifications_delay_ms) {
     this->startup_notifications_delay_ms_ = startup_notifications_delay_ms;
 }
