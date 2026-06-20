@@ -146,6 +146,31 @@ class ChargePointSchemaTests(unittest.TestCase):
         self.assertIn("energy", connector)
         self.assertIn("voltage", connector)
 
+    def test_connector_status_and_error_text_sensors_enabled(self):
+        validated = CONFIG_SCHEMA(
+            {
+                "id": "ocpp_id",
+                "charge_points": [
+                    {
+                        "id": "garage_left",
+                        "charge_point_id": "A99999",
+                        "connectors": [
+                            {
+                                "connector_id": 2,
+                                "status": {"name": "Garage Status"},
+                                "error": {"name": "Garage Error"},
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+        connector = validated["charge_points"][0]["connectors"][0]
+        self.assertEqual(connector["connector_id"], 2)
+        self.assertIn("status", connector)
+        self.assertIn("error", connector)
+
     def test_duplicate_connector_id_rejected(self):
         with self.assertRaises(Exception):
             CONFIG_SCHEMA(

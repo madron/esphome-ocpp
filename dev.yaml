@@ -118,17 +118,17 @@ ocpp:
       connectors:
         - id: garage_1
           connector_id: 1
+          status:
+            name: garage_status
+          error:
+            name: garage_error
           current:
-            id: garage_current
             name: garage_current
           power:
-            id: garage_power
             name: garage_power
           energy:
-            id: garage_energy
             name: garage_energy
           voltage:
-            id: garage_voltage
             name: garage_voltage
     - id: unknown
       debug_ocpp_messages: true

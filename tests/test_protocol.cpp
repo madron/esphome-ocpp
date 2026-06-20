@@ -14,6 +14,7 @@ using esphome::ocpp::OcppMessage;
 using esphome::ocpp::OcppMessageType;
 using esphome::ocpp::OcppProtocol;
 using esphome::ocpp::OcppProtocolVersion;
+using esphome::ocpp::StatusNotification;
 
 int main() {
     OcppProtocol protocol;
@@ -100,6 +101,14 @@ int main() {
     assert_equal("partial_meter_values_power_nan", std::isnan(partial_meter_values->power), true);
     assert_equal("partial_meter_values_energy_default_measurand", partial_meter_values->energy, 54.321f);
     assert_equal("partial_meter_values_voltage", partial_meter_values->voltage, 240.0f);
+    std::unique_ptr<OcppMessage> status_notification_message = protocol.parse_message(
+        R"([2,"status-1","StatusNotification",{"connectorId":2,"errorCode":"NoError","status":"Available"}])"
+    );
+    auto *status_notification = dynamic_cast<StatusNotification *>(status_notification_message.get());
+    assert_equal("status_notification_exists", status_notification != nullptr, true);
+    assert_equal("status_notification_connector_id", status_notification->connector_id, 2U);
+    assert_equal("status_notification_error_code", status_notification->error_code, std::string("NoError"));
+    assert_equal("status_notification_status", status_notification->status, std::string("Available"));
     assert_equal("get_configuration_request_unsupported_on_ocpp201", protocol.set_websocket_protocol("ocpp2.0.1"), true);
     assert_equal("change_configuration_request_ocpp201_empty",
                  protocol.make_change_configuration_request("change-config-meter-values-sampled-data",
@@ -108,7 +117,17 @@ int main() {
                  std::string(""));
     assert_equal("get_configuration_request_ocpp201_empty", protocol.make_get_configuration_request("get-configuration"),
                  std::string(""));
+    std::unique_ptr<OcppMessage> ocpp201_status_notification_message = protocol.parse_message(
+        R"([2,"status-2","StatusNotification",{"timestamp":"2026-06-20T00:00:00Z","connectorStatus":"Faulted","evseId":1,"connectorId":1}])"
+    );
+    auto *ocpp201_status_notification = dynamic_cast<StatusNotification *>(ocpp201_status_notification_message.get());
+    assert_equal("ocpp201_status_notification_exists", ocpp201_status_notification != nullptr, true);
+    assert_equal("ocpp201_status_notification_connector_id", ocpp201_status_notification->connector_id, 1U);
+    assert_equal("ocpp201_status_notification_error_code_empty", ocpp201_status_notification->error_code, std::string(""));
+    assert_equal("ocpp201_status_notification_status", ocpp201_status_notification->status, std::string("Faulted"));
     assert_equal("boot_response", protocol.make_boot_notification_response("boot-1"),
                  R"([3,"boot-1",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
     assert_equal("meter_values_response", protocol.make_meter_values_response("meter-1"), R"([3,"meter-1",{}])");
+    assert_equal("status_notification_response", protocol.make_status_notification_response("status-1"),
+                 R"([3,"status-1",{}])");
 }

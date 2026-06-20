@@ -31,7 +31,10 @@ class Connector {
         void set_power_sensor(sensor::Sensor *power_sensor) { this->power_sensor_ = power_sensor; }
         void set_energy_sensor(sensor::Sensor *energy_sensor) { this->energy_sensor_ = energy_sensor; }
         void set_voltage_sensor(sensor::Sensor *voltage_sensor) { this->voltage_sensor_ = voltage_sensor; }
+        void set_status_text_sensor(text_sensor::TextSensor *status_text_sensor) { this->status_text_sensor_ = status_text_sensor; }
+        void set_error_text_sensor(text_sensor::TextSensor *error_text_sensor) { this->error_text_sensor_ = error_text_sensor; }
         void publish_meter_values(const MeterValues &meter_values);
+        void publish_status_notification(const StatusNotification &status_notification);
         void publish_unavailable();
 
     protected:
@@ -40,6 +43,8 @@ class Connector {
         sensor::Sensor *power_sensor_{nullptr};
         sensor::Sensor *energy_sensor_{nullptr};
         sensor::Sensor *voltage_sensor_{nullptr};
+        text_sensor::TextSensor *status_text_sensor_{nullptr};
+        text_sensor::TextSensor *error_text_sensor_{nullptr};
 };
 
 class ChargePoint {
@@ -108,6 +113,7 @@ class ChargePoint {
         void set_online_(bool online);
         void publish_charger_info_(const BootNotification &boot_notification);
         void publish_meter_values_(const MeterValues &meter_values);
+        void publish_status_notification_(const StatusNotification &status_notification);
         Connector *find_connector_(uint32_t connector_id);
 
         std::string charge_point_id_;

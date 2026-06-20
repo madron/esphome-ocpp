@@ -9,6 +9,7 @@ using esphome::ocpp::OcppMessageType;
 using esphome::ocpp::OcppCall;
 using esphome::ocpp::BootNotification;
 using esphome::ocpp::MeterValues;
+using esphome::ocpp::StatusNotification;
 
 int main() {
     OcppMessage call(OcppMessageType::CALL, "call-1");
@@ -57,6 +58,21 @@ int main() {
     assert_equal("default_boot_notification_model", default_boot_notification.charge_point_model, std::string(""));
     assert_equal("default_boot_notification_vendor", default_boot_notification.charge_point_vendor, std::string(""));
     assert_equal("default_boot_notification_firmware", default_boot_notification.firmware_version, std::string(""));
+
+    StatusNotification status_notification("status-1", 2, "NoError", "Available");
+    assert_equal("status_notification_message_type", static_cast<int>(status_notification.message_type_id), 2);
+    assert_equal("status_notification_unique_id", status_notification.unique_id, std::string("status-1"));
+    assert_equal("status_notification_action", status_notification.action, std::string("StatusNotification"));
+    assert_equal("status_notification_connector_id", status_notification.connector_id, 2U);
+    assert_equal("status_notification_error_code", status_notification.error_code, std::string("NoError"));
+    assert_equal("status_notification_status", status_notification.status, std::string("Available"));
+
+    StatusNotification default_status_notification;
+    assert_equal("default_status_notification_unique_id", default_status_notification.unique_id, std::string(""));
+    assert_equal("default_status_notification_action", default_status_notification.action, std::string("StatusNotification"));
+    assert_equal("default_status_notification_connector_id", default_status_notification.connector_id, 1U);
+    assert_equal("default_status_notification_error_code", default_status_notification.error_code, std::string(""));
+    assert_equal("default_status_notification_status", default_status_notification.status, std::string(""));
 
     MeterValues meter_values("meter-1", 2, 16.0f, 3680.0f, 12.5f, 230.0f);
     assert_equal("meter_values_message_type", static_cast<int>(meter_values.message_type_id), 2);

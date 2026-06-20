@@ -22,12 +22,16 @@ class TestChargePoint : public ChargePoint {
         this->connector.set_power_sensor(&this->power_sensor);
         this->connector.set_energy_sensor(&this->energy_sensor);
         this->connector.set_voltage_sensor(&this->voltage_sensor);
+        this->connector.set_status_text_sensor(&this->status_sensor);
+        this->connector.set_error_text_sensor(&this->error_sensor);
         this->add_connector(&this->connector);
         this->second_connector.set_connector_id(2);
         this->second_connector.set_current_sensor(&this->second_current_sensor);
         this->second_connector.set_power_sensor(&this->second_power_sensor);
         this->second_connector.set_energy_sensor(&this->second_energy_sensor);
         this->second_connector.set_voltage_sensor(&this->second_voltage_sensor);
+        this->second_connector.set_status_text_sensor(&this->second_status_sensor);
+        this->second_connector.set_error_text_sensor(&this->second_error_sensor);
         this->add_connector(&this->second_connector);
     }
 
@@ -48,6 +52,10 @@ class TestChargePoint : public ChargePoint {
     Sensor second_voltage_sensor;
     TextSensor protocol_sensor;
     TextSensor charger_info_sensor;
+    TextSensor status_sensor;
+    TextSensor error_sensor;
+    TextSensor second_status_sensor;
+    TextSensor second_error_sensor;
 };
 
 int main() {
@@ -74,6 +82,8 @@ int main() {
         assert_equal("get_force_protocol", charge_point.get_force_protocol(), std::string(""));
         assert_equal("protocol_default", charge_point.protocol_sensor.state, std::string(""));
         assert_equal("charger_info_default", charge_point.charger_info_sensor.state, std::string(""));
+        assert_equal("status_default", charge_point.status_sensor.state, std::string(""));
+        assert_equal("error_default", charge_point.error_sensor.state, std::string(""));
 
         // set_debug_ocpp_messages
         charge_point.set_debug_ocpp_messages(true);
@@ -268,8 +278,20 @@ int main() {
         charge_point.handle_ocpp_text(
             R"([2,"status-1","StatusNotification",{"connectorId":1,"errorCode":"NoError","status":"Available"}])");
         assert_equal("online_after_status_notification", charge_point.is_online(), true);
+        assert_equal("status_notification_status_sensor", charge_point.status_sensor.state, std::string("Available"));
+        assert_equal("status_notification_error_sensor", charge_point.error_sensor.state, std::string("NoError"));
+        assert_equal("status_notification_second_status_sensor_unchanged", charge_point.second_status_sensor.state,
+                     std::string(""));
+        assert_equal("status_notification_second_error_sensor_unchanged", charge_point.second_error_sensor.state,
+                     std::string(""));
         assert_equal("status_notification_response_count", charge_point.messages.size(), 1);
         assert_equal("status_notification_response", charge_point.messages[0].payload, R"([3,"status-1",{}])");
+
+        charge_point.on_disconnected();
+        assert_equal("status_notification_status_sensor_after_disconnect", charge_point.status_sensor.state,
+                     std::string(""));
+        assert_equal("status_notification_error_sensor_after_disconnect", charge_point.error_sensor.state,
+                     std::string(""));
     }
 
     {

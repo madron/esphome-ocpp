@@ -102,6 +102,22 @@ class ChangeConfigurationResponse : public OcppMessage {
         std::string status;
 };
 
+class StatusNotification : public OcppCall {
+    public:
+        StatusNotification(
+            std::string unique_id = "",
+            uint32_t connector_id = 1,
+            std::string error_code = "",
+            std::string status = ""
+        )
+            : OcppCall("StatusNotification", std::move(unique_id)), connector_id(connector_id),
+              error_code(std::move(error_code)), status(std::move(status)) {}
+
+        uint32_t connector_id;
+        std::string error_code;
+        std::string status;
+};
+
 class MeterValues : public OcppCall {
     public:
         MeterValues(

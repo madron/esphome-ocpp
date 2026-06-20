@@ -194,6 +194,16 @@ std::unique_ptr<OcppMessage> parse_change_configuration_response(const std::stri
     return std::unique_ptr<OcppMessage>(new ChangeConfigurationResponse(unique_id, json_string_or_empty(payload["status"])));
 }
 
+std::unique_ptr<OcppMessage> parse_status_notification(const std::string &unique_id, const JsonObject &payload) {
+    uint32_t connector_id = json_uint_or_default(payload["connectorId"], 1);
+    std::string error_code = json_string_or_empty(payload["errorCode"]);
+    std::string status = json_string_or_empty(payload["status"]);
+    if (status.empty())
+        status = json_string_or_empty(payload["connectorStatus"]);
+
+    return std::unique_ptr<OcppMessage>(new StatusNotification(unique_id, connector_id, error_code, status));
+}
+
 std::unique_ptr<OcppMessage> parse_meter_values(const std::string &unique_id, const JsonObject &payload) {
     uint32_t connector_id = json_uint_or_default(payload["connectorId"], 1);
     float current = NAN;
@@ -308,6 +318,8 @@ std::unique_ptr<OcppMessage> OcppProtocol::parse_message(const std::string &mess
             return parse_boot_notification_2_0_1(unique_id, payload);
         return parse_boot_notification_1_6(unique_id, payload);
     }
+    if (action == "StatusNotification")
+        return parse_status_notification(unique_id, payload);
     if (action == "MeterValues")
         return parse_meter_values(unique_id, payload);
 

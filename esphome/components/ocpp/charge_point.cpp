@@ -56,7 +56,17 @@ void Connector::publish_meter_values(const MeterValues &meter_values) {
         this->voltage_sensor_->publish_state(meter_values.voltage);
 }
 
-void Connector::publish_unavailable() { this->publish_meter_values(MeterValues("", this->connector_id_)); }
+void Connector::publish_status_notification(const StatusNotification &status_notification) {
+    if (this->status_text_sensor_ != nullptr)
+        this->status_text_sensor_->publish_state(status_notification.status);
+    if (this->error_text_sensor_ != nullptr)
+        this->error_text_sensor_->publish_state(status_notification.error_code);
+}
+
+void Connector::publish_unavailable() {
+    this->publish_meter_values(MeterValues("", this->connector_id_));
+    this->publish_status_notification(StatusNotification("", this->connector_id_));
+}
 
 void ChargePoint::set_charge_point_id(std::string charge_point_id) {
     this->charge_point_id_ = std::move(charge_point_id);
@@ -228,6 +238,8 @@ void ChargePoint::handle_ocpp_call_(const OcppMessage &call) {
         this->status_notification_pending_ = false;
         this->status_notification_trigger_in_flight_ = false;
         this->set_online_(true);
+        const auto &status_notification = static_cast<const StatusNotification &>(call);
+        this->publish_status_notification_(status_notification);
         this->send_message_({this->protocol_.make_status_notification_response(call.unique_id), OcppMessageType::CALL_RESULT,
                              call.unique_id});
     } else {
@@ -444,6 +456,16 @@ void ChargePoint::publish_meter_values_(const MeterValues &meter_values) {
         return;
     }
     connector->publish_meter_values(meter_values);
+}
+
+void ChargePoint::publish_status_notification_(const StatusNotification &status_notification) {
+    Connector *connector = this->find_connector_(status_notification.connector_id);
+    if (connector == nullptr) {
+        ESP_LOGW(TAG, "Ignoring StatusNotification for unknown connector: charge_point='%s' connector_id=%u",
+                this->connection_id_.c_str(), static_cast<unsigned>(status_notification.connector_id));
+        return;
+    }
+    connector->publish_status_notification(status_notification);
 }
 
 Connector *ChargePoint::find_connector_(uint32_t connector_id) {

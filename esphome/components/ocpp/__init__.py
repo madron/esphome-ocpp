@@ -13,6 +13,7 @@ CONF_CONNECTORS = "connectors"
 CONF_CURRENT = "current"
 CONF_DEBUG_OCPP_MESSAGES = "debug_ocpp_messages"
 CONF_ENERGY = "energy"
+CONF_ERROR = "error"
 CONF_FORCE_PROTOCOL = "force_protocol"
 CONF_CHARGER_INFO = "charger_info"
 CONF_ONLINE = "online"
@@ -20,6 +21,7 @@ CONF_POWER = "power"
 CONF_PROTOCOL = "protocol"
 CONF_SERVER = "server"
 CONF_SERVER_PATH = "path"
+CONF_STATUS = "status"
 CONF_STARTUP_NOTIFICATIONS_DELAY = "startup_notifications_delay"
 CONF_VOLTAGE = "voltage"
 
@@ -69,12 +71,14 @@ CONNECTOR_SCHEMA = cv.Schema(
             device_class="energy",
             state_class="total_increasing",
         ),
+        cv.Optional(CONF_ERROR): text_sensor.text_sensor_schema(),
         cv.Optional(CONF_POWER): sensor.sensor_schema(
             unit_of_measurement="W",
             accuracy_decimals=0,
             device_class="power",
             state_class="measurement",
         ),
+        cv.Optional(CONF_STATUS): text_sensor.text_sensor_schema(),
         cv.Optional(CONF_VOLTAGE): sensor.sensor_schema(
             unit_of_measurement="V",
             accuracy_decimals=1,
@@ -204,6 +208,12 @@ async def to_code(config):
             if CONF_VOLTAGE in connector_conf:
                 sens = await sensor.new_sensor(connector_conf[CONF_VOLTAGE])
                 cg.add(connector.set_voltage_sensor(sens))
+            if CONF_STATUS in connector_conf:
+                sens = await text_sensor.new_text_sensor(connector_conf[CONF_STATUS])
+                cg.add(connector.set_status_text_sensor(sens))
+            if CONF_ERROR in connector_conf:
+                sens = await text_sensor.new_text_sensor(connector_conf[CONF_ERROR])
+                cg.add(connector.set_error_text_sensor(sens))
             cg.add(charge_point.add_connector(connector))
         cg.add(charge_point.set_debug_ocpp_messages(charge_point_conf[CONF_DEBUG_OCPP_MESSAGES]))
         cg.add(charge_point.set_startup_notifications_delay(charge_point_conf[CONF_STARTUP_NOTIFICATIONS_DELAY] * 1000))
