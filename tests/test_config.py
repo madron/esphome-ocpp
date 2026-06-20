@@ -105,6 +105,29 @@ class ChargePointSchemaTests(unittest.TestCase):
 
         self.assertIn("charger_info", validated["charge_points"][0])
 
+    def test_meter_value_sensors_enabled(self):
+        validated = CONFIG_SCHEMA(
+            {
+                "id": "ocpp_id",
+                "charge_points": [
+                    {
+                        "id": "garage_left",
+                        "charge_point_id": "A99999",
+                        "current": {"name": "Garage Current"},
+                        "power": {"name": "Garage Power"},
+                        "energy": {"name": "Garage Energy"},
+                        "voltage": {"name": "Garage Voltage"},
+                    }
+                ],
+            }
+        )
+
+        charge_point = validated["charge_points"][0]
+        self.assertIn("current", charge_point)
+        self.assertIn("power", charge_point)
+        self.assertIn("energy", charge_point)
+        self.assertIn("voltage", charge_point)
+
     def test_ocpp_2_0_1_force_protocol_enabled(self):
         validated = CONFIG_SCHEMA(
             {

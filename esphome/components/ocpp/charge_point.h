@@ -2,6 +2,7 @@
 
 #include "protocol.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
+#include "esphome/components/sensor/sensor.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 
 #include <cstdint>
@@ -47,6 +48,10 @@ class ChargePoint {
         void set_charger_info_text_sensor(text_sensor::TextSensor *charger_info_text_sensor) {
             this->charger_info_text_sensor_ = charger_info_text_sensor;
         }
+        void set_current_sensor(sensor::Sensor *current_sensor) { this->current_sensor_ = current_sensor; }
+        void set_power_sensor(sensor::Sensor *power_sensor) { this->power_sensor_ = power_sensor; }
+        void set_energy_sensor(sensor::Sensor *energy_sensor) { this->energy_sensor_ = energy_sensor; }
+        void set_voltage_sensor(sensor::Sensor *voltage_sensor) { this->voltage_sensor_ = voltage_sensor; }
         void set_debug_ocpp_messages(bool debug_ocpp_messages);
         bool get_debug_ocpp_messages() const;
         void set_startup_notifications_delay(uint32_t startup_notifications_delay_ms);
@@ -84,6 +89,7 @@ class ChargePoint {
         void expire_in_flight_call_(uint32_t now_millis);
         void set_online_(bool online);
         void publish_charger_info_(const BootNotification &boot_notification);
+        void publish_meter_values_(const MeterValues &meter_values);
 
         std::string charge_point_id_;
         std::string connection_id_;
@@ -95,6 +101,10 @@ class ChargePoint {
         std::string meter_values_sampled_data_;
         std::string connector_switch_3_to_1_phase_supported_;
         binary_sensor::BinarySensor *online_binary_sensor_{nullptr};
+        sensor::Sensor *current_sensor_{nullptr};
+        sensor::Sensor *power_sensor_{nullptr};
+        sensor::Sensor *energy_sensor_{nullptr};
+        sensor::Sensor *voltage_sensor_{nullptr};
         text_sensor::TextSensor *protocol_text_sensor_{nullptr};
         text_sensor::TextSensor *charger_info_text_sensor_{nullptr};
         size_t max_queued_messages_{DEFAULT_MAX_QUEUED_MESSAGES};

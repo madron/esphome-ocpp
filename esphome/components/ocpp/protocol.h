@@ -26,6 +26,7 @@ class OcppProtocol {
         std::string make_get_configuration_request(const std::string &unique_id) const;
         std::string make_boot_notification_response(const std::string &unique_id) const;
         std::string make_heartbeat_response(const std::string &unique_id) const;
+        std::string make_meter_values_response(const std::string &unique_id) const;
         std::string make_status_notification_response(const std::string &unique_id) const;
         std::string make_trigger_boot_notification(const std::string &unique_id) const;
         std::string make_trigger_status_notification(const std::string &unique_id) const;

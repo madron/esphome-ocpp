@@ -3,6 +3,8 @@
 #include "esphome/components/json/json_util.h"
 #include "esphome/core/log.h"
 
+#include <cmath>
+#include <cstdlib>
 #include <memory>
 
 namespace esphome::ocpp {
@@ -48,6 +50,73 @@ std::string json_string_or_empty(const JsonVariant &value) {
     if (!value.is<const char *>())
         return "";
     return value.as<std::string>();
+}
+
+float json_float_or_nan(const JsonVariant &value) {
+    if (value.is<float>())
+        return value.as<float>();
+    if (value.is<double>())
+        return static_cast<float>(value.as<double>());
+    if (value.is<int>())
+        return static_cast<float>(value.as<int>());
+    if (!value.is<const char *>())
+        return NAN;
+
+    const char *raw = value.as<const char *>();
+    char *end = nullptr;
+    float parsed = std::strtof(raw, &end);
+    if (end == raw || *end != '\0')
+        return NAN;
+    return parsed;
+}
+
+float apply_metric_multiplier(float value, const JsonObject &sampled_value) {
+    JsonVariant unit_of_measure = sampled_value["unitOfMeasure"];
+    if (!unit_of_measure.is<JsonObject>())
+        return value;
+    JsonVariant multiplier = unit_of_measure.as<JsonObject>()["multiplier"];
+    if (!multiplier.is<int>())
+        return value;
+    return value * std::pow(10.0f, static_cast<float>(multiplier.as<int>()));
+}
+
+std::string sampled_value_unit(const JsonObject &sampled_value) {
+    std::string unit = json_string_or_empty(sampled_value["unit"]);
+    if (!unit.empty())
+        return unit;
+
+    JsonVariant unit_of_measure = sampled_value["unitOfMeasure"];
+    if (!unit_of_measure.is<JsonObject>())
+        return "";
+    return json_string_or_empty(unit_of_measure.as<JsonObject>()["unit"]);
+}
+
+float normalize_current(float value, const std::string &unit) {
+    if (unit == "mA")
+        return value / 1000.0f;
+    return value;
+}
+
+float normalize_power(float value, const std::string &unit) {
+    if (unit == "kW")
+        return value * 1000.0f;
+    return value;
+}
+
+float normalize_energy(float value, const std::string &unit) {
+    if (unit == "kWh")
+        return value;
+    if (unit == "MWh")
+        return value * 1000.0f;
+    return value / 1000.0f;
+}
+
+float normalize_voltage(float value, const std::string &unit) {
+    if (unit == "mV")
+        return value / 1000.0f;
+    if (unit == "kV")
+        return value * 1000.0f;
+    return value;
 }
 
 bool is_change_configuration_unique_id(const std::string &unique_id) {
@@ -114,6 +183,49 @@ std::unique_ptr<OcppMessage> parse_get_configuration_response(const std::string 
 
 std::unique_ptr<OcppMessage> parse_change_configuration_response(const std::string &unique_id, const JsonObject &payload) {
     return std::unique_ptr<OcppMessage>(new ChangeConfigurationResponse(unique_id, json_string_or_empty(payload["status"])));
+}
+
+std::unique_ptr<OcppMessage> parse_meter_values(const std::string &unique_id, const JsonObject &payload) {
+    float current = NAN;
+    float power = NAN;
+    float energy = NAN;
+    float voltage = NAN;
+
+    JsonVariant meter_value = payload["meterValue"];
+    if (meter_value.is<JsonArray>()) {
+        for (JsonVariant meter_value_variant : meter_value.as<JsonArray>()) {
+            if (!meter_value_variant.is<JsonObject>())
+                continue;
+            JsonVariant sampled_value = meter_value_variant.as<JsonObject>()["sampledValue"];
+            if (!sampled_value.is<JsonArray>())
+                continue;
+            for (JsonVariant sampled_value_variant : sampled_value.as<JsonArray>()) {
+                if (!sampled_value_variant.is<JsonObject>())
+                    continue;
+                JsonObject sampled_value_object = sampled_value_variant.as<JsonObject>();
+                float raw_value = json_float_or_nan(sampled_value_object["value"]);
+                if (std::isnan(raw_value))
+                    continue;
+
+                std::string measurand = json_string_or_empty(sampled_value_object["measurand"]);
+                if (measurand.empty())
+                    measurand = "Energy.Active.Import.Register";
+                std::string unit = sampled_value_unit(sampled_value_object);
+                float value = apply_metric_multiplier(raw_value, sampled_value_object);
+
+                if (measurand == "Current.Import")
+                    current = normalize_current(value, unit);
+                else if (measurand == "Power.Active.Import")
+                    power = normalize_power(value, unit);
+                else if (measurand == "Energy.Active.Import.Register")
+                    energy = normalize_energy(value, unit);
+                else if (measurand == "Voltage")
+                    voltage = normalize_voltage(value, unit);
+            }
+        }
+    }
+
+    return std::unique_ptr<OcppMessage>(new MeterValues(unique_id, current, power, energy, voltage));
 }
 
 }  // namespace
@@ -186,6 +298,8 @@ std::unique_ptr<OcppMessage> OcppProtocol::parse_message(const std::string &mess
             return parse_boot_notification_2_0_1(unique_id, payload);
         return parse_boot_notification_1_6(unique_id, payload);
     }
+    if (action == "MeterValues")
+        return parse_meter_values(unique_id, payload);
 
     return std::unique_ptr<OcppMessage>(new OcppCall(action, unique_id));
 }
@@ -209,6 +323,10 @@ std::string OcppProtocol::make_boot_notification_response(const std::string &uni
 
 std::string OcppProtocol::make_heartbeat_response(const std::string &unique_id) const {
     return "[3,\"" + json_escape(unique_id) + "\",{\"currentTime\":\"" + CURRENT_TIME + "\"}]";
+}
+
+std::string OcppProtocol::make_meter_values_response(const std::string &unique_id) const {
+    return "[3,\"" + json_escape(unique_id) + "\",{}]";
 }
 
 std::string OcppProtocol::make_status_notification_response(const std::string &unique_id) const {

@@ -115,5 +115,17 @@ ocpp:
       charger_info:
         id: garage_charger_info
         name: garage_charger_info
+      current:
+        id: garage_current
+        name: garage_current
+      power:
+        id: garage_power
+        name: garage_power
+      energy:
+        id: garage_energy
+        name: garage_energy
+      voltage:
+        id: garage_voltage
+        name: garage_voltage
     - id: unknown
       debug_ocpp_messages: true

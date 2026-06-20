@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cmath>
 #include <string>
 #include <utility>
 
@@ -99,6 +100,24 @@ class ChangeConfigurationResponse : public OcppMessage {
               status(std::move(status)) {}
 
         std::string status;
+};
+
+class MeterValues : public OcppCall {
+    public:
+        MeterValues(
+            std::string unique_id = "",
+            float current = NAN,
+            float power = NAN,
+            float energy = NAN,
+            float voltage = NAN
+        )
+            : OcppCall("MeterValues", std::move(unique_id)), current(current), power(power), energy(energy),
+              voltage(voltage) {}
+
+        float current;
+        float power;
+        float energy;
+        float voltage;
 };
 
 }  // namespace esphome::ocpp

@@ -1,21 +1,25 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import binary_sensor, text_sensor
+from esphome.components import binary_sensor, sensor, text_sensor
 from esphome.const import CONF_ID, CONF_PORT
 
 DEPENDENCIES = ["network"]
-AUTO_LOAD = ["binary_sensor", "json", "socket", "text_sensor"]
+AUTO_LOAD = ["binary_sensor", "json", "sensor", "socket", "text_sensor"]
 
 CONF_CHARGE_POINT_ID = "charge_point_id"
 CONF_CHARGE_POINTS = "charge_points"
+CONF_CURRENT = "current"
 CONF_DEBUG_OCPP_MESSAGES = "debug_ocpp_messages"
+CONF_ENERGY = "energy"
 CONF_FORCE_PROTOCOL = "force_protocol"
 CONF_CHARGER_INFO = "charger_info"
 CONF_ONLINE = "online"
+CONF_POWER = "power"
 CONF_PROTOCOL = "protocol"
 CONF_SERVER = "server"
 CONF_SERVER_PATH = "path"
 CONF_STARTUP_NOTIFICATIONS_DELAY = "startup_notifications_delay"
+CONF_VOLTAGE = "voltage"
 
 SUPPORTED_PROTOCOLS = ["ocpp1.6", "ocpp2.0.1"]
 
@@ -68,11 +72,35 @@ CHARGE_POINT_SCHEMA = cv.Schema(
         cv.GenerateID(): cv.declare_id(ChargePoint),
         cv.Optional(CONF_CHARGE_POINT_ID): validate_charge_point_id,
         cv.Optional(CONF_DEBUG_OCPP_MESSAGES, default=False): cv.boolean,
+        cv.Optional(CONF_CURRENT): sensor.sensor_schema(
+            unit_of_measurement="A",
+            accuracy_decimals=1,
+            device_class="current",
+            state_class="measurement",
+        ),
+        cv.Optional(CONF_ENERGY): sensor.sensor_schema(
+            unit_of_measurement="kWh",
+            accuracy_decimals=3,
+            device_class="energy",
+            state_class="total_increasing",
+        ),
         cv.Optional(CONF_FORCE_PROTOCOL): validate_protocol,
         cv.Optional(CONF_CHARGER_INFO): text_sensor.text_sensor_schema(),
         cv.Optional(CONF_ONLINE): binary_sensor.binary_sensor_schema(),
+        cv.Optional(CONF_POWER): sensor.sensor_schema(
+            unit_of_measurement="W",
+            accuracy_decimals=0,
+            device_class="power",
+            state_class="measurement",
+        ),
         cv.Optional(CONF_PROTOCOL): text_sensor.text_sensor_schema(),
         cv.Optional(CONF_STARTUP_NOTIFICATIONS_DELAY, default=300): cv.int_range(min=0, max=4294967),
+        cv.Optional(CONF_VOLTAGE): sensor.sensor_schema(
+            unit_of_measurement="V",
+            accuracy_decimals=1,
+            device_class="voltage",
+            state_class="measurement",
+        ),
     }
 )
 
@@ -136,6 +164,18 @@ async def to_code(config):
         if CONF_CHARGER_INFO in charge_point_conf:
             sens = await text_sensor.new_text_sensor(charge_point_conf[CONF_CHARGER_INFO])
             cg.add(charge_point.set_charger_info_text_sensor(sens))
+        if CONF_CURRENT in charge_point_conf:
+            sens = await sensor.new_sensor(charge_point_conf[CONF_CURRENT])
+            cg.add(charge_point.set_current_sensor(sens))
+        if CONF_POWER in charge_point_conf:
+            sens = await sensor.new_sensor(charge_point_conf[CONF_POWER])
+            cg.add(charge_point.set_power_sensor(sens))
+        if CONF_ENERGY in charge_point_conf:
+            sens = await sensor.new_sensor(charge_point_conf[CONF_ENERGY])
+            cg.add(charge_point.set_energy_sensor(sens))
+        if CONF_VOLTAGE in charge_point_conf:
+            sens = await sensor.new_sensor(charge_point_conf[CONF_VOLTAGE])
+            cg.add(charge_point.set_voltage_sensor(sens))
         if CONF_ONLINE in charge_point_conf:
             sens = await binary_sensor.new_binary_sensor(charge_point_conf[CONF_ONLINE])
             cg.add(charge_point.set_online_binary_sensor(sens))

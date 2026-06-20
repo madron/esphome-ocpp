@@ -1,12 +1,14 @@
 #include "assertions.cpp"
 #include "esphome/components/ocpp/charge_point.h"
 
+#include <cmath>
 #include <string>
 #include <vector>
 
 using esphome::ocpp::ChargePoint;
 using esphome::ocpp::QueuedMessage;
 using esphome::binary_sensor::BinarySensor;
+using esphome::sensor::Sensor;
 using esphome::text_sensor::TextSensor;
 
 class TestChargePoint : public ChargePoint {
@@ -15,6 +17,10 @@ class TestChargePoint : public ChargePoint {
         this->set_online_binary_sensor(&this->online_sensor);
         this->set_protocol_text_sensor(&this->protocol_sensor);
         this->set_charger_info_text_sensor(&this->charger_info_sensor);
+        this->set_current_sensor(&this->current_sensor);
+        this->set_power_sensor(&this->power_sensor);
+        this->set_energy_sensor(&this->energy_sensor);
+        this->set_voltage_sensor(&this->voltage_sensor);
     }
 
     TestChargePoint(const TestChargePoint &) = delete;
@@ -22,6 +28,10 @@ class TestChargePoint : public ChargePoint {
 
     std::vector<QueuedMessage> &messages{this->messages_};
     BinarySensor online_sensor;
+    Sensor current_sensor;
+    Sensor power_sensor;
+    Sensor energy_sensor;
+    Sensor voltage_sensor;
     TextSensor protocol_sensor;
     TextSensor charger_info_sensor;
 };
@@ -205,6 +215,28 @@ int main() {
         assert_equal("online_after_heartbeat", charge_point.is_online(), true);
         assert_equal("heartbeat_response_count", charge_point.messages.size(), 1);
         assert_equal("heartbeat_response", charge_point.messages[0].payload, R"([3,"d8cc833a-0f43-441a-adbc-5e1f1869f067",{"currentTime":"1970-01-01T00:00:00Z"}])");
+    }
+
+    {
+        // MeterValues updates configured numeric sensors and replies with an empty result
+        TestChargePoint charge_point;
+        charge_point.on_connected("A99999");
+        charge_point.handle_ocpp_text(
+            R"([2,"meter-1","MeterValues",{"connectorId":1,"meterValue":[{"sampledValue":[{"value":"16.2","measurand":"Current.Import","unit":"A"},{"value":"3680","measurand":"Power.Active.Import","unit":"W"},{"value":"12345","measurand":"Energy.Active.Import.Register","unit":"Wh"}]}]}])");
+        assert_equal("meter_values_online", charge_point.is_online(), true);
+        assert_equal("meter_values_current_sensor", charge_point.current_sensor.state, 16.2f);
+        assert_equal("meter_values_power_sensor", charge_point.power_sensor.state, 3680.0f);
+        assert_equal("meter_values_energy_sensor", charge_point.energy_sensor.state, 12.345f);
+        assert_equal("meter_values_voltage_sensor_nan", std::isnan(charge_point.voltage_sensor.state), true);
+        assert_equal("meter_values_response_count", charge_point.messages.size(), 1);
+        assert_equal("meter_values_response", charge_point.messages[0].payload, R"([3,"meter-1",{}])");
+
+        charge_point.handle_ocpp_text(
+            R"([2,"meter-2","MeterValues",{"connectorId":1,"meterValue":[{"sampledValue":[{"value":"230.5","measurand":"Voltage","unit":"V"}]}]}])");
+        assert_equal("partial_meter_values_current_sensor_nan", std::isnan(charge_point.current_sensor.state), true);
+        assert_equal("partial_meter_values_power_sensor_nan", std::isnan(charge_point.power_sensor.state), true);
+        assert_equal("partial_meter_values_energy_sensor_nan", std::isnan(charge_point.energy_sensor.state), true);
+        assert_equal("partial_meter_values_voltage_sensor", charge_point.voltage_sensor.state, 230.5f);
     }
 
     {

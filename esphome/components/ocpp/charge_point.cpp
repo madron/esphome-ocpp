@@ -92,6 +92,7 @@ void ChargePoint::on_disconnected() {
         this->protocol_text_sensor_->publish_state("");
     if (this->charger_info_text_sensor_ != nullptr)
         this->charger_info_text_sensor_->publish_state("");
+    this->publish_meter_values_(MeterValues());
     this->set_online_(false);
 }
 
@@ -200,6 +201,12 @@ void ChargePoint::handle_ocpp_call_(const OcppMessage &call) {
     } else if (call.action == "Heartbeat") {
         this->set_online_(true);
         this->send_message_({this->protocol_.make_heartbeat_response(call.unique_id), OcppMessageType::CALL_RESULT,
+                             call.unique_id});
+    } else if (call.action == "MeterValues") {
+        this->set_online_(true);
+        const auto &meter_values = static_cast<const MeterValues &>(call);
+        this->publish_meter_values_(meter_values);
+        this->send_message_({this->protocol_.make_meter_values_response(call.unique_id), OcppMessageType::CALL_RESULT,
                              call.unique_id});
     } else if (call.action == "StatusNotification") {
         this->status_notification_pending_ = false;
@@ -411,6 +418,17 @@ void ChargePoint::publish_charger_info_(const BootNotification &boot_notificatio
         info += "firmware: " + boot_notification.firmware_version;
     }
     this->charger_info_text_sensor_->publish_state(info);
+}
+
+void ChargePoint::publish_meter_values_(const MeterValues &meter_values) {
+    if (this->current_sensor_ != nullptr)
+        this->current_sensor_->publish_state(meter_values.current);
+    if (this->power_sensor_ != nullptr)
+        this->power_sensor_->publish_state(meter_values.power);
+    if (this->energy_sensor_ != nullptr)
+        this->energy_sensor_->publish_state(meter_values.energy);
+    if (this->voltage_sensor_ != nullptr)
+        this->voltage_sensor_->publish_state(meter_values.voltage);
 }
 
 }  // namespace esphome::ocpp

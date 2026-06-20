@@ -1,12 +1,14 @@
 #include "assertions.cpp"
 #include "esphome/components/ocpp/message.h"
 
+#include <cmath>
 #include <string>
 
 using esphome::ocpp::OcppMessage;
 using esphome::ocpp::OcppMessageType;
 using esphome::ocpp::OcppCall;
 using esphome::ocpp::BootNotification;
+using esphome::ocpp::MeterValues;
 
 int main() {
     OcppMessage call(OcppMessageType::CALL, "call-1");
@@ -55,4 +57,21 @@ int main() {
     assert_equal("default_boot_notification_model", default_boot_notification.charge_point_model, std::string(""));
     assert_equal("default_boot_notification_vendor", default_boot_notification.charge_point_vendor, std::string(""));
     assert_equal("default_boot_notification_firmware", default_boot_notification.firmware_version, std::string(""));
+
+    MeterValues meter_values("meter-1", 16.0f, 3680.0f, 12.5f, 230.0f);
+    assert_equal("meter_values_message_type", static_cast<int>(meter_values.message_type_id), 2);
+    assert_equal("meter_values_unique_id", meter_values.unique_id, std::string("meter-1"));
+    assert_equal("meter_values_action", meter_values.action, std::string("MeterValues"));
+    assert_equal("meter_values_current", meter_values.current, 16.0f);
+    assert_equal("meter_values_power", meter_values.power, 3680.0f);
+    assert_equal("meter_values_energy", meter_values.energy, 12.5f);
+    assert_equal("meter_values_voltage", meter_values.voltage, 230.0f);
+
+    MeterValues default_meter_values;
+    assert_equal("default_meter_values_unique_id", default_meter_values.unique_id, std::string(""));
+    assert_equal("default_meter_values_action", default_meter_values.action, std::string("MeterValues"));
+    assert_equal("default_meter_values_current_nan", std::isnan(default_meter_values.current), true);
+    assert_equal("default_meter_values_power_nan", std::isnan(default_meter_values.power), true);
+    assert_equal("default_meter_values_energy_nan", std::isnan(default_meter_values.energy), true);
+    assert_equal("default_meter_values_voltage_nan", std::isnan(default_meter_values.voltage), true);
 }

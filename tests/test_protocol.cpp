@@ -2,12 +2,14 @@
 #include "esphome/components/ocpp/message.h"
 #include "esphome/components/ocpp/protocol.h"
 
+#include <cmath>
 #include <memory>
 #include <string>
 
 using esphome::ocpp::BootNotification;
 using esphome::ocpp::ChangeConfigurationResponse;
 using esphome::ocpp::GetConfigurationResponse;
+using esphome::ocpp::MeterValues;
 using esphome::ocpp::OcppMessage;
 using esphome::ocpp::OcppMessageType;
 using esphome::ocpp::OcppProtocol;
@@ -78,6 +80,24 @@ int main() {
     auto *change_configuration_response = dynamic_cast<ChangeConfigurationResponse *>(change_configuration_message.get());
     assert_equal("change_configuration_response_exists", change_configuration_response != nullptr, true);
     assert_equal("change_configuration_response_status", change_configuration_response->status, std::string("Rejected"));
+    std::unique_ptr<OcppMessage> meter_values_message = protocol.parse_message(
+        R"([2,"meter-1","MeterValues",{"connectorId":1,"meterValue":[{"timestamp":"2026-06-20T00:00:00Z","sampledValue":[{"value":"16.2","measurand":"Current.Import","unit":"A"},{"value":"3.68","measurand":"Power.Active.Import","unit":"kW"},{"value":"12345","measurand":"Energy.Active.Import.Register","unit":"Wh"},{"value":"230.5","measurand":"Voltage","unit":"V"}]}]}])"
+    );
+    auto *meter_values = dynamic_cast<MeterValues *>(meter_values_message.get());
+    assert_equal("meter_values_exists", meter_values != nullptr, true);
+    assert_equal("meter_values_current", meter_values->current, 16.2f);
+    assert_equal("meter_values_power", meter_values->power, 3680.0f);
+    assert_equal("meter_values_energy", meter_values->energy, 12.345f);
+    assert_equal("meter_values_voltage", meter_values->voltage, 230.5f);
+    std::unique_ptr<OcppMessage> partial_meter_values_message = protocol.parse_message(
+        R"([2,"meter-2","MeterValues",{"connectorId":1,"meterValue":[{"sampledValue":[{"value":"54321"},{"value":"240","measurand":"Voltage"}]}]}])"
+    );
+    auto *partial_meter_values = dynamic_cast<MeterValues *>(partial_meter_values_message.get());
+    assert_equal("partial_meter_values_exists", partial_meter_values != nullptr, true);
+    assert_equal("partial_meter_values_current_nan", std::isnan(partial_meter_values->current), true);
+    assert_equal("partial_meter_values_power_nan", std::isnan(partial_meter_values->power), true);
+    assert_equal("partial_meter_values_energy_default_measurand", partial_meter_values->energy, 54.321f);
+    assert_equal("partial_meter_values_voltage", partial_meter_values->voltage, 240.0f);
     assert_equal("get_configuration_request_unsupported_on_ocpp201", protocol.set_websocket_protocol("ocpp2.0.1"), true);
     assert_equal("change_configuration_request_ocpp201_empty",
                  protocol.make_change_configuration_request("change-config-meter-values-sampled-data",
@@ -88,4 +108,5 @@ int main() {
                  std::string(""));
     assert_equal("boot_response", protocol.make_boot_notification_response("boot-1"),
                  R"([3,"boot-1",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
+    assert_equal("meter_values_response", protocol.make_meter_values_response("meter-1"), R"([3,"meter-1",{}])");
 }
