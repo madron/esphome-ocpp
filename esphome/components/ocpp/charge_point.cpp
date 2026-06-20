@@ -45,6 +45,19 @@ void log_ocpp_debug_message(const std::string &connection_id, const char *direct
 
 }  // namespace
 
+void Connector::publish_meter_values(const MeterValues &meter_values) {
+    if (this->current_sensor_ != nullptr)
+        this->current_sensor_->publish_state(meter_values.current);
+    if (this->power_sensor_ != nullptr)
+        this->power_sensor_->publish_state(meter_values.power);
+    if (this->energy_sensor_ != nullptr)
+        this->energy_sensor_->publish_state(meter_values.energy);
+    if (this->voltage_sensor_ != nullptr)
+        this->voltage_sensor_->publish_state(meter_values.voltage);
+}
+
+void Connector::publish_unavailable() { this->publish_meter_values(MeterValues("", this->connector_id_)); }
+
 void ChargePoint::set_charge_point_id(std::string charge_point_id) {
     this->charge_point_id_ = std::move(charge_point_id);
     this->connection_id_ = this->charge_point_id_;
@@ -92,7 +105,10 @@ void ChargePoint::on_disconnected() {
         this->protocol_text_sensor_->publish_state("");
     if (this->charger_info_text_sensor_ != nullptr)
         this->charger_info_text_sensor_->publish_state("");
-    this->publish_meter_values_(MeterValues());
+    for (auto *connector : this->connectors_) {
+        if (connector != nullptr)
+            connector->publish_unavailable();
+    }
     this->set_online_(false);
 }
 
@@ -421,14 +437,21 @@ void ChargePoint::publish_charger_info_(const BootNotification &boot_notificatio
 }
 
 void ChargePoint::publish_meter_values_(const MeterValues &meter_values) {
-    if (this->current_sensor_ != nullptr)
-        this->current_sensor_->publish_state(meter_values.current);
-    if (this->power_sensor_ != nullptr)
-        this->power_sensor_->publish_state(meter_values.power);
-    if (this->energy_sensor_ != nullptr)
-        this->energy_sensor_->publish_state(meter_values.energy);
-    if (this->voltage_sensor_ != nullptr)
-        this->voltage_sensor_->publish_state(meter_values.voltage);
+    Connector *connector = this->find_connector_(meter_values.connector_id);
+    if (connector == nullptr) {
+        ESP_LOGW(TAG, "Ignoring MeterValues for unknown connector: charge_point='%s' connector_id=%u",
+                this->connection_id_.c_str(), static_cast<unsigned>(meter_values.connector_id));
+        return;
+    }
+    connector->publish_meter_values(meter_values);
+}
+
+Connector *ChargePoint::find_connector_(uint32_t connector_id) {
+    for (auto *connector : this->connectors_) {
+        if (connector != nullptr && connector->get_connector_id() == connector_id)
+            return connector;
+    }
+    return nullptr;
 }
 
 }  // namespace esphome::ocpp

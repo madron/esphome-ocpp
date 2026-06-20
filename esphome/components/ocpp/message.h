@@ -106,14 +106,16 @@ class MeterValues : public OcppCall {
     public:
         MeterValues(
             std::string unique_id = "",
+            uint32_t connector_id = 1,
             float current = NAN,
             float power = NAN,
             float energy = NAN,
             float voltage = NAN
         )
-            : OcppCall("MeterValues", std::move(unique_id)), current(current), power(power), energy(energy),
-              voltage(voltage) {}
+            : OcppCall("MeterValues", std::move(unique_id)), connector_id(connector_id), current(current), power(power),
+              energy(energy), voltage(voltage) {}
 
+        uint32_t connector_id;
         float current;
         float power;
         float energy;

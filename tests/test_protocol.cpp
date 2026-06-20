@@ -85,15 +85,17 @@ int main() {
     );
     auto *meter_values = dynamic_cast<MeterValues *>(meter_values_message.get());
     assert_equal("meter_values_exists", meter_values != nullptr, true);
+    assert_equal("meter_values_connector_id", meter_values->connector_id, 1U);
     assert_equal("meter_values_current", meter_values->current, 16.2f);
     assert_equal("meter_values_power", meter_values->power, 3680.0f);
     assert_equal("meter_values_energy", meter_values->energy, 12.345f);
     assert_equal("meter_values_voltage", meter_values->voltage, 230.5f);
     std::unique_ptr<OcppMessage> partial_meter_values_message = protocol.parse_message(
-        R"([2,"meter-2","MeterValues",{"connectorId":1,"meterValue":[{"sampledValue":[{"value":"54321"},{"value":"240","measurand":"Voltage"}]}]}])"
+        R"([2,"meter-2","MeterValues",{"meterValue":[{"sampledValue":[{"value":"54321"},{"value":"240","measurand":"Voltage"}]}]}])"
     );
     auto *partial_meter_values = dynamic_cast<MeterValues *>(partial_meter_values_message.get());
     assert_equal("partial_meter_values_exists", partial_meter_values != nullptr, true);
+    assert_equal("partial_meter_values_default_connector_id", partial_meter_values->connector_id, 1U);
     assert_equal("partial_meter_values_current_nan", std::isnan(partial_meter_values->current), true);
     assert_equal("partial_meter_values_power_nan", std::isnan(partial_meter_values->power), true);
     assert_equal("partial_meter_values_energy_default_measurand", partial_meter_values->energy, 54.321f);

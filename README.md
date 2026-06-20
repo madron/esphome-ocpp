@@ -39,19 +39,21 @@ ocpp:
       startup_notifications_delay: 300
       charger_info:
         name: Garage Charger Info
-      current:
-        name: Garage Current
-      power:
-        name: Garage Power
-      energy:
-        name: Garage Energy
-      voltage:
-        name: Garage Voltage
+      connectors:
+        - connector_id: 1
+          current:
+            name: Garage Current
+          power:
+            name: Garage Power
+          energy:
+            name: Garage Energy
+          voltage:
+            name: Garage Voltage
 ```
 
 `debug_ocpp_messages` is optional per `charge_point`. When enabled, raw OCPP RX/TX payloads for that charger are logged at the ESPHome debug log level.
 
-The `current`, `power`, `energy`, and `voltage` sensors are populated from OCPP `MeterValues` messages. The component asks the charger to report `Current.Import`, `Power.Active.Import`, `Energy.Active.Import.Register`, and `Voltage`. If the charger omits one of those values, the corresponding sensor is published as unavailable/unknown instead of `0` so unsupported values are not confused with real zero measurements. Energy is exposed in `kWh`.
+Connector `current`, `power`, `energy`, and `voltage` sensors are populated from OCPP `MeterValues` messages whose `connectorId` matches the connector's `connector_id`. The component asks the charger to report `Current.Import`, `Power.Active.Import`, `Energy.Active.Import.Register`, and `Voltage`. If the charger omits one of those values, the corresponding sensor is published as unavailable/unknown instead of `0` so unsupported values are not confused with real zero measurements. Energy is exposed in `kWh`.
 
 ### Charge point options
 
@@ -59,15 +61,23 @@ The `current`, `power`, `energy`, and `voltage` sensors are populated from OCPP 
 | ---                                      | --- |
 | `id` (Required)                          | ESPHome ID for this charge point. |
 | `charge_point_id` (Optional)             | OCPP/WebSocket identity expected from the charger. When omitted, the first free dynamic charge point slot is used. |
+| `connectors` (Optional)                  | List of OCPP connectors for this charge point. Defaults to one connector with `connector_id: 1`. Connector IDs must be unique within the charge point. |
 | `debug_ocpp_messages` (Optional)         | Logs raw OCPP RX/TX payloads at debug level. Defaults to `false`. |
-| `current` (Optional)                     | Sensor populated from `Current.Import` `MeterValues` in `A`. Missing values are published as unavailable/unknown. |
-| `power` (Optional)                       | Sensor populated from `Power.Active.Import` `MeterValues` in `W`. Missing values are published as unavailable/unknown. |
-| `energy` (Optional)                      | Sensor populated from `Energy.Active.Import.Register` `MeterValues` in `kWh`. OCPP `Wh` values are converted to `kWh`. Missing values are published as unavailable/unknown. |
-| `voltage` (Optional)                     | Sensor populated from `Voltage` `MeterValues` in `V`. Missing values are published as unavailable/unknown. |
 | `startup_notifications_delay` (Optional) | Delay in seconds before sending `TriggerMessage` requests for missing startup notifications. `BootNotification` and `StatusNotification` are tracked independently; if both are missing, `BootNotification` is requested first and `StatusNotification` after its reply. Defaults to `300`. Set to `0` to disable. |
 | `charger_info` (Optional)                | Text sensor that reports charger vendor, model, and firmware from `BootNotification`, and clears after disconnect. |
 | `online` (Optional)                      | Binary sensor that is `on` after `BootNotification`, `Heartbeat`, or `StatusNotification`, and `off` after disconnect. |
 | `protocol` (Optional)                    | Text sensor that reports the negotiated OCPP WebSocket protocol, and clears after disconnect. |
+
+### Connector options
+
+| Option                            | Description |
+| ---                               | --- |
+| `id` (Optional)                   | ESPHome internal ID for this connector. Usually omit this and let ESPHome generate it. |
+| `connector_id` (Optional)         | Numeric OCPP connector ID used in `MeterValues.connectorId`. Defaults to `1`. Must be unique within the charge point. |
+| `current` (Optional)              | Sensor populated from `Current.Import` `MeterValues` in `A`. Missing values are published as unavailable/unknown. |
+| `power` (Optional)                | Sensor populated from `Power.Active.Import` `MeterValues` in `W`. Missing values are published as unavailable/unknown. |
+| `energy` (Optional)               | Sensor populated from `Energy.Active.Import.Register` `MeterValues` in `kWh`. OCPP `Wh` values are converted to `kWh`. Missing values are published as unavailable/unknown. |
+| `voltage` (Optional)              | Sensor populated from `Voltage` `MeterValues` in `V`. Missing values are published as unavailable/unknown. |
 
 ### Charger configuration
 

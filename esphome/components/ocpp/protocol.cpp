@@ -70,6 +70,15 @@ float json_float_or_nan(const JsonVariant &value) {
     return parsed;
 }
 
+uint32_t json_uint_or_default(const JsonVariant &value, uint32_t default_value) {
+    if (!value.is<int>())
+        return default_value;
+    int raw = value.as<int>();
+    if (raw < 0)
+        return default_value;
+    return static_cast<uint32_t>(raw);
+}
+
 float apply_metric_multiplier(float value, const JsonObject &sampled_value) {
     JsonVariant unit_of_measure = sampled_value["unitOfMeasure"];
     if (!unit_of_measure.is<JsonObject>())
@@ -186,6 +195,7 @@ std::unique_ptr<OcppMessage> parse_change_configuration_response(const std::stri
 }
 
 std::unique_ptr<OcppMessage> parse_meter_values(const std::string &unique_id, const JsonObject &payload) {
+    uint32_t connector_id = json_uint_or_default(payload["connectorId"], 1);
     float current = NAN;
     float power = NAN;
     float energy = NAN;
@@ -225,7 +235,7 @@ std::unique_ptr<OcppMessage> parse_meter_values(const std::string &unique_id, co
         }
     }
 
-    return std::unique_ptr<OcppMessage>(new MeterValues(unique_id, current, power, energy, voltage));
+    return std::unique_ptr<OcppMessage>(new MeterValues(unique_id, connector_id, current, power, energy, voltage));
 }
 
 }  // namespace

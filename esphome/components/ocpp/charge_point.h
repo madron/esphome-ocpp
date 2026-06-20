@@ -21,6 +21,27 @@ struct QueuedMessage {
     uint32_t sent_at_millis{0};
 };
 
+class Connector {
+    public:
+        static constexpr uint32_t DEFAULT_CONNECTOR_ID = 1;
+
+        void set_connector_id(uint32_t connector_id) { this->connector_id_ = connector_id; }
+        uint32_t get_connector_id() const { return this->connector_id_; }
+        void set_current_sensor(sensor::Sensor *current_sensor) { this->current_sensor_ = current_sensor; }
+        void set_power_sensor(sensor::Sensor *power_sensor) { this->power_sensor_ = power_sensor; }
+        void set_energy_sensor(sensor::Sensor *energy_sensor) { this->energy_sensor_ = energy_sensor; }
+        void set_voltage_sensor(sensor::Sensor *voltage_sensor) { this->voltage_sensor_ = voltage_sensor; }
+        void publish_meter_values(const MeterValues &meter_values);
+        void publish_unavailable();
+
+    protected:
+        uint32_t connector_id_{DEFAULT_CONNECTOR_ID};
+        sensor::Sensor *current_sensor_{nullptr};
+        sensor::Sensor *power_sensor_{nullptr};
+        sensor::Sensor *energy_sensor_{nullptr};
+        sensor::Sensor *voltage_sensor_{nullptr};
+};
+
 class ChargePoint {
     public:
         static constexpr size_t DEFAULT_MAX_QUEUED_MESSAGES = 8;
@@ -48,10 +69,6 @@ class ChargePoint {
         void set_charger_info_text_sensor(text_sensor::TextSensor *charger_info_text_sensor) {
             this->charger_info_text_sensor_ = charger_info_text_sensor;
         }
-        void set_current_sensor(sensor::Sensor *current_sensor) { this->current_sensor_ = current_sensor; }
-        void set_power_sensor(sensor::Sensor *power_sensor) { this->power_sensor_ = power_sensor; }
-        void set_energy_sensor(sensor::Sensor *energy_sensor) { this->energy_sensor_ = energy_sensor; }
-        void set_voltage_sensor(sensor::Sensor *voltage_sensor) { this->voltage_sensor_ = voltage_sensor; }
         void set_debug_ocpp_messages(bool debug_ocpp_messages);
         bool get_debug_ocpp_messages() const;
         void set_startup_notifications_delay(uint32_t startup_notifications_delay_ms);
@@ -64,6 +81,7 @@ class ChargePoint {
         }
         void set_max_queued_messages(size_t max_queued_messages) { this->max_queued_messages_ = max_queued_messages; }
         size_t get_max_queued_messages() const { return this->max_queued_messages_; }
+        void add_connector(Connector *connector) { this->connectors_.push_back(connector); }
 
         void on_connected(std::string connection_id, uint32_t now_millis = 0);
         void on_connected(std::string connection_id, std::string protocol, uint32_t now_millis = 0);
@@ -90,6 +108,7 @@ class ChargePoint {
         void set_online_(bool online);
         void publish_charger_info_(const BootNotification &boot_notification);
         void publish_meter_values_(const MeterValues &meter_values);
+        Connector *find_connector_(uint32_t connector_id);
 
         std::string charge_point_id_;
         std::string connection_id_;
@@ -101,12 +120,9 @@ class ChargePoint {
         std::string meter_values_sampled_data_;
         std::string connector_switch_3_to_1_phase_supported_;
         binary_sensor::BinarySensor *online_binary_sensor_{nullptr};
-        sensor::Sensor *current_sensor_{nullptr};
-        sensor::Sensor *power_sensor_{nullptr};
-        sensor::Sensor *energy_sensor_{nullptr};
-        sensor::Sensor *voltage_sensor_{nullptr};
         text_sensor::TextSensor *protocol_text_sensor_{nullptr};
         text_sensor::TextSensor *charger_info_text_sensor_{nullptr};
+        std::vector<Connector *> connectors_;
         size_t max_queued_messages_{DEFAULT_MAX_QUEUED_MESSAGES};
         bool debug_ocpp_messages_{false};
         uint32_t startup_notifications_delay_ms_{DEFAULT_STARTUP_NOTIFICATIONS_DELAY_MS};

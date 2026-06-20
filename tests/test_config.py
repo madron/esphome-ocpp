@@ -105,7 +105,19 @@ class ChargePointSchemaTests(unittest.TestCase):
 
         self.assertIn("charger_info", validated["charge_points"][0])
 
-    def test_meter_value_sensors_enabled(self):
+    def test_default_connector_id(self):
+        validated = CONFIG_SCHEMA(
+            {
+                "id": "ocpp_id",
+                "charge_points": [{"id": "garage_left", "charge_point_id": "A99999"}],
+            }
+        )
+
+        connectors = validated["charge_points"][0]["connectors"]
+        self.assertEqual(len(connectors), 1)
+        self.assertEqual(connectors[0]["connector_id"], 1)
+
+    def test_connector_meter_value_sensors_enabled(self):
         validated = CONFIG_SCHEMA(
             {
                 "id": "ocpp_id",
@@ -113,20 +125,56 @@ class ChargePointSchemaTests(unittest.TestCase):
                     {
                         "id": "garage_left",
                         "charge_point_id": "A99999",
-                        "current": {"name": "Garage Current"},
-                        "power": {"name": "Garage Power"},
-                        "energy": {"name": "Garage Energy"},
-                        "voltage": {"name": "Garage Voltage"},
+                        "connectors": [
+                            {
+                                "connector_id": 2,
+                                "current": {"name": "Garage Current"},
+                                "power": {"name": "Garage Power"},
+                                "energy": {"name": "Garage Energy"},
+                                "voltage": {"name": "Garage Voltage"},
+                            }
+                        ],
                     }
                 ],
             }
         )
 
-        charge_point = validated["charge_points"][0]
-        self.assertIn("current", charge_point)
-        self.assertIn("power", charge_point)
-        self.assertIn("energy", charge_point)
-        self.assertIn("voltage", charge_point)
+        connector = validated["charge_points"][0]["connectors"][0]
+        self.assertEqual(connector["connector_id"], 2)
+        self.assertIn("current", connector)
+        self.assertIn("power", connector)
+        self.assertIn("energy", connector)
+        self.assertIn("voltage", connector)
+
+    def test_duplicate_connector_id_rejected(self):
+        with self.assertRaises(Exception):
+            CONFIG_SCHEMA(
+                {
+                    "id": "ocpp_id",
+                    "charge_points": [
+                        {
+                            "id": "garage_left",
+                            "charge_point_id": "A99999",
+                            "connectors": [{"connector_id": 1}, {"connector_id": 1}],
+                        }
+                    ],
+                }
+            )
+
+    def test_charge_point_level_meter_sensor_rejected(self):
+        with self.assertRaises(Exception):
+            CONFIG_SCHEMA(
+                {
+                    "id": "ocpp_id",
+                    "charge_points": [
+                        {
+                            "id": "garage_left",
+                            "charge_point_id": "A99999",
+                            "current": {"name": "Garage Current"},
+                        }
+                    ],
+                }
+            )
 
     def test_ocpp_2_0_1_force_protocol_enabled(self):
         validated = CONFIG_SCHEMA(
