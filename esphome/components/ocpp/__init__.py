@@ -43,6 +43,7 @@ CONF_VOLTAGE_L2 = "voltage_l2"
 CONF_VOLTAGE_L3 = "voltage_l3"
 
 SUPPORTED_PROTOCOLS = ["ocpp1.6", "ocpp2.0.1"]
+MIN_CHARGING_PROFILE_CURRENT = 6
 
 ocpp_ns = cg.esphome_ns.namespace("ocpp")
 OcppComponent = ocpp_ns.class_("OcppComponent", cg.Component)
@@ -241,6 +242,12 @@ def validate_charge_points(config):
     charge_point_ids = set()
     for charge_point in config[CONF_CHARGE_POINTS]:
         connector_ids = set()
+        minimum_max_current = MIN_CHARGING_PROFILE_CURRENT * len(charge_point[CONF_CONNECTORS])
+        if charge_point[CONF_MAX_CURRENT] < minimum_max_current:
+            raise cv.Invalid(
+                "max_current must be greater than or equal to "
+                f"{MIN_CHARGING_PROFILE_CURRENT} A times the number of connectors"
+            )
         for connector in charge_point[CONF_CONNECTORS]:
             if CONF_PHASES not in connector:
                 connector[CONF_PHASES] = charge_point[CONF_PHASES]

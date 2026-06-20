@@ -323,6 +323,37 @@ class ChargePointSchemaTests(unittest.TestCase):
                 }
             )
 
+    def test_max_current_must_allow_minimum_current_for_each_connector(self):
+        validated = CONFIG_SCHEMA(
+            {
+                "id": "ocpp_id",
+                "charge_points": [
+                    {
+                        "id": "garage_left",
+                        "charge_point_id": "A99999",
+                        "max_current": 12,
+                        "connectors": [{"connector_id": 1}, {"connector_id": 2}],
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(validated["charge_points"][0]["max_current"], 12)
+        with self.assertRaises(Exception):
+            CONFIG_SCHEMA(
+                {
+                    "id": "ocpp_id",
+                    "charge_points": [
+                        {
+                            "id": "garage_left",
+                            "charge_point_id": "A99999",
+                            "max_current": 10,
+                            "connectors": [{"connector_id": 1}, {"connector_id": 2}],
+                        }
+                    ],
+                }
+            )
+
     def test_duplicate_connector_id_rejected(self):
         with self.assertRaises(Exception):
             CONFIG_SCHEMA(

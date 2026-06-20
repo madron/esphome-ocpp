@@ -107,7 +107,7 @@ Connector `status` and `error` text sensors are populated from `StatusNotificati
 | Option                                   | Description |
 | ---                                      | --- |
 | `id` (Required)                          | ESPHome ID for this charge point. |
-| `max_current` (Required)                 | Maximum configured current for this charge point in `A`. Must be at least `6`; no upper limit is enforced. |
+| `max_current` (Required)                 | Maximum configured current for this charge point in `A`. Must be at least `6 A` times the number of configured connectors; no upper limit is enforced. |
 | `charge_point_id` (Optional)             | OCPP/WebSocket identity expected from the charger. When omitted, the first free dynamic charge point slot is used. |
 | `connectors` (Optional)                  | List of OCPP connectors for this charge point. Defaults to one connector with `connector_id: 1`. Connector IDs must be unique within the charge point. |
 | `debug_ocpp_messages` (Optional)         | Logs raw OCPP RX/TX payloads at debug level. Defaults to `false`. |
