@@ -72,6 +72,53 @@ class BootNotification : public OcppCall {
         std::string firmware_version;
 };
 
+class Authorize : public OcppCall {
+    public:
+        Authorize(
+            std::string unique_id = "",
+            std::string id_tag = ""
+        )
+            : OcppCall(
+                  "Authorize",
+                  std::move(unique_id)
+              ),
+              id_tag(std::move(id_tag)) {}
+
+        std::string id_tag;
+};
+
+class StartTransaction : public OcppCall {
+    public:
+        StartTransaction(
+            std::string unique_id = "",
+            uint32_t connector_id = 1,
+            std::string id_tag = ""
+        )
+            : OcppCall(
+                  "StartTransaction",
+                  std::move(unique_id)
+              ),
+              connector_id(connector_id), id_tag(std::move(id_tag)) {}
+
+        uint32_t connector_id;
+        std::string id_tag;
+};
+
+class StopTransaction : public OcppCall {
+    public:
+        StopTransaction(
+            std::string unique_id = "",
+            uint32_t transaction_id = 0
+        )
+            : OcppCall(
+                  "StopTransaction",
+                  std::move(unique_id)
+              ),
+              transaction_id(transaction_id) {}
+
+        uint32_t transaction_id;
+};
+
 class GetConfigurationResponse : public OcppMessage {
     public:
         GetConfigurationResponse(

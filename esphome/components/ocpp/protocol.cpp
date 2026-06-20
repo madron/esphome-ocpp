@@ -160,6 +160,22 @@ std::unique_ptr<OcppMessage> parse_boot_notification_2_0_1(const std::string &un
     ));
 }
 
+std::unique_ptr<OcppMessage> parse_authorize(const std::string &unique_id, const JsonObject &payload) {
+    return std::unique_ptr<OcppMessage>(new Authorize(unique_id, json_string_or_empty(payload["idTag"])));
+}
+
+std::unique_ptr<OcppMessage> parse_start_transaction(const std::string &unique_id, const JsonObject &payload) {
+    return std::unique_ptr<OcppMessage>(new StartTransaction(
+        unique_id,
+        json_uint_or_default(payload["connectorId"], 1),
+        json_string_or_empty(payload["idTag"])
+    ));
+}
+
+std::unique_ptr<OcppMessage> parse_stop_transaction(const std::string &unique_id, const JsonObject &payload) {
+    return std::unique_ptr<OcppMessage>(new StopTransaction(unique_id, json_uint_or_default(payload["transactionId"], 0)));
+}
+
 std::unique_ptr<OcppMessage> parse_get_configuration_response(const std::string &unique_id, const JsonObject &payload) {
     std::string meter_value_sample_interval;
     std::string meter_values_sampled_data;
@@ -318,6 +334,12 @@ std::unique_ptr<OcppMessage> OcppProtocol::parse_message(const std::string &mess
             return parse_boot_notification_2_0_1(unique_id, payload);
         return parse_boot_notification_1_6(unique_id, payload);
     }
+    if (this->version_ == OcppProtocolVersion::OCPP_1_6 && action == "Authorize")
+        return parse_authorize(unique_id, payload);
+    if (this->version_ == OcppProtocolVersion::OCPP_1_6 && action == "StartTransaction")
+        return parse_start_transaction(unique_id, payload);
+    if (this->version_ == OcppProtocolVersion::OCPP_1_6 && action == "StopTransaction")
+        return parse_stop_transaction(unique_id, payload);
     if (action == "StatusNotification")
         return parse_status_notification(unique_id, payload);
     if (action == "MeterValues")
@@ -338,6 +360,12 @@ std::string OcppProtocol::make_get_configuration_request(const std::string &uniq
            "\"MeterValuesSampledData\",\"ConnectorSwitch3to1PhaseSupported\"]}]";
 }
 
+std::string OcppProtocol::make_authorize_response(const std::string &unique_id) const {
+    if (this->version_ != OcppProtocolVersion::OCPP_1_6)
+        return "";
+    return "[3,\"" + json_escape(unique_id) + "\",{\"idTagInfo\":{\"status\":\"Accepted\"}}]";
+}
+
 std::string OcppProtocol::make_boot_notification_response(const std::string &unique_id) const {
     return "[3,\"" + json_escape(unique_id) + "\",{\"currentTime\":\"" + CURRENT_TIME +
            "\",\"interval\":300,\"status\":\"Accepted\"}]";
@@ -351,7 +379,20 @@ std::string OcppProtocol::make_meter_values_response(const std::string &unique_i
     return "[3,\"" + json_escape(unique_id) + "\",{}]";
 }
 
+std::string OcppProtocol::make_start_transaction_response(const std::string &unique_id, uint32_t transaction_id) const {
+    if (this->version_ != OcppProtocolVersion::OCPP_1_6)
+        return "";
+    return "[3,\"" + json_escape(unique_id) + "\",{\"idTagInfo\":{\"status\":\"Accepted\"},\"transactionId\":" +
+           std::to_string(transaction_id) + "}]";
+}
+
 std::string OcppProtocol::make_status_notification_response(const std::string &unique_id) const {
+    return "[3,\"" + json_escape(unique_id) + "\",{}]";
+}
+
+std::string OcppProtocol::make_stop_transaction_response(const std::string &unique_id) const {
+    if (this->version_ != OcppProtocolVersion::OCPP_1_6)
+        return "";
     return "[3,\"" + json_escape(unique_id) + "\",{}]";
 }
 

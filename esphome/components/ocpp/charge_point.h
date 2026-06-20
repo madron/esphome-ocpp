@@ -33,6 +33,10 @@ class Connector {
         void set_voltage_sensor(sensor::Sensor *voltage_sensor) { this->voltage_sensor_ = voltage_sensor; }
         void set_status_text_sensor(text_sensor::TextSensor *status_text_sensor) { this->status_text_sensor_ = status_text_sensor; }
         void set_error_text_sensor(text_sensor::TextSensor *error_text_sensor) { this->error_text_sensor_ = error_text_sensor; }
+        bool has_active_transaction() const { return this->active_transaction_id_ != 0; }
+        uint32_t get_active_transaction_id() const { return this->active_transaction_id_; }
+        void set_active_transaction_id(uint32_t active_transaction_id) { this->active_transaction_id_ = active_transaction_id; }
+        void clear_active_transaction() { this->active_transaction_id_ = 0; }
         void publish_meter_values(const MeterValues &meter_values);
         void publish_status_notification(const StatusNotification &status_notification);
         void publish_unavailable();
@@ -45,6 +49,7 @@ class Connector {
         sensor::Sensor *voltage_sensor_{nullptr};
         text_sensor::TextSensor *status_text_sensor_{nullptr};
         text_sensor::TextSensor *error_text_sensor_{nullptr};
+        uint32_t active_transaction_id_{0};
 };
 
 class ChargePoint {
@@ -100,9 +105,12 @@ class ChargePoint {
         void handle_ocpp_message_(const OcppMessage &message);
         void handle_ocpp_call_(const OcppMessage &call);
         void handle_ocpp_call_reply_(const OcppMessage &message);
+        void handle_authorize_(const Authorize &authorize);
         void handle_change_configuration_reply_(const OcppMessage &message);
         void handle_get_configuration_response_(const GetConfigurationResponse &message);
+        void handle_start_transaction_(const StartTransaction &start_transaction);
         void handle_startup_notification_trigger_reply_(const OcppMessage &message);
+        void handle_stop_transaction_(const StopTransaction &stop_transaction);
         bool send_meter_value_sample_interval_change_request_();
         bool send_meter_values_sampled_data_change_request_();
         void send_get_configuration_request_();
@@ -115,6 +123,7 @@ class ChargePoint {
         void publish_meter_values_(const MeterValues &meter_values);
         void publish_status_notification_(const StatusNotification &status_notification);
         Connector *find_connector_(uint32_t connector_id);
+        Connector *find_connector_by_transaction_id_(uint32_t transaction_id);
 
         std::string charge_point_id_;
         std::string connection_id_;
@@ -139,6 +148,7 @@ class ChargePoint {
         bool connected_{false};
         bool online_{false};
         uint32_t connected_at_millis_{0};
+        uint32_t next_transaction_id_{1};
         ChangeConfigurationStage change_configuration_stage_{ChangeConfigurationStage::IDLE};
         size_t meter_values_sampled_data_fallback_index_{0};
 };

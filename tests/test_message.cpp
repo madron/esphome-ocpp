@@ -7,9 +7,12 @@
 using esphome::ocpp::OcppMessage;
 using esphome::ocpp::OcppMessageType;
 using esphome::ocpp::OcppCall;
+using esphome::ocpp::Authorize;
 using esphome::ocpp::BootNotification;
 using esphome::ocpp::MeterValues;
+using esphome::ocpp::StartTransaction;
 using esphome::ocpp::StatusNotification;
+using esphome::ocpp::StopTransaction;
 
 int main() {
     OcppMessage call(OcppMessageType::CALL, "call-1");
@@ -58,6 +61,25 @@ int main() {
     assert_equal("default_boot_notification_model", default_boot_notification.charge_point_model, std::string(""));
     assert_equal("default_boot_notification_vendor", default_boot_notification.charge_point_vendor, std::string(""));
     assert_equal("default_boot_notification_firmware", default_boot_notification.firmware_version, std::string(""));
+
+    Authorize authorize("authorize-1", "free");
+    assert_equal("authorize_message_type", static_cast<int>(authorize.message_type_id), 2);
+    assert_equal("authorize_unique_id", authorize.unique_id, std::string("authorize-1"));
+    assert_equal("authorize_action", authorize.action, std::string("Authorize"));
+    assert_equal("authorize_id_tag", authorize.id_tag, std::string("free"));
+
+    StartTransaction start_transaction("start-1", 2, "free");
+    assert_equal("start_transaction_message_type", static_cast<int>(start_transaction.message_type_id), 2);
+    assert_equal("start_transaction_unique_id", start_transaction.unique_id, std::string("start-1"));
+    assert_equal("start_transaction_action", start_transaction.action, std::string("StartTransaction"));
+    assert_equal("start_transaction_connector_id", start_transaction.connector_id, 2U);
+    assert_equal("start_transaction_id_tag", start_transaction.id_tag, std::string("free"));
+
+    StopTransaction stop_transaction("stop-1", 42);
+    assert_equal("stop_transaction_message_type", static_cast<int>(stop_transaction.message_type_id), 2);
+    assert_equal("stop_transaction_unique_id", stop_transaction.unique_id, std::string("stop-1"));
+    assert_equal("stop_transaction_action", stop_transaction.action, std::string("StopTransaction"));
+    assert_equal("stop_transaction_transaction_id", stop_transaction.transaction_id, 42U);
 
     StatusNotification status_notification("status-1", 2, "NoError", "Available");
     assert_equal("status_notification_message_type", static_cast<int>(status_notification.message_type_id), 2);

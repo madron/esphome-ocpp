@@ -60,6 +60,63 @@ class TestChargePoint : public ChargePoint {
 
 int main() {
     {
+        // Authorize accepts any idTag to let the charger continue with the transaction flow
+        TestChargePoint charge_point;
+        charge_point.on_connected("A99999");
+        charge_point.handle_ocpp_text(R"([2,"authorize-1","Authorize",{"idTag":"free"}])");
+        assert_equal("authorize_online", charge_point.is_online(), true);
+        assert_equal("authorize_response_count", charge_point.messages.size(), 1);
+        assert_equal("authorize_response", charge_point.messages[0].payload,
+                     R"([3,"authorize-1",{"idTagInfo":{"status":"Accepted"}}])");
+    }
+
+    {
+        // StartTransaction is accepted and tracked per connector
+        TestChargePoint charge_point;
+        charge_point.on_connected("A99999");
+        charge_point.handle_ocpp_text(
+            R"([2,"start-1","StartTransaction",{"connectorId":1,"idTag":"free","meterStart":123,"timestamp":"2026-06-20T00:00:00Z"}])"
+        );
+        assert_equal("start_transaction_online", charge_point.is_online(), true);
+        assert_equal("start_transaction_response_count", charge_point.messages.size(), 1);
+        assert_equal("start_transaction_response", charge_point.messages[0].payload,
+                     R"([3,"start-1",{"idTagInfo":{"status":"Accepted"},"transactionId":1}])");
+        assert_equal("start_transaction_connector_1_active_id", charge_point.connector.get_active_transaction_id(), 1U);
+
+        charge_point.handle_ocpp_text(
+            R"([2,"start-2","StartTransaction",{"connectorId":2,"idTag":"guest","meterStart":456,"timestamp":"2026-06-20T00:05:00Z"}])"
+        );
+        assert_equal("start_transaction_second_response_count", charge_point.messages.size(), 2);
+        assert_equal("start_transaction_second_response", charge_point.messages[1].payload,
+                     R"([3,"start-2",{"idTagInfo":{"status":"Accepted"},"transactionId":2}])");
+        assert_equal("start_transaction_connector_2_active_id", charge_point.second_connector.get_active_transaction_id(), 2U);
+    }
+
+    {
+        // StopTransaction clears the active transaction and disconnect also clears state
+        TestChargePoint charge_point;
+        charge_point.on_connected("A99999");
+        charge_point.handle_ocpp_text(
+            R"([2,"start-1","StartTransaction",{"connectorId":1,"idTag":"free","meterStart":123,"timestamp":"2026-06-20T00:00:00Z"}])"
+        );
+        assert_equal("stop_transaction_active_before_stop", charge_point.connector.get_active_transaction_id(), 1U);
+        charge_point.messages.clear();
+        charge_point.handle_ocpp_text(
+            R"([2,"stop-1","StopTransaction",{"transactionId":1,"meterStop":789,"timestamp":"2026-06-20T00:10:00Z"}])"
+        );
+        assert_equal("stop_transaction_response_count", charge_point.messages.size(), 1);
+        assert_equal("stop_transaction_response", charge_point.messages[0].payload, R"([3,"stop-1",{}])");
+        assert_equal("stop_transaction_active_after_stop", charge_point.connector.get_active_transaction_id(), 0U);
+
+        charge_point.handle_ocpp_text(
+            R"([2,"start-2","StartTransaction",{"connectorId":1,"idTag":"free","meterStart":800,"timestamp":"2026-06-20T00:20:00Z"}])"
+        );
+        assert_equal("disconnect_clears_transaction_before_disconnect", charge_point.connector.get_active_transaction_id(), 2U);
+        charge_point.on_disconnected();
+        assert_equal("disconnect_clears_transaction_after_disconnect", charge_point.connector.get_active_transaction_id(), 0U);
+    }
+
+    {
         TestChargePoint charge_point;
 
         assert_equal("set_charge_point_id", charge_point.get_charge_point_id(), "");

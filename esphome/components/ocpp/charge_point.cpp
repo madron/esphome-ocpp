@@ -67,6 +67,7 @@ void Connector::publish_status_notification(const StatusNotification &status_not
 }
 
 void Connector::publish_unavailable() {
+    this->clear_active_transaction();
     this->publish_meter_values(MeterValues("", this->connector_id_));
     this->publish_status_notification(StatusNotification("", this->connector_id_));
 }
@@ -231,6 +232,15 @@ void ChargePoint::handle_ocpp_call_(const OcppMessage &call) {
         this->set_online_(true);
         this->send_message_({this->protocol_.make_heartbeat_response(call.unique_id), OcppMessageType::CALL_RESULT,
                              call.unique_id});
+    } else if (this->protocol_.get_version() == OcppProtocolVersion::OCPP_1_6 && call.action == "Authorize") {
+        this->set_online_(true);
+        this->handle_authorize_(static_cast<const Authorize &>(call));
+    } else if (this->protocol_.get_version() == OcppProtocolVersion::OCPP_1_6 && call.action == "StartTransaction") {
+        this->set_online_(true);
+        this->handle_start_transaction_(static_cast<const StartTransaction &>(call));
+    } else if (this->protocol_.get_version() == OcppProtocolVersion::OCPP_1_6 && call.action == "StopTransaction") {
+        this->set_online_(true);
+        this->handle_stop_transaction_(static_cast<const StopTransaction &>(call));
     } else if (call.action == "MeterValues") {
         this->set_online_(true);
         const auto &meter_values = static_cast<const MeterValues &>(call);
@@ -254,12 +264,44 @@ void ChargePoint::handle_ocpp_call_(const OcppMessage &call) {
     }
 }
 
+void ChargePoint::handle_authorize_(const Authorize &authorize) {
+    this->send_message_({this->protocol_.make_authorize_response(authorize.unique_id), OcppMessageType::CALL_RESULT,
+                         authorize.unique_id});
+}
+
 void ChargePoint::handle_ocpp_call_reply_(const OcppMessage &message) {
     if (this->in_flight_call_ == nullptr)
         return;
     if (message.unique_id != this->in_flight_call_->unique_id)
         return;
     this->in_flight_call_.reset();
+}
+
+void ChargePoint::handle_start_transaction_(const StartTransaction &start_transaction) {
+    uint32_t transaction_id = this->next_transaction_id_++;
+    Connector *connector = this->find_connector_(start_transaction.connector_id);
+    if (connector == nullptr) {
+        ESP_LOGW(TAG, "Accepting StartTransaction for unknown connector: charge_point='%s' connector_id=%u",
+                this->connection_id_.c_str(), static_cast<unsigned>(start_transaction.connector_id));
+    } else {
+        connector->set_active_transaction_id(transaction_id);
+    }
+
+    this->send_message_({this->protocol_.make_start_transaction_response(start_transaction.unique_id, transaction_id),
+                         OcppMessageType::CALL_RESULT, start_transaction.unique_id});
+}
+
+void ChargePoint::handle_stop_transaction_(const StopTransaction &stop_transaction) {
+    Connector *connector = this->find_connector_by_transaction_id_(stop_transaction.transaction_id);
+    if (connector == nullptr) {
+        ESP_LOGW(TAG, "Accepting StopTransaction for unknown transaction: charge_point='%s' transaction_id=%u",
+                this->connection_id_.c_str(), static_cast<unsigned>(stop_transaction.transaction_id));
+    } else {
+        connector->clear_active_transaction();
+    }
+
+    this->send_message_({this->protocol_.make_stop_transaction_response(stop_transaction.unique_id),
+                         OcppMessageType::CALL_RESULT, stop_transaction.unique_id});
 }
 
 void ChargePoint::handle_get_configuration_response_(const GetConfigurationResponse &message) {
@@ -474,6 +516,14 @@ void ChargePoint::publish_status_notification_(const StatusNotification &status_
 Connector *ChargePoint::find_connector_(uint32_t connector_id) {
     for (auto *connector : this->connectors_) {
         if (connector != nullptr && connector->get_connector_id() == connector_id)
+            return connector;
+    }
+    return nullptr;
+}
+
+Connector *ChargePoint::find_connector_by_transaction_id_(uint32_t transaction_id) {
+    for (auto *connector : this->connectors_) {
+        if (connector != nullptr && connector->get_active_transaction_id() == transaction_id)
             return connector;
     }
     return nullptr;

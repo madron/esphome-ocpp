@@ -14,7 +14,10 @@ using esphome::ocpp::OcppMessage;
 using esphome::ocpp::OcppMessageType;
 using esphome::ocpp::OcppProtocol;
 using esphome::ocpp::OcppProtocolVersion;
+using esphome::ocpp::Authorize;
+using esphome::ocpp::StartTransaction;
 using esphome::ocpp::StatusNotification;
+using esphome::ocpp::StopTransaction;
 
 int main() {
     OcppProtocol protocol;
@@ -64,6 +67,25 @@ int main() {
                  R"([2,"change-config-meter-values-sampled-data","ChangeConfiguration",{"key":"MeterValuesSampledData","value":"Current.Import,Power.Active.Import"}])");
     assert_equal("get_configuration_request", protocol.make_get_configuration_request("get-configuration"),
                  R"([2,"get-configuration","GetConfiguration",{"key":["MeterValueSampleInterval","MeterValuesSampledData","ConnectorSwitch3to1PhaseSupported"]}])");
+    std::unique_ptr<OcppMessage> authorize_message = protocol.parse_message(
+        R"([2,"authorize-1","Authorize",{"idTag":"free"}])"
+    );
+    auto *authorize = dynamic_cast<Authorize *>(authorize_message.get());
+    assert_equal("authorize_exists", authorize != nullptr, true);
+    assert_equal("authorize_id_tag", authorize->id_tag, std::string("free"));
+    std::unique_ptr<OcppMessage> start_transaction_message = protocol.parse_message(
+        R"([2,"start-1","StartTransaction",{"connectorId":2,"idTag":"free","meterStart":123,"timestamp":"2026-06-20T00:00:00Z"}])"
+    );
+    auto *start_transaction = dynamic_cast<StartTransaction *>(start_transaction_message.get());
+    assert_equal("start_transaction_exists", start_transaction != nullptr, true);
+    assert_equal("start_transaction_connector_id", start_transaction->connector_id, 2U);
+    assert_equal("start_transaction_id_tag", start_transaction->id_tag, std::string("free"));
+    std::unique_ptr<OcppMessage> stop_transaction_message = protocol.parse_message(
+        R"([2,"stop-1","StopTransaction",{"transactionId":9,"meterStop":456,"timestamp":"2026-06-20T00:15:00Z"}])"
+    );
+    auto *stop_transaction = dynamic_cast<StopTransaction *>(stop_transaction_message.get());
+    assert_equal("stop_transaction_exists", stop_transaction != nullptr, true);
+    assert_equal("stop_transaction_id", stop_transaction->transaction_id, 9U);
     std::unique_ptr<OcppMessage> get_configuration_message = protocol.parse_message(
         R"([3,"get-configuration",{"configurationKey":[{"key":"MeterValueSampleInterval","readonly":false,"value":"5"},{"key":"MeterValuesSampledData","readonly":false,"value":"Power.Active.Import,Current.Import,Voltage"},{"key":"ConnectorSwitch3to1PhaseSupported","readonly":true,"value":"false"}]}])"
     );
@@ -127,7 +149,12 @@ int main() {
     assert_equal("ocpp201_status_notification_status", ocpp201_status_notification->status, std::string("Faulted"));
     assert_equal("boot_response", protocol.make_boot_notification_response("boot-1"),
                  R"([3,"boot-1",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
+    assert_equal("authorize_response", protocol.make_authorize_response("authorize-1"),
+                 R"([3,"authorize-1",{"idTagInfo":{"status":"Accepted"}}])");
     assert_equal("meter_values_response", protocol.make_meter_values_response("meter-1"), R"([3,"meter-1",{}])");
+    assert_equal("start_transaction_response", protocol.make_start_transaction_response("start-1", 7),
+                 R"([3,"start-1",{"idTagInfo":{"status":"Accepted"},"transactionId":7}])");
     assert_equal("status_notification_response", protocol.make_status_notification_response("status-1"),
                  R"([3,"status-1",{}])");
+    assert_equal("stop_transaction_response", protocol.make_stop_transaction_response("stop-1"), R"([3,"stop-1",{}])");
 }
