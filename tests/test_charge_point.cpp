@@ -9,9 +9,11 @@ using esphome::ocpp::ChargePoint;
 using esphome::ocpp::Connector;
 using esphome::ocpp::CurrentControl;
 using esphome::ocpp::CurrentLimit;
+using esphome::ocpp::MeterValues;
 using esphome::ocpp::OcppMessage;
 using esphome::ocpp::OcppMessageType;
 using esphome::ocpp::QueuedMessage;
+using esphome::ocpp::SampledValue;
 using esphome::ocpp::StatusNotification;
 using esphome::binary_sensor::BinarySensor;
 using esphome::sensor::Sensor;
@@ -489,6 +491,33 @@ int main() {
         assert_equal("connector_without_sensor_faulted_plugged_unchanged", connector_without_sensor.is_plugged(), true);
         connector_without_sensor.publish_status_notification(StatusNotification("", 1, "NoError", "Available"));
         assert_equal("connector_without_sensor_available_unplugged", connector_without_sensor.is_plugged(), false);
+    }
+
+    {
+        // Active phase inference is bound to plugged/unplugged transitions, not transaction lifetime
+        Connector connector;
+        Sensor active_phases_sensor;
+        connector.set_phases(3);
+        connector.set_active_phases_sensor(&active_phases_sensor);
+        MeterValues one_phase_meter_values(
+            "", 1,
+            {SampledValue(10.0f, "Current.Import", "A"), SampledValue(2300.0f, "Power.Active.Import", "W"),
+             SampledValue(230.0f, "Voltage", "V")});
+
+        connector.publish_meter_values("", one_phase_meter_values);
+        assert_equal("active_phases_not_latched_before_plugged", std::isnan(connector.get_active_phases()), true);
+
+        connector.publish_status_notification(StatusNotification("", 1, "NoError", "Preparing"));
+        connector.publish_meter_values("", one_phase_meter_values);
+        assert_equal("active_phases_latched_after_plugged", connector.get_active_phases(), 1.0f);
+        connector.set_active_transaction_id(1);
+        assert_equal("active_phases_kept_after_start_transaction", connector.get_active_phases(), 1.0f);
+        connector.clear_active_transaction();
+        assert_equal("active_phases_kept_after_stop_transaction", connector.get_active_phases(), 1.0f);
+
+        connector.publish_status_notification(StatusNotification("", 1, "NoError", "Available"));
+        assert_equal("active_phases_reset_after_unplugged", std::isnan(connector.get_active_phases()), true);
+        assert_equal("active_phases_sensor_reset_after_unplugged", std::isnan(active_phases_sensor.state), true);
     }
 
     {

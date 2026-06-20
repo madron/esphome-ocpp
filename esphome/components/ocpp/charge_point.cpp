@@ -133,7 +133,6 @@ float Connector::clamp_current_limit_(float value) const {
 
 void Connector::clear_active_transaction() {
     this->active_transaction_id_ = 0;
-    this->reset_active_phases();
 }
 
 void Connector::reset_active_phases() {
@@ -142,13 +141,25 @@ void Connector::reset_active_phases() {
         this->active_phases_sensor_->publish_state(NAN);
 }
 
+void Connector::set_plugged_(bool plugged) {
+    bool changed = this->plugged_ != plugged;
+    this->plugged_ = plugged;
+    if (changed)
+        this->reset_active_phases();
+    if (this->plugged_binary_sensor_ != nullptr)
+        this->plugged_binary_sensor_->publish_state(plugged);
+}
+
 void Connector::publish_meter_values(const std::string &connection_id, const MeterValues &meter_values) {
     MeterValues derived_meter_values = meter_values;
-    derived_meter_values.calculate_phase_values(this->phases_, this->phase_voltage_, this->active_phases_);
-    if (std::isnan(this->active_phases_) && !std::isnan(derived_meter_values.active_phases))
-        this->active_phases_ = derived_meter_values.active_phases;
-    if (!std::isnan(this->active_phases_) && derived_meter_values.active_phases != this->active_phases_)
-        derived_meter_values.calculate_phase_values(this->phases_, this->phase_voltage_, this->active_phases_);
+    float latched_active_phases = this->plugged_ ? this->active_phases_ : NAN;
+    derived_meter_values.calculate_phase_values(this->phases_, this->phase_voltage_, latched_active_phases);
+    if (this->plugged_) {
+        if (std::isnan(this->active_phases_) && !std::isnan(derived_meter_values.active_phases))
+            this->active_phases_ = derived_meter_values.active_phases;
+        if (!std::isnan(this->active_phases_) && derived_meter_values.active_phases != this->active_phases_)
+            derived_meter_values.calculate_phase_values(this->phases_, this->phase_voltage_, this->active_phases_);
+    }
 
     if (this->log_meter_values_ && !connection_id.empty()) {
         std::string summary = derived_meter_values.sampled_values_summary();
@@ -181,8 +192,6 @@ void Connector::publish_meter_values(const std::string &connection_id, const Met
 }
 
 void Connector::publish_status_notification(const StatusNotification &status_notification) {
-    if (status_notification.status == "Available" || status_notification.status == "Unavailable")
-        this->reset_active_phases();
     if (this->status_text_sensor_ != nullptr)
         this->status_text_sensor_->publish_state(status_notification.status);
     std::string error_code = status_notification.error_code;
@@ -191,15 +200,13 @@ void Connector::publish_status_notification(const StatusNotification &status_not
     if (this->error_text_sensor_ != nullptr)
         this->error_text_sensor_->publish_state(error_code);
     bool plugged = false;
-    if (status_notification_to_plugged(status_notification.status, &plugged)) {
-        this->plugged_ = plugged;
-        if (this->plugged_binary_sensor_ != nullptr)
-            this->plugged_binary_sensor_->publish_state(plugged);
-    }
+    if (status_notification_to_plugged(status_notification.status, &plugged))
+        this->set_plugged_(plugged);
 }
 
 void Connector::publish_unavailable() {
     this->clear_active_transaction();
+    this->reset_active_phases();
     this->publish_meter_values("", MeterValues("", this->connector_id_));
     this->publish_status_notification(StatusNotification("", this->connector_id_));
 }

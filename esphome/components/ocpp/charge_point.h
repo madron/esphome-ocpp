@@ -64,10 +64,7 @@ class Connector {
         bool is_plugged() const { return this->plugged_; }
         bool has_active_transaction() const { return this->active_transaction_id_ != 0; }
         uint32_t get_active_transaction_id() const { return this->active_transaction_id_; }
-        void set_active_transaction_id(uint32_t active_transaction_id) {
-            this->active_transaction_id_ = active_transaction_id;
-            this->reset_active_phases();
-        }
+        void set_active_transaction_id(uint32_t active_transaction_id) { this->active_transaction_id_ = active_transaction_id; }
         void clear_active_transaction();
         void reset_active_phases();
         void set_current_limit(float current_limit);
@@ -81,6 +78,7 @@ class Connector {
     protected:
         float clamp_current_(float value) const;
         float clamp_current_limit_(float value) const;
+        void set_plugged_(bool plugged);
 
         uint32_t connector_id_{DEFAULT_CONNECTOR_ID};
         uint8_t phases_{1};
