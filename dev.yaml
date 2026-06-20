@@ -121,6 +121,7 @@ ocpp:
       connectors:
         - id: garage_1
           connector_id: 1
+          log_meter_values: true
           status:
             name: garage_status
           error:

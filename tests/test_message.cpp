@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <string>
+#include <vector>
 
 using esphome::ocpp::OcppMessage;
 using esphome::ocpp::OcppMessageType;
@@ -10,6 +11,7 @@ using esphome::ocpp::OcppCall;
 using esphome::ocpp::Authorize;
 using esphome::ocpp::BootNotification;
 using esphome::ocpp::MeterValues;
+using esphome::ocpp::SampledValue;
 using esphome::ocpp::StartTransaction;
 using esphome::ocpp::StatusNotification;
 using esphome::ocpp::StopTransaction;
@@ -96,7 +98,13 @@ int main() {
     assert_equal("default_status_notification_error_code", default_status_notification.error_code, std::string(""));
     assert_equal("default_status_notification_status", default_status_notification.status, std::string(""));
 
-    MeterValues meter_values("meter-1", 2, 16.0f, 3680.0f, 12.5f, 230.0f);
+    std::vector<SampledValue> sampled_values = {
+        SampledValue(16.0f, "Current.Import", "A", "L1"),
+        SampledValue(3.68f, "Power.Active.Import", "kW"),
+        SampledValue(12500.0f, "Energy.Active.Import.Register", "Wh"),
+        SampledValue(230.0f, "Voltage", "V", "L1"),
+    };
+    MeterValues meter_values("meter-1", 2, sampled_values);
     assert_equal("meter_values_message_type", static_cast<int>(meter_values.message_type_id), 2);
     assert_equal("meter_values_unique_id", meter_values.unique_id, std::string("meter-1"));
     assert_equal("meter_values_action", meter_values.action, std::string("MeterValues"));
@@ -105,6 +113,10 @@ int main() {
     assert_equal("meter_values_power", meter_values.power, 3680.0f);
     assert_equal("meter_values_energy", meter_values.energy, 12.5f);
     assert_equal("meter_values_voltage", meter_values.voltage, 230.0f);
+    assert_equal("meter_values_sample_count", meter_values.sampled_values.size(), 4U);
+    assert_equal("meter_values_first_phase", meter_values.sampled_values[0].phase, std::string("L1"));
+    assert_equal("meter_values_summary", meter_values.sampled_values_summary(),
+                 std::string("Current: L1=16 A - Power: 3.68 kW - Energy: 12500 Wh - Voltage: L1=230 V"));
 
     MeterValues default_meter_values;
     assert_equal("default_meter_values_unique_id", default_meter_values.unique_id, std::string(""));
@@ -114,4 +126,6 @@ int main() {
     assert_equal("default_meter_values_power_nan", std::isnan(default_meter_values.power), true);
     assert_equal("default_meter_values_energy_nan", std::isnan(default_meter_values.energy), true);
     assert_equal("default_meter_values_voltage_nan", std::isnan(default_meter_values.voltage), true);
+    assert_equal("default_meter_values_sample_count", default_meter_values.sampled_values.size(), 0U);
+    assert_equal("default_meter_values_summary", default_meter_values.sampled_values_summary(), std::string(""));
 }

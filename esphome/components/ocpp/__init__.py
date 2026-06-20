@@ -19,6 +19,7 @@ CONF_ENERGY = "energy"
 CONF_ERROR = "error"
 CONF_FORCE_PROTOCOL = "force_protocol"
 CONF_CHARGER_INFO = "charger_info"
+CONF_LOG_METER_VALUES = "log_meter_values"
 CONF_MAX_CURRENT = "max_current"
 CONF_ONLINE = "online"
 CONF_POWER = "power"
@@ -65,6 +66,7 @@ CONNECTOR_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(Connector),
         cv.Optional(CONF_CONNECTOR_ID, default=1): cv.int_range(min=0),
+        cv.Optional(CONF_LOG_METER_VALUES, default=False): cv.boolean,
         cv.Optional(CONF_CURRENT): sensor.sensor_schema(
             unit_of_measurement="A",
             accuracy_decimals=1,
@@ -233,6 +235,7 @@ async def to_code(config):
         for connector_conf in charge_point_conf[CONF_CONNECTORS]:
             connector = cg.new_Pvariable(connector_conf[CONF_ID])
             cg.add(connector.set_connector_id(connector_conf[CONF_CONNECTOR_ID]))
+            cg.add(connector.set_log_meter_values(connector_conf[CONF_LOG_METER_VALUES]))
             cg.add(connector.set_max_current(charge_point_conf[CONF_MAX_CURRENT]))
             if CONF_CURRENT in connector_conf:
                 sens = await sensor.new_sensor(connector_conf[CONF_CURRENT])

@@ -31,6 +31,8 @@ class Connector {
 
         void set_connector_id(uint32_t connector_id) { this->connector_id_ = connector_id; }
         uint32_t get_connector_id() const { return this->connector_id_; }
+        void set_log_meter_values(bool log_meter_values) { this->log_meter_values_ = log_meter_values; }
+        bool get_log_meter_values() const { return this->log_meter_values_; }
         void set_max_current(uint32_t max_current);
         uint32_t get_max_current() const { return this->max_current_; }
         void set_current_limit_max(uint32_t current_limit_max);
@@ -51,7 +53,7 @@ class Connector {
         float get_current_limit() const { return this->current_limit_; }
         void set_current_control(float current_control);
         float get_current_control() const { return this->current_control_; }
-        void publish_meter_values(const MeterValues &meter_values);
+        void publish_meter_values(const std::string &connection_id, const MeterValues &meter_values);
         void publish_status_notification(const StatusNotification &status_notification);
         void publish_unavailable();
 
@@ -73,6 +75,7 @@ class Connector {
         text_sensor::TextSensor *status_text_sensor_{nullptr};
         text_sensor::TextSensor *error_text_sensor_{nullptr};
         uint32_t active_transaction_id_{0};
+        bool log_meter_values_{false};
         bool current_limit_has_state_{false};
         bool current_limit_max_configured_{false};
 };

@@ -100,34 +100,6 @@ std::string sampled_value_unit(const JsonObject &sampled_value) {
     return json_string_or_empty(unit_of_measure.as<JsonObject>()["unit"]);
 }
 
-float normalize_current(float value, const std::string &unit) {
-    if (unit == "mA")
-        return value / 1000.0f;
-    return value;
-}
-
-float normalize_power(float value, const std::string &unit) {
-    if (unit == "kW")
-        return value * 1000.0f;
-    return value;
-}
-
-float normalize_energy(float value, const std::string &unit) {
-    if (unit == "kWh")
-        return value;
-    if (unit == "MWh")
-        return value * 1000.0f;
-    return value / 1000.0f;
-}
-
-float normalize_voltage(float value, const std::string &unit) {
-    if (unit == "mV")
-        return value / 1000.0f;
-    if (unit == "kV")
-        return value * 1000.0f;
-    return value;
-}
-
 bool is_change_configuration_unique_id(const std::string &unique_id) {
     return unique_id.rfind(CHANGE_CONFIGURATION_UNIQUE_ID_PREFIX, 0) == 0;
 }
@@ -221,11 +193,8 @@ std::unique_ptr<OcppMessage> parse_status_notification(const std::string &unique
 }
 
 std::unique_ptr<OcppMessage> parse_meter_values(const std::string &unique_id, const JsonObject &payload) {
-    uint32_t connector_id = json_uint_or_default(payload["connectorId"], 1);
-    float current = NAN;
-    float power = NAN;
-    float energy = NAN;
-    float voltage = NAN;
+    uint32_t connector_id = json_uint_or_default(payload["connectorId"], json_uint_or_default(payload["evseId"], 1));
+    std::vector<SampledValue> sampled_values;
 
     JsonVariant meter_value = payload["meterValue"];
     if (meter_value.is<JsonArray>()) {
@@ -248,20 +217,13 @@ std::unique_ptr<OcppMessage> parse_meter_values(const std::string &unique_id, co
                     measurand = "Energy.Active.Import.Register";
                 std::string unit = sampled_value_unit(sampled_value_object);
                 float value = apply_metric_multiplier(raw_value, sampled_value_object);
-
-                if (measurand == "Current.Import")
-                    current = normalize_current(value, unit);
-                else if (measurand == "Power.Active.Import")
-                    power = normalize_power(value, unit);
-                else if (measurand == "Energy.Active.Import.Register")
-                    energy = normalize_energy(value, unit);
-                else if (measurand == "Voltage")
-                    voltage = normalize_voltage(value, unit);
+                std::string phase = json_string_or_empty(sampled_value_object["phase"]);
+                sampled_values.emplace_back(value, measurand, unit, phase);
             }
         }
     }
 
-    return std::unique_ptr<OcppMessage>(new MeterValues(unique_id, connector_id, current, power, energy, voltage));
+    return std::unique_ptr<OcppMessage>(new MeterValues(unique_id, connector_id, std::move(sampled_values)));
 }
 
 }  // namespace

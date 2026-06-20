@@ -138,6 +138,7 @@ int main() {
 
         assert_equal("set_charge_point_id", charge_point.get_charge_point_id(), "");
         assert_equal("get_connection_id", charge_point.get_connection_id(), "");
+        assert_equal("connector_log_meter_values_default", charge_point.connector.get_log_meter_values(), false);
 
         // set_charge_point_id also initializes the connection_id
         charge_point.set_charge_point_id("A99999");
@@ -164,6 +165,10 @@ int main() {
         // set_debug_ocpp_messages
         charge_point.set_debug_ocpp_messages(true);
         assert_equal("set_debug_ocpp_messages", charge_point.get_debug_ocpp_messages(), true);
+
+        // set_log_meter_values
+        charge_point.connector.set_log_meter_values(true);
+        assert_equal("connector_log_meter_values", charge_point.connector.get_log_meter_values(), true);
 
         // add_debug_ocpp_exclude_action
         charge_point.add_debug_ocpp_exclude_action("MeterValues");

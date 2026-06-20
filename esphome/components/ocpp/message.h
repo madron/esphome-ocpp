@@ -2,8 +2,10 @@
 
 #include <cstdint>
 #include <cmath>
+#include <cstdio>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace esphome::ocpp {
 
@@ -165,24 +167,147 @@ class StatusNotification : public OcppCall {
         std::string status;
 };
 
+struct SampledValue {
+    SampledValue(
+        float value = NAN,
+        std::string measurand = "",
+        std::string unit = "",
+        std::string phase = ""
+    )
+        : value(value), measurand(std::move(measurand)), unit(std::move(unit)), phase(std::move(phase)) {}
+
+    float value;
+    std::string measurand;
+    std::string unit;
+    std::string phase;
+};
+
 class MeterValues : public OcppCall {
     public:
         MeterValues(
             std::string unique_id = "",
             uint32_t connector_id = 1,
-            float current = NAN,
-            float power = NAN,
-            float energy = NAN,
-            float voltage = NAN
+            std::vector<SampledValue> sampled_values = {}
         )
-            : OcppCall("MeterValues", std::move(unique_id)), connector_id(connector_id), current(current), power(power),
-              energy(energy), voltage(voltage) {}
+            : OcppCall("MeterValues", std::move(unique_id)), connector_id(connector_id),
+              sampled_values(std::move(sampled_values)) {
+            this->calculate_values_();
+        }
+
+        std::string sampled_values_summary() const {
+            std::string summary;
+            this->append_summary_group_(summary, "Current", "Current.Import");
+            this->append_summary_group_(summary, "Power", "Power.Active.Import");
+            this->append_summary_group_(summary, "Energy", "Energy.Active.Import.Register");
+            this->append_summary_group_(summary, "Voltage", "Voltage");
+            return summary;
+        }
 
         uint32_t connector_id;
+        std::vector<SampledValue> sampled_values;
         float current;
         float power;
         float energy;
         float voltage;
+
+    protected:
+        static std::string effective_measurand_(const SampledValue &sampled_value) {
+            return sampled_value.measurand.empty() ? "Energy.Active.Import.Register" : sampled_value.measurand;
+        }
+
+        static float normalize_current_(float value, const std::string &unit) {
+            if (unit == "mA")
+                return value / 1000.0f;
+            return value;
+        }
+
+        static float normalize_power_(float value, const std::string &unit) {
+            if (unit == "kW")
+                return value * 1000.0f;
+            return value;
+        }
+
+        static float normalize_energy_(float value, const std::string &unit) {
+            if (unit == "kWh")
+                return value;
+            if (unit == "MWh")
+                return value * 1000.0f;
+            return value / 1000.0f;
+        }
+
+        static float normalize_voltage_(float value, const std::string &unit) {
+            if (unit == "mV")
+                return value / 1000.0f;
+            if (unit == "kV")
+                return value * 1000.0f;
+            return value;
+        }
+
+        static std::string format_value_(float value) {
+            char buffer[24];
+            if (std::fabs(value - std::round(value)) < 0.001f)
+                std::snprintf(buffer, sizeof(buffer), "%.0f", value);
+            else
+                std::snprintf(buffer, sizeof(buffer), "%.3f", value);
+            std::string formatted(buffer);
+            if (formatted.find('.') != std::string::npos) {
+                while (formatted.size() > 1 && formatted.back() == '0')
+                    formatted.pop_back();
+                if (!formatted.empty() && formatted.back() == '.')
+                    formatted.pop_back();
+            }
+            return formatted;
+        }
+
+        static std::string format_sample_(const SampledValue &sampled_value) {
+            std::string formatted;
+            if (!sampled_value.phase.empty())
+                formatted += sampled_value.phase + "=";
+            formatted += format_value_(sampled_value.value);
+            if (!sampled_value.unit.empty())
+                formatted += " " + sampled_value.unit;
+            return formatted;
+        }
+
+        void append_summary_group_(std::string &summary, const char *label, const char *measurand) const {
+            std::string values;
+            for (const auto &sampled_value : this->sampled_values) {
+                if (std::isnan(sampled_value.value))
+                    continue;
+                if (effective_measurand_(sampled_value) != measurand)
+                    continue;
+                if (!values.empty())
+                    values += ", ";
+                values += format_sample_(sampled_value);
+            }
+            if (values.empty())
+                return;
+            if (!summary.empty())
+                summary += " - ";
+            summary += label;
+            summary += ": ";
+            summary += values;
+        }
+
+        void calculate_values_() {
+            this->current = NAN;
+            this->power = NAN;
+            this->energy = NAN;
+            this->voltage = NAN;
+            for (const auto &sampled_value : this->sampled_values) {
+                if (std::isnan(sampled_value.value))
+                    continue;
+                std::string measurand = effective_measurand_(sampled_value);
+                if (measurand == "Current.Import")
+                    this->current = normalize_current_(sampled_value.value, sampled_value.unit);
+                else if (measurand == "Power.Active.Import")
+                    this->power = normalize_power_(sampled_value.value, sampled_value.unit);
+                else if (measurand == "Energy.Active.Import.Register")
+                    this->energy = normalize_energy_(sampled_value.value, sampled_value.unit);
+                else if (measurand == "Voltage")
+                    this->voltage = normalize_voltage_(sampled_value.value, sampled_value.unit);
+            }
+        }
 };
 
 }  // namespace esphome::ocpp

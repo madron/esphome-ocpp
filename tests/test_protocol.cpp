@@ -113,6 +113,26 @@ int main() {
     assert_equal("meter_values_power", meter_values->power, 3680.0f);
     assert_equal("meter_values_energy", meter_values->energy, 12.345f);
     assert_equal("meter_values_voltage", meter_values->voltage, 230.5f);
+    assert_equal("meter_values_sample_count", meter_values->sampled_values.size(), 4U);
+    assert_equal("meter_values_first_sample_measurand", meter_values->sampled_values[0].measurand,
+                 std::string("Current.Import"));
+    assert_equal("meter_values_first_sample_phase", meter_values->sampled_values[0].phase, std::string(""));
+    std::unique_ptr<OcppMessage> phase_meter_values_message = protocol.parse_message(
+        R"([2,"meter-phase","MeterValues",{"connectorId":1,"meterValue":[{"sampledValue":[{"value":"16.2","measurand":"Current.Import","unit":"A","phase":"L1"}]}]}])"
+    );
+    auto *phase_meter_values = dynamic_cast<MeterValues *>(phase_meter_values_message.get());
+    assert_equal("phase_meter_values_exists", phase_meter_values != nullptr, true);
+    assert_equal("phase_meter_values_connector_id", phase_meter_values->connector_id, 1U);
+    assert_equal("phase_meter_values_current", phase_meter_values->current, 16.2f);
+    assert_equal("phase_meter_values_sample_count", phase_meter_values->sampled_values.size(), 1U);
+    assert_equal("phase_meter_values_phase", phase_meter_values->sampled_values[0].phase, std::string("L1"));
+    std::unique_ptr<OcppMessage> evse_meter_values_message = protocol.parse_message(
+        R"([2,"meter-evse","MeterValues",{"evseId":2,"meterValue":[{"sampledValue":[{"value":"6900","measurand":"Power.Active.Import","unit":"W"}]}]}])"
+    );
+    auto *evse_meter_values = dynamic_cast<MeterValues *>(evse_meter_values_message.get());
+    assert_equal("evse_meter_values_exists", evse_meter_values != nullptr, true);
+    assert_equal("evse_meter_values_evse_id", evse_meter_values->connector_id, 2U);
+    assert_equal("evse_meter_values_power", evse_meter_values->power, 6900.0f);
     std::unique_ptr<OcppMessage> partial_meter_values_message = protocol.parse_message(
         R"([2,"meter-2","MeterValues",{"meterValue":[{"sampledValue":[{"value":"54321"},{"value":"240","measurand":"Voltage"}]}]}])"
     );
@@ -123,6 +143,9 @@ int main() {
     assert_equal("partial_meter_values_power_nan", std::isnan(partial_meter_values->power), true);
     assert_equal("partial_meter_values_energy_default_measurand", partial_meter_values->energy, 54.321f);
     assert_equal("partial_meter_values_voltage", partial_meter_values->voltage, 240.0f);
+    assert_equal("partial_meter_values_sample_count", partial_meter_values->sampled_values.size(), 2U);
+    assert_equal("partial_meter_values_default_measurand", partial_meter_values->sampled_values[0].measurand,
+                 std::string("Energy.Active.Import.Register"));
     std::unique_ptr<OcppMessage> status_notification_message = protocol.parse_message(
         R"([2,"status-1","StatusNotification",{"connectorId":2,"errorCode":"NoError","status":"Available"}])"
     );

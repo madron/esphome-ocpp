@@ -156,6 +156,7 @@ class ChargePointSchemaTests(unittest.TestCase):
         connectors = validated["charge_points"][0]["connectors"]
         self.assertEqual(len(connectors), 1)
         self.assertEqual(connectors[0]["connector_id"], 1)
+        self.assertFalse(connectors[0]["log_meter_values"])
 
     def test_connector_meter_value_sensors_enabled(self):
         validated = CONFIG_SCHEMA(
@@ -169,6 +170,7 @@ class ChargePointSchemaTests(unittest.TestCase):
                         "connectors": [
                             {
                                 "connector_id": 2,
+                                "log_meter_values": True,
                                 "current": {"name": "Garage Current"},
                                 "power": {"name": "Garage Power"},
                                 "energy": {"name": "Garage Energy"},
@@ -182,6 +184,7 @@ class ChargePointSchemaTests(unittest.TestCase):
 
         connector = validated["charge_points"][0]["connectors"][0]
         self.assertEqual(connector["connector_id"], 2)
+        self.assertTrue(connector["log_meter_values"])
         self.assertIn("current", connector)
         self.assertIn("power", connector)
         self.assertIn("energy", connector)

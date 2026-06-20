@@ -46,6 +46,7 @@ ocpp:
         - connector_id: 1
           current:
             name: Garage Current
+          log_meter_values: true
           current_limit:
             name: Garage Current Limit
             max_value: 16
@@ -65,7 +66,9 @@ ocpp:
 
 `debug_ocpp_messages` is optional per `charge_point`. When enabled, raw OCPP RX/TX payloads for that charger are logged at the ESPHome debug log level. Use `debug_ocpp_exclude_actions` to keep debug logging enabled while suppressing noisy action payloads, such as `MeterValues`, and their known related responses.
 
-Connector `current`, `power`, `energy`, and `voltage` sensors are populated from OCPP `MeterValues` messages whose `connectorId` matches the connector's `connector_id`. The component asks the charger to report `Current.Import`, `Power.Active.Import`, `Energy.Active.Import.Register`, and `Voltage`. If the charger omits one of those values, the corresponding sensor is published as unavailable/unknown instead of `0` so unsupported values are not confused with real zero measurements. Energy is exposed in `kWh`.
+Connector `current`, `power`, `energy`, and `voltage` sensors are populated from OCPP `MeterValues` messages whose `connectorId` for OCPP 1.6, or `evseId` for OCPP 2.0.1, matches the connector's `connector_id`. The component asks the charger to report `Current.Import`, `Power.Active.Import`, `Energy.Active.Import.Register`, and `Voltage`. If the charger omits one of those values, the corresponding sensor is published as unavailable/unknown instead of `0` so unsupported values are not confused with real zero measurements. Energy is exposed in `kWh`.
+
+Set connector `log_meter_values: true` to log a compact info-level summary of present sampled values, for example `A99999 MeterValues 1 Current: 10 A - Power: 6940 W - Energy: 7358900 Wh`. If a charger includes `phase`, the phase is shown next to that sampled value, for example `Current: L1=10 A, L2=10 A, L3=10 A`.
 
 Connector `current_limit` and `current_control` number entities are local current values in `A`. By default, both accept values from `0` to the charge point `max_current`; `current_limit` can lower its own maximum with `max_value`. `current_limit` uses whole-Amperes steps and `current_control` uses `0.1 A` steps.
 
@@ -91,7 +94,8 @@ Connector `status` and `error` text sensors are populated from `StatusNotificati
 | Option                            | Description |
 | ---                               | --- |
 | `id` (Optional)                   | ESPHome internal ID for this connector. Usually omit this and let ESPHome generate it. |
-| `connector_id` (Optional)         | Numeric OCPP connector ID used in `MeterValues.connectorId`. Defaults to `1`. Must be unique within the charge point. |
+| `connector_id` (Optional)         | Numeric OCPP connector ID used to match `MeterValues.connectorId` in OCPP 1.6 or `MeterValues.evseId` in OCPP 2.0.1. Defaults to `1`. Must be unique within the charge point. |
+| `log_meter_values` (Optional)     | Logs a compact info-level summary of received `MeterValues` sampled values for this connector. Defaults to `false`. |
 | `current` (Optional)              | Sensor populated from `Current.Import` `MeterValues` in `A`. Missing values are published as unavailable/unknown. |
 | `current_limit` (Optional)        | Number entity for the connector current limit in `A`. Range is `0` to `max_value` when set, otherwise `0` to the charge point `max_current`, with a step of `1 A`. `max_value` must be less than or equal to the charge point `max_current`. |
 | `current_control` (Optional)      | Number entity for connector current control in `A`. Range is `0` to the charge point `max_current`, with a step of `0.1 A`. |

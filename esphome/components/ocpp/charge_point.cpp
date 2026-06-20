@@ -118,7 +118,13 @@ float Connector::clamp_current_limit_(float value) const {
     return this->clamp_current_(value);
 }
 
-void Connector::publish_meter_values(const MeterValues &meter_values) {
+void Connector::publish_meter_values(const std::string &connection_id, const MeterValues &meter_values) {
+    if (this->log_meter_values_ && !connection_id.empty()) {
+        std::string summary = meter_values.sampled_values_summary();
+        if (!summary.empty())
+            ESP_LOGI(TAG, "%s %u MeterValues %s", connection_id.c_str(), static_cast<unsigned>(meter_values.connector_id),
+                    summary.c_str());
+    }
     if (this->current_sensor_ != nullptr)
         this->current_sensor_->publish_state(meter_values.current);
     if (this->power_sensor_ != nullptr)
@@ -141,7 +147,7 @@ void Connector::publish_status_notification(const StatusNotification &status_not
 
 void Connector::publish_unavailable() {
     this->clear_active_transaction();
-    this->publish_meter_values(MeterValues("", this->connector_id_));
+    this->publish_meter_values("", MeterValues("", this->connector_id_));
     this->publish_status_notification(StatusNotification("", this->connector_id_));
 }
 
@@ -620,7 +626,7 @@ void ChargePoint::publish_meter_values_(const MeterValues &meter_values) {
                 this->connection_id_.c_str(), static_cast<unsigned>(meter_values.connector_id));
         return;
     }
-    connector->publish_meter_values(meter_values);
+    connector->publish_meter_values(this->connection_id_, meter_values);
 }
 
 void ChargePoint::publish_status_notification_(const StatusNotification &status_notification) {
