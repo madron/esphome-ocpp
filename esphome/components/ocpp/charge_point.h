@@ -14,8 +14,8 @@
 
 namespace esphome::ocpp {
 
-class CurrentControl;
 class CurrentLimit;
+class RequestedCurrent;
 
 struct QueuedMessage {
     std::string payload;
@@ -46,7 +46,7 @@ class Connector {
         void set_current_l2_sensor(sensor::Sensor *current_l2_sensor) { this->current_l2_sensor_ = current_l2_sensor; }
         void set_current_l3_sensor(sensor::Sensor *current_l3_sensor) { this->current_l3_sensor_ = current_l3_sensor; }
         void set_current_limit_number(CurrentLimit *current_limit_number);
-        void set_current_control_number(CurrentControl *current_control_number);
+        void set_requested_current_number(RequestedCurrent *requested_current_number);
         void set_power_sensor(sensor::Sensor *power_sensor) { this->power_sensor_ = power_sensor; }
         void set_total_energy_sensor(sensor::Sensor *total_energy_sensor) { this->total_energy_sensor_ = total_energy_sensor; }
         void set_session_energy_sensor(sensor::Sensor *session_energy_sensor) {
@@ -73,8 +73,8 @@ class Connector {
         void reset_active_phases();
         void set_current_limit(float current_limit);
         float get_current_limit() const { return this->current_limit_; }
-        void set_current_control(float current_control);
-        float get_current_control() const { return this->current_control_; }
+        void set_requested_current(float requested_current);
+        float get_requested_current() const { return this->requested_current_; }
         void loop(uint32_t now_millis);
         void publish_meter_values(const std::string &connection_id, const MeterValues &meter_values);
         void publish_status_notification(const StatusNotification &status_notification, uint32_t now_millis = 0);
@@ -101,14 +101,14 @@ class Connector {
         float phase_voltage_{DEFAULT_PHASE_VOLTAGE};
         uint32_t current_limit_max_{0};
         float current_limit_{0.0f};
-        float current_control_{0.0f};
+        float requested_current_{0.0f};
         float active_phases_{NAN};
         sensor::Sensor *current_sensor_{nullptr};
         sensor::Sensor *current_l1_sensor_{nullptr};
         sensor::Sensor *current_l2_sensor_{nullptr};
         sensor::Sensor *current_l3_sensor_{nullptr};
         CurrentLimit *current_limit_number_{nullptr};
-        CurrentControl *current_control_number_{nullptr};
+        RequestedCurrent *requested_current_number_{nullptr};
         sensor::Sensor *power_sensor_{nullptr};
         sensor::Sensor *total_energy_sensor_{nullptr};
         sensor::Sensor *session_energy_sensor_{nullptr};
@@ -143,7 +143,7 @@ class CurrentLimit : public number::Number {
         Connector *connector_{nullptr};
 };
 
-class CurrentControl : public number::Number {
+class RequestedCurrent : public number::Number {
     public:
         void set_connector(Connector *connector) { this->connector_ = connector; }
 

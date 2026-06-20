@@ -132,8 +132,8 @@ ocpp:
             name: 20_garage_active_phases
           current_limit:
             name: 30_garage_current_limit
-          current_control:
-            name: 31_garage_current_control
+          requested_current:
+            name: 31_garage_requested_current
           current_l1:
             name: 41_garage_current_1
           current_l2:

@@ -235,7 +235,7 @@ class ChargePointSchemaTests(unittest.TestCase):
                             {
                                 "connector_id": 2,
                                 "current_limit": {"name": "Garage Current Limit"},
-                                "current_control": {"name": "Garage Current Control"},
+                                "requested_current": {"name": "Garage Requested Current"},
                             }
                         ],
                     }
@@ -245,7 +245,7 @@ class ChargePointSchemaTests(unittest.TestCase):
 
         connector = validated["charge_points"][0]["connectors"][0]
         self.assertIn("current_limit", connector)
-        self.assertIn("current_control", connector)
+        self.assertIn("requested_current", connector)
 
     def test_connector_current_limit_max_value_override(self):
         validated = CONFIG_SCHEMA(

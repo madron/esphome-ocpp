@@ -70,11 +70,11 @@ void Connector::set_max_current(uint32_t max_current) {
         this->current_limit_ = static_cast<float>(this->current_limit_max_);
     else
         this->current_limit_ = this->clamp_current_limit_(this->current_limit_);
-    this->current_control_ = this->clamp_current_(this->current_control_);
+    this->requested_current_ = this->clamp_current_(this->requested_current_);
     if (this->current_limit_number_ != nullptr)
         this->current_limit_number_->publish_state(this->current_limit_);
-    if (this->current_control_number_ != nullptr)
-        this->current_control_number_->publish_state(this->current_control_);
+    if (this->requested_current_number_ != nullptr)
+        this->requested_current_number_->publish_state(this->requested_current_);
 }
 
 void Connector::set_current_limit_max(uint32_t current_limit_max) {
@@ -96,10 +96,10 @@ void Connector::set_current_limit_number(CurrentLimit *current_limit_number) {
         this->current_limit_number_->publish_state(this->current_limit_);
 }
 
-void Connector::set_current_control_number(CurrentControl *current_control_number) {
-    this->current_control_number_ = current_control_number;
-    if (this->current_control_number_ != nullptr)
-        this->current_control_number_->publish_state(this->current_control_);
+void Connector::set_requested_current_number(RequestedCurrent *requested_current_number) {
+    this->requested_current_number_ = requested_current_number;
+    if (this->requested_current_number_ != nullptr)
+        this->requested_current_number_->publish_state(this->requested_current_);
 }
 
 void Connector::set_current_limit(float current_limit) {
@@ -109,10 +109,10 @@ void Connector::set_current_limit(float current_limit) {
         this->current_limit_number_->publish_state(this->current_limit_);
 }
 
-void Connector::set_current_control(float current_control) {
-    this->current_control_ = this->clamp_current_(std::round(current_control * 10.0f) / 10.0f);
-    if (this->current_control_number_ != nullptr)
-        this->current_control_number_->publish_state(this->current_control_);
+void Connector::set_requested_current(float requested_current) {
+    this->requested_current_ = this->clamp_current_(std::round(requested_current * 10.0f) / 10.0f);
+    if (this->requested_current_number_ != nullptr)
+        this->requested_current_number_->publish_state(this->requested_current_);
 }
 
 float Connector::clamp_current_(float value) const {
@@ -271,10 +271,10 @@ void CurrentLimit::control(float value) {
     this->connector_->set_current_limit(value);
 }
 
-void CurrentControl::control(float value) {
+void RequestedCurrent::control(float value) {
     if (this->connector_ == nullptr)
         return;
-    this->connector_->set_current_control(value);
+    this->connector_->set_requested_current(value);
 }
 
 void ChargePoint::set_charge_point_id(std::string charge_point_id) {
