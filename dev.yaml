@@ -142,8 +142,12 @@ ocpp:
             name: 43_garage_current_3
           power:
             name: 50_garage_power
-          energy:
-            name: 51_garage_energy
+          total_energy:
+            name: 51_garage_total_energy
+          session_time:
+            name: 61_garage_session_time
+          session_energy:
+            name: 62_garage_session_energy
           # voltage_l1:
           #   name: garage_voltage_l1
           # voltage_l2:

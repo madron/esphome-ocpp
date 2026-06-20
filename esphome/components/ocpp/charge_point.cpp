@@ -141,6 +141,12 @@ void Connector::reset_active_phases() {
         this->active_phases_sensor_->publish_state(NAN);
 }
 
+void Connector::loop(uint32_t now_millis) {
+    this->last_update_millis_ = now_millis;
+    if (this->plugged_)
+        this->update_session_time_(now_millis);
+}
+
 void Connector::set_plugged_(bool plugged) {
     bool changed = this->plugged_ != plugged;
     this->plugged_ = plugged;
@@ -157,11 +163,40 @@ void Connector::set_plugged_(bool plugged) {
 }
 
 void Connector::on_session_start() {
+    this->session_start_energy_ = this->last_total_energy_;
+    this->session_start_millis_ = this->last_update_millis_;
+    if (this->session_energy_sensor_ != nullptr)
+        this->session_energy_sensor_->publish_state(0.0f);
+    if (this->session_time_sensor_ != nullptr)
+        this->session_time_sensor_->publish_state(0.0f);
     ESP_LOGD(TAG, "Connector %u session started", static_cast<unsigned>(this->connector_id_));
 }
 
 void Connector::on_session_stop() {
+    this->update_session_time_(this->last_update_millis_);
     ESP_LOGD(TAG, "Connector %u session stopped", static_cast<unsigned>(this->connector_id_));
+}
+
+void Connector::update_session_energy_(float total_energy) {
+    if (std::isnan(total_energy))
+        return;
+    this->last_total_energy_ = total_energy;
+    if (!this->plugged_)
+        return;
+    if (std::isnan(this->session_start_energy_))
+        this->session_start_energy_ = total_energy;
+    float session_energy = total_energy - this->session_start_energy_;
+    if (session_energy < 0.0f)
+        session_energy = 0.0f;
+    if (this->session_energy_sensor_ != nullptr)
+        this->session_energy_sensor_->publish_state(session_energy);
+}
+
+void Connector::update_session_time_(uint32_t now_millis) {
+    if (this->session_time_sensor_ != nullptr)
+        this->session_time_sensor_->publish_state(
+            static_cast<float>(now_millis - this->session_start_millis_) / 1000.0f
+        );
 }
 
 void Connector::publish_meter_values(const std::string &connection_id, const MeterValues &meter_values) {
@@ -191,8 +226,9 @@ void Connector::publish_meter_values(const std::string &connection_id, const Met
         this->current_l3_sensor_->publish_state(derived_meter_values.current_l3);
     if (this->power_sensor_ != nullptr)
         this->power_sensor_->publish_state(derived_meter_values.power);
-    if (this->energy_sensor_ != nullptr)
-        this->energy_sensor_->publish_state(derived_meter_values.energy);
+    if (this->total_energy_sensor_ != nullptr)
+        this->total_energy_sensor_->publish_state(derived_meter_values.energy);
+    this->update_session_energy_(derived_meter_values.energy);
     if (this->voltage_sensor_ != nullptr)
         this->voltage_sensor_->publish_state(derived_meter_values.voltage);
     if (this->voltage_l1_sensor_ != nullptr)
@@ -205,7 +241,8 @@ void Connector::publish_meter_values(const std::string &connection_id, const Met
         this->active_phases_sensor_->publish_state(this->active_phases_);
 }
 
-void Connector::publish_status_notification(const StatusNotification &status_notification) {
+void Connector::publish_status_notification(const StatusNotification &status_notification, uint32_t now_millis) {
+    this->last_update_millis_ = now_millis;
     if (this->status_text_sensor_ != nullptr)
         this->status_text_sensor_->publish_state(status_notification.status);
     std::string error_code = status_notification.error_code;
@@ -308,7 +345,8 @@ void ChargePoint::on_disconnected() {
     this->set_online_(false);
 }
 
-void ChargePoint::handle_ocpp_text(const std::string &message) {
+void ChargePoint::handle_ocpp_text(const std::string &message, uint32_t now_millis) {
+    this->current_millis_ = now_millis;
     std::unique_ptr<OcppMessage> ocpp_message = this->protocol_.parse_message(message);
     if (this->debug_ocpp_messages_ &&
         (ocpp_message == nullptr || this->should_log_debug_ocpp_message_(*ocpp_message)))
@@ -319,6 +357,11 @@ void ChargePoint::handle_ocpp_text(const std::string &message) {
 }
 
 void ChargePoint::loop(uint32_t now_millis) {
+    this->current_millis_ = now_millis;
+    for (auto *connector : this->connectors_) {
+        if (connector != nullptr)
+            connector->loop(now_millis);
+    }
     if (!this->connected_)
         return;
     this->expire_in_flight_call_(now_millis);
@@ -710,7 +753,7 @@ void ChargePoint::publish_status_notification_(const StatusNotification &status_
                 this->connection_id_.c_str(), static_cast<unsigned>(status_notification.connector_id));
         return;
     }
-    connector->publish_status_notification(status_notification);
+    connector->publish_status_notification(status_notification, this->current_millis_);
 }
 
 Connector *ChargePoint::find_connector_(uint32_t connector_id) {

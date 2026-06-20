@@ -30,7 +30,9 @@ class TestChargePoint : public ChargePoint {
         this->set_charger_info_text_sensor(&this->charger_info_sensor);
         this->connector.set_current_sensor(&this->current_sensor);
         this->connector.set_power_sensor(&this->power_sensor);
-        this->connector.set_energy_sensor(&this->energy_sensor);
+        this->connector.set_total_energy_sensor(&this->total_energy_sensor);
+        this->connector.set_session_energy_sensor(&this->session_energy_sensor);
+        this->connector.set_session_time_sensor(&this->session_time_sensor);
         this->connector.set_voltage_sensor(&this->voltage_sensor);
         this->connector.set_status_text_sensor(&this->status_sensor);
         this->connector.set_error_text_sensor(&this->error_sensor);
@@ -39,7 +41,7 @@ class TestChargePoint : public ChargePoint {
         this->second_connector.set_connector_id(2);
         this->second_connector.set_current_sensor(&this->second_current_sensor);
         this->second_connector.set_power_sensor(&this->second_power_sensor);
-        this->second_connector.set_energy_sensor(&this->second_energy_sensor);
+        this->second_connector.set_total_energy_sensor(&this->second_total_energy_sensor);
         this->second_connector.set_voltage_sensor(&this->second_voltage_sensor);
         this->second_connector.set_status_text_sensor(&this->second_status_sensor);
         this->second_connector.set_error_text_sensor(&this->second_error_sensor);
@@ -56,11 +58,13 @@ class TestChargePoint : public ChargePoint {
     Connector second_connector;
     Sensor current_sensor;
     Sensor power_sensor;
-    Sensor energy_sensor;
+    Sensor total_energy_sensor;
+    Sensor session_energy_sensor;
+    Sensor session_time_sensor;
     Sensor voltage_sensor;
     Sensor second_current_sensor;
     Sensor second_power_sensor;
-    Sensor second_energy_sensor;
+    Sensor second_total_energy_sensor;
     Sensor second_voltage_sensor;
     TextSensor protocol_sensor;
     TextSensor charger_info_sensor;
@@ -411,7 +415,7 @@ int main() {
         assert_equal("meter_values_online", charge_point.is_online(), true);
         assert_equal("meter_values_current_sensor", charge_point.current_sensor.state, 16.2f);
         assert_equal("meter_values_power_sensor", charge_point.power_sensor.state, 3680.0f);
-        assert_equal("meter_values_energy_sensor", charge_point.energy_sensor.state, 12.345f);
+        assert_equal("meter_values_total_energy_sensor", charge_point.total_energy_sensor.state, 12.345f);
         assert_equal("meter_values_voltage_sensor_nan", std::isnan(charge_point.voltage_sensor.state), true);
         assert_equal("meter_values_second_current_sensor_nan", std::isnan(charge_point.second_current_sensor.state), true);
         assert_equal("meter_values_response_count", charge_point.messages.size(), 1);
@@ -422,7 +426,7 @@ int main() {
             R"([2,"meter-2","MeterValues",{"connectorId":2,"meterValue":[{"sampledValue":[{"value":"230.5","measurand":"Voltage","unit":"V"}]}]}])");
         assert_equal("second_meter_values_current_sensor_nan", std::isnan(charge_point.second_current_sensor.state), true);
         assert_equal("second_meter_values_power_sensor_nan", std::isnan(charge_point.second_power_sensor.state), true);
-        assert_equal("second_meter_values_energy_sensor_nan", std::isnan(charge_point.second_energy_sensor.state), true);
+        assert_equal("second_meter_values_total_energy_sensor_nan", std::isnan(charge_point.second_total_energy_sensor.state), true);
         assert_equal("second_meter_values_voltage_sensor", charge_point.second_voltage_sensor.state, 230.5f);
         assert_equal("second_meter_values_first_connector_current_unchanged", charge_point.current_sensor.state, 16.2f);
 
@@ -519,6 +523,42 @@ int main() {
         connector.publish_status_notification(StatusNotification("", 1, "NoError", "Available"));
         assert_equal("session_start_count_after_unplugged", connector.session_start_count, 1U);
         assert_equal("session_stop_on_unplugged", connector.session_stop_count, 1U);
+    }
+
+    {
+        // Session energy and time reset on plug-in and keep the last session values after unplugging
+        Connector connector;
+        Sensor total_energy_sensor;
+        Sensor session_energy_sensor;
+        Sensor session_time_sensor;
+        connector.set_total_energy_sensor(&total_energy_sensor);
+        connector.set_session_energy_sensor(&session_energy_sensor);
+        connector.set_session_time_sensor(&session_time_sensor);
+
+        connector.publish_meter_values("", MeterValues("", 1, {SampledValue(10.0f, "Energy.Active.Import.Register", "kWh")}));
+        assert_equal("session_total_energy_before_start", total_energy_sensor.state, 10.0f);
+        assert_equal("session_energy_unknown_before_start", std::isnan(session_energy_sensor.state), true);
+
+        connector.publish_status_notification(StatusNotification("", 1, "NoError", "Preparing"), 10000);
+        assert_equal("session_energy_reset_on_start", session_energy_sensor.state, 0.0f);
+        assert_equal("session_time_reset_on_start", session_time_sensor.state, 0.0f);
+        connector.loop(12000);
+        assert_equal("session_time_updates_while_plugged", session_time_sensor.state, 2.0f);
+
+        connector.publish_meter_values("", MeterValues("", 1, {SampledValue(10.75f, "Energy.Active.Import.Register", "kWh")}));
+        assert_equal("session_energy_from_total_delta", session_energy_sensor.state, 0.75f);
+        connector.publish_status_notification(StatusNotification("", 1, "NoError", "Charging"), 15000);
+        assert_equal("session_energy_not_reset_while_still_plugged", session_energy_sensor.state, 0.75f);
+
+        connector.publish_meter_values("", MeterValues("", 1, {SampledValue(11.0f, "Energy.Active.Import.Register", "kWh")}));
+        assert_equal("session_energy_before_stop", session_energy_sensor.state, 1.0f);
+        connector.publish_status_notification(StatusNotification("", 1, "NoError", "Available"), 70000);
+        assert_equal("session_time_on_stop", session_time_sensor.state, 60.0f);
+        connector.loop(90000);
+        assert_equal("session_time_stops_after_unplugged", session_time_sensor.state, 60.0f);
+        connector.publish_meter_values("", MeterValues("", 1, {SampledValue(12.0f, "Energy.Active.Import.Register", "kWh")}));
+        assert_equal("session_total_energy_after_stop_updates", total_energy_sensor.state, 12.0f);
+        assert_equal("session_energy_after_stop_kept", session_energy_sensor.state, 1.0f);
     }
 
     {

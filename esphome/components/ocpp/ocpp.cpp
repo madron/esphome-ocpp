@@ -85,7 +85,7 @@ void OcppComponent::on_websocket_disconnected(const std::string &connection_id) 
 void OcppComponent::on_websocket_text(const std::string &connection_id, const std::string &message) {
     ChargePoint *charge_point = this->find_charge_point_by_connection_id_(connection_id);
     if (charge_point != nullptr)
-        charge_point->handle_ocpp_text(message);
+        charge_point->handle_ocpp_text(message, App.get_loop_component_start_time());
 }
 
 bool OcppComponent::send_queued_message_() {

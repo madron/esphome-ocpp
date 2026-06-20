@@ -173,7 +173,9 @@ class ChargePointSchemaTests(unittest.TestCase):
                                 "log_meter_values": True,
                                 "current": {"name": "Garage Current"},
                                 "power": {"name": "Garage Power"},
-                                "energy": {"name": "Garage Energy"},
+                                "total_energy": {"name": "Garage Total Energy"},
+                                "session_energy": {"name": "Garage Session Energy"},
+                                "session_time": {"name": "Garage Session Time"},
                                 "voltage": {"name": "Garage Voltage"},
                             }
                         ],
@@ -187,7 +189,9 @@ class ChargePointSchemaTests(unittest.TestCase):
         self.assertTrue(connector["log_meter_values"])
         self.assertIn("current", connector)
         self.assertIn("power", connector)
-        self.assertIn("energy", connector)
+        self.assertIn("total_energy", connector)
+        self.assertIn("session_energy", connector)
+        self.assertIn("session_time", connector)
         self.assertIn("voltage", connector)
 
     def test_connector_status_and_error_text_sensors_enabled(self):

@@ -48,7 +48,11 @@ class Connector {
         void set_current_limit_number(CurrentLimit *current_limit_number);
         void set_current_control_number(CurrentControl *current_control_number);
         void set_power_sensor(sensor::Sensor *power_sensor) { this->power_sensor_ = power_sensor; }
-        void set_energy_sensor(sensor::Sensor *energy_sensor) { this->energy_sensor_ = energy_sensor; }
+        void set_total_energy_sensor(sensor::Sensor *total_energy_sensor) { this->total_energy_sensor_ = total_energy_sensor; }
+        void set_session_energy_sensor(sensor::Sensor *session_energy_sensor) {
+            this->session_energy_sensor_ = session_energy_sensor;
+        }
+        void set_session_time_sensor(sensor::Sensor *session_time_sensor) { this->session_time_sensor_ = session_time_sensor; }
         void set_voltage_sensor(sensor::Sensor *voltage_sensor) { this->voltage_sensor_ = voltage_sensor; }
         void set_voltage_l1_sensor(sensor::Sensor *voltage_l1_sensor) { this->voltage_l1_sensor_ = voltage_l1_sensor; }
         void set_voltage_l2_sensor(sensor::Sensor *voltage_l2_sensor) { this->voltage_l2_sensor_ = voltage_l2_sensor; }
@@ -71,19 +75,24 @@ class Connector {
         float get_current_limit() const { return this->current_limit_; }
         void set_current_control(float current_control);
         float get_current_control() const { return this->current_control_; }
+        void loop(uint32_t now_millis);
         void publish_meter_values(const std::string &connection_id, const MeterValues &meter_values);
-        void publish_status_notification(const StatusNotification &status_notification);
+        void publish_status_notification(const StatusNotification &status_notification, uint32_t now_millis = 0);
         void publish_unavailable();
 
     protected:
         float clamp_current_(float value) const;
         float clamp_current_limit_(float value) const;
         void set_plugged_(bool plugged);
+        void update_session_energy_(float total_energy);
+        void update_session_time_(uint32_t now_millis);
         // Called when the connector starts a charging session, which is defined as the car becoming plugged in.
         // This hook is the place for future per-session initialization such as latching initial meter values.
+        // If overridden, call Connector::on_session_start() to keep built-in session sensors working.
         virtual void on_session_start();
         // Called when the connector stops a charging session, which is defined as the car becoming unplugged.
         // This hook is the place for future per-session cleanup or summary publishing.
+        // If overridden, call Connector::on_session_stop() to keep built-in session sensors working.
         virtual void on_session_stop();
 
         uint32_t connector_id_{DEFAULT_CONNECTOR_ID};
@@ -101,7 +110,9 @@ class Connector {
         CurrentLimit *current_limit_number_{nullptr};
         CurrentControl *current_control_number_{nullptr};
         sensor::Sensor *power_sensor_{nullptr};
-        sensor::Sensor *energy_sensor_{nullptr};
+        sensor::Sensor *total_energy_sensor_{nullptr};
+        sensor::Sensor *session_energy_sensor_{nullptr};
+        sensor::Sensor *session_time_sensor_{nullptr};
         sensor::Sensor *voltage_sensor_{nullptr};
         sensor::Sensor *voltage_l1_sensor_{nullptr};
         sensor::Sensor *voltage_l2_sensor_{nullptr};
@@ -110,6 +121,10 @@ class Connector {
         text_sensor::TextSensor *status_text_sensor_{nullptr};
         text_sensor::TextSensor *error_text_sensor_{nullptr};
         binary_sensor::BinarySensor *plugged_binary_sensor_{nullptr};
+        float last_total_energy_{NAN};
+        float session_start_energy_{NAN};
+        uint32_t session_start_millis_{0};
+        uint32_t last_update_millis_{0};
         bool plugged_{false};
         uint32_t active_transaction_id_{0};
         bool log_meter_values_{false};
@@ -195,7 +210,7 @@ class ChargePoint {
         void on_connected(std::string connection_id, uint32_t now_millis = 0);
         void on_connected(std::string connection_id, std::string protocol, uint32_t now_millis = 0);
         void on_disconnected();
-        void handle_ocpp_text(const std::string &message);
+        void handle_ocpp_text(const std::string &message, uint32_t now_millis = 0);
         void loop(uint32_t now_millis);
         bool pop_queued_message(std::string *message, uint32_t now_millis = 0);
 
@@ -254,6 +269,7 @@ class ChargePoint {
         bool connected_{false};
         bool online_{false};
         uint32_t connected_at_millis_{0};
+        uint32_t current_millis_{0};
         uint32_t next_transaction_id_{1};
         ChangeConfigurationStage change_configuration_stage_{ChangeConfigurationStage::IDLE};
         size_t meter_values_sampled_data_fallback_index_{0};

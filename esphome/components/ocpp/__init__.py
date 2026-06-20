@@ -15,7 +15,6 @@ CONF_CURRENT_CONTROL = "current_control"
 CONF_CURRENT_LIMIT = "current_limit"
 CONF_DEBUG_OCPP_EXCLUDE_ACTIONS = "debug_ocpp_exclude_actions"
 CONF_DEBUG_OCPP_MESSAGES = "debug_ocpp_messages"
-CONF_ENERGY = "energy"
 CONF_ERROR = "error"
 CONF_FORCE_PROTOCOL = "force_protocol"
 CONF_CHARGER_INFO = "charger_info"
@@ -29,8 +28,11 @@ CONF_POWER = "power"
 CONF_PROTOCOL = "protocol"
 CONF_SERVER = "server"
 CONF_SERVER_PATH = "path"
+CONF_SESSION_ENERGY = "session_energy"
+CONF_SESSION_TIME = "session_time"
 CONF_STATUS = "status"
 CONF_STARTUP_NOTIFICATIONS_DELAY = "startup_notifications_delay"
+CONF_TOTAL_ENERGY = "total_energy"
 CONF_VOLTAGE = "voltage"
 CONF_ACTIVE_PHASES = "active_phases"
 CONF_CURRENT_L1 = "current_l1"
@@ -120,11 +122,24 @@ CONNECTOR_SCHEMA = cv.Schema(
                 cv.Optional(CONF_MAX_VALUE): cv.int_range(min=0),
             }
         ),
-        cv.Optional(CONF_ENERGY): sensor.sensor_schema(
+        cv.Optional(CONF_TOTAL_ENERGY): sensor.sensor_schema(
             unit_of_measurement="kWh",
-            accuracy_decimals=3,
+            accuracy_decimals=1,
             device_class="energy",
             state_class="total_increasing",
+        ),
+        cv.Optional(CONF_SESSION_ENERGY): sensor.sensor_schema(
+            unit_of_measurement="kWh",
+            accuracy_decimals=1,
+            device_class="energy",
+            state_class="total",
+        ),
+        cv.Optional(CONF_SESSION_TIME): sensor.sensor_schema(
+            unit_of_measurement="s",
+            accuracy_decimals=0,
+            device_class="duration",
+            filters=[{"throttle_with_priority": {"timeout": "10s", "value": 0.0}}],
+            state_class="measurement",
         ),
         cv.Optional(CONF_ERROR): text_sensor.text_sensor_schema(),
         cv.Optional(CONF_PLUGGED): binary_sensor.binary_sensor_schema(
@@ -341,9 +356,15 @@ async def to_code(config):
             if CONF_POWER in connector_conf:
                 sens = await sensor.new_sensor(connector_conf[CONF_POWER])
                 cg.add(connector.set_power_sensor(sens))
-            if CONF_ENERGY in connector_conf:
-                sens = await sensor.new_sensor(connector_conf[CONF_ENERGY])
-                cg.add(connector.set_energy_sensor(sens))
+            if CONF_TOTAL_ENERGY in connector_conf:
+                sens = await sensor.new_sensor(connector_conf[CONF_TOTAL_ENERGY])
+                cg.add(connector.set_total_energy_sensor(sens))
+            if CONF_SESSION_ENERGY in connector_conf:
+                sens = await sensor.new_sensor(connector_conf[CONF_SESSION_ENERGY])
+                cg.add(connector.set_session_energy_sensor(sens))
+            if CONF_SESSION_TIME in connector_conf:
+                sens = await sensor.new_sensor(connector_conf[CONF_SESSION_TIME])
+                cg.add(connector.set_session_time_sensor(sens))
             if CONF_VOLTAGE in connector_conf:
                 sens = await sensor.new_sensor(connector_conf[CONF_VOLTAGE])
                 cg.add(connector.set_voltage_sensor(sens))
