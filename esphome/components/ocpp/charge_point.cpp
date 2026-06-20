@@ -118,24 +118,58 @@ float Connector::clamp_current_limit_(float value) const {
     return this->clamp_current_(value);
 }
 
+void Connector::clear_active_transaction() {
+    this->active_transaction_id_ = 0;
+    this->reset_active_phases();
+}
+
+void Connector::reset_active_phases() {
+    this->active_phases_ = NAN;
+    if (this->active_phases_sensor_ != nullptr)
+        this->active_phases_sensor_->publish_state(NAN);
+}
+
 void Connector::publish_meter_values(const std::string &connection_id, const MeterValues &meter_values) {
+    MeterValues derived_meter_values = meter_values;
+    derived_meter_values.calculate_phase_values(this->phases_, this->phase_voltage_, this->active_phases_);
+    if (std::isnan(this->active_phases_) && !std::isnan(derived_meter_values.active_phases))
+        this->active_phases_ = derived_meter_values.active_phases;
+    if (!std::isnan(this->active_phases_) && derived_meter_values.active_phases != this->active_phases_)
+        derived_meter_values.calculate_phase_values(this->phases_, this->phase_voltage_, this->active_phases_);
+
     if (this->log_meter_values_ && !connection_id.empty()) {
-        std::string summary = meter_values.sampled_values_summary();
+        std::string summary = derived_meter_values.sampled_values_summary();
         if (!summary.empty())
-            ESP_LOGI(TAG, "%s %u MeterValues %s", connection_id.c_str(), static_cast<unsigned>(meter_values.connector_id),
-                    summary.c_str());
+            ESP_LOGI(TAG, "%s %u MeterValues %s", connection_id.c_str(),
+                    static_cast<unsigned>(derived_meter_values.connector_id), summary.c_str());
     }
     if (this->current_sensor_ != nullptr)
-        this->current_sensor_->publish_state(meter_values.current);
+        this->current_sensor_->publish_state(derived_meter_values.current);
+    if (this->current_l1_sensor_ != nullptr)
+        this->current_l1_sensor_->publish_state(derived_meter_values.current_l1);
+    if (this->current_l2_sensor_ != nullptr)
+        this->current_l2_sensor_->publish_state(derived_meter_values.current_l2);
+    if (this->current_l3_sensor_ != nullptr)
+        this->current_l3_sensor_->publish_state(derived_meter_values.current_l3);
     if (this->power_sensor_ != nullptr)
-        this->power_sensor_->publish_state(meter_values.power);
+        this->power_sensor_->publish_state(derived_meter_values.power);
     if (this->energy_sensor_ != nullptr)
-        this->energy_sensor_->publish_state(meter_values.energy);
+        this->energy_sensor_->publish_state(derived_meter_values.energy);
     if (this->voltage_sensor_ != nullptr)
-        this->voltage_sensor_->publish_state(meter_values.voltage);
+        this->voltage_sensor_->publish_state(derived_meter_values.voltage);
+    if (this->voltage_l1_sensor_ != nullptr)
+        this->voltage_l1_sensor_->publish_state(derived_meter_values.voltage_l1);
+    if (this->voltage_l2_sensor_ != nullptr)
+        this->voltage_l2_sensor_->publish_state(derived_meter_values.voltage_l2);
+    if (this->voltage_l3_sensor_ != nullptr)
+        this->voltage_l3_sensor_->publish_state(derived_meter_values.voltage_l3);
+    if (this->active_phases_sensor_ != nullptr)
+        this->active_phases_sensor_->publish_state(this->active_phases_);
 }
 
 void Connector::publish_status_notification(const StatusNotification &status_notification) {
+    if (status_notification.status == "Available" || status_notification.status == "Unavailable")
+        this->reset_active_phases();
     if (this->status_text_sensor_ != nullptr)
         this->status_text_sensor_->publish_state(status_notification.status);
     std::string error_code = status_notification.error_code;

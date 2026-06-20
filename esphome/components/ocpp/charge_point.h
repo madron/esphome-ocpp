@@ -31,6 +31,10 @@ class Connector {
 
         void set_connector_id(uint32_t connector_id) { this->connector_id_ = connector_id; }
         uint32_t get_connector_id() const { return this->connector_id_; }
+        void set_phases(uint8_t phases) { this->phases_ = phases; }
+        uint8_t get_phases() const { return this->phases_; }
+        void set_phase_voltage(float phase_voltage) { this->phase_voltage_ = phase_voltage; }
+        float get_active_phases() const { return this->active_phases_; }
         void set_log_meter_values(bool log_meter_values) { this->log_meter_values_ = log_meter_values; }
         bool get_log_meter_values() const { return this->log_meter_values_; }
         void set_max_current(uint32_t max_current);
@@ -38,17 +42,28 @@ class Connector {
         void set_current_limit_max(uint32_t current_limit_max);
         uint32_t get_current_limit_max() const { return this->current_limit_max_; }
         void set_current_sensor(sensor::Sensor *current_sensor) { this->current_sensor_ = current_sensor; }
+        void set_current_l1_sensor(sensor::Sensor *current_l1_sensor) { this->current_l1_sensor_ = current_l1_sensor; }
+        void set_current_l2_sensor(sensor::Sensor *current_l2_sensor) { this->current_l2_sensor_ = current_l2_sensor; }
+        void set_current_l3_sensor(sensor::Sensor *current_l3_sensor) { this->current_l3_sensor_ = current_l3_sensor; }
         void set_current_limit_number(CurrentLimit *current_limit_number);
         void set_current_control_number(CurrentControl *current_control_number);
         void set_power_sensor(sensor::Sensor *power_sensor) { this->power_sensor_ = power_sensor; }
         void set_energy_sensor(sensor::Sensor *energy_sensor) { this->energy_sensor_ = energy_sensor; }
         void set_voltage_sensor(sensor::Sensor *voltage_sensor) { this->voltage_sensor_ = voltage_sensor; }
+        void set_voltage_l1_sensor(sensor::Sensor *voltage_l1_sensor) { this->voltage_l1_sensor_ = voltage_l1_sensor; }
+        void set_voltage_l2_sensor(sensor::Sensor *voltage_l2_sensor) { this->voltage_l2_sensor_ = voltage_l2_sensor; }
+        void set_voltage_l3_sensor(sensor::Sensor *voltage_l3_sensor) { this->voltage_l3_sensor_ = voltage_l3_sensor; }
+        void set_active_phases_sensor(sensor::Sensor *active_phases_sensor) { this->active_phases_sensor_ = active_phases_sensor; }
         void set_status_text_sensor(text_sensor::TextSensor *status_text_sensor) { this->status_text_sensor_ = status_text_sensor; }
         void set_error_text_sensor(text_sensor::TextSensor *error_text_sensor) { this->error_text_sensor_ = error_text_sensor; }
         bool has_active_transaction() const { return this->active_transaction_id_ != 0; }
         uint32_t get_active_transaction_id() const { return this->active_transaction_id_; }
-        void set_active_transaction_id(uint32_t active_transaction_id) { this->active_transaction_id_ = active_transaction_id; }
-        void clear_active_transaction() { this->active_transaction_id_ = 0; }
+        void set_active_transaction_id(uint32_t active_transaction_id) {
+            this->active_transaction_id_ = active_transaction_id;
+            this->reset_active_phases();
+        }
+        void clear_active_transaction();
+        void reset_active_phases();
         void set_current_limit(float current_limit);
         float get_current_limit() const { return this->current_limit_; }
         void set_current_control(float current_control);
@@ -62,16 +77,26 @@ class Connector {
         float clamp_current_limit_(float value) const;
 
         uint32_t connector_id_{DEFAULT_CONNECTOR_ID};
+        uint8_t phases_{1};
         uint32_t max_current_{0};
+        float phase_voltage_{DEFAULT_PHASE_VOLTAGE};
         uint32_t current_limit_max_{0};
         float current_limit_{0.0f};
         float current_control_{0.0f};
+        float active_phases_{NAN};
         sensor::Sensor *current_sensor_{nullptr};
+        sensor::Sensor *current_l1_sensor_{nullptr};
+        sensor::Sensor *current_l2_sensor_{nullptr};
+        sensor::Sensor *current_l3_sensor_{nullptr};
         CurrentLimit *current_limit_number_{nullptr};
         CurrentControl *current_control_number_{nullptr};
         sensor::Sensor *power_sensor_{nullptr};
         sensor::Sensor *energy_sensor_{nullptr};
         sensor::Sensor *voltage_sensor_{nullptr};
+        sensor::Sensor *voltage_l1_sensor_{nullptr};
+        sensor::Sensor *voltage_l2_sensor_{nullptr};
+        sensor::Sensor *voltage_l3_sensor_{nullptr};
+        sensor::Sensor *active_phases_sensor_{nullptr};
         text_sensor::TextSensor *status_text_sensor_{nullptr};
         text_sensor::TextSensor *error_text_sensor_{nullptr};
         uint32_t active_transaction_id_{0};
@@ -118,6 +143,10 @@ class ChargePoint {
         const std::string &get_connection_id() const;
         void set_force_protocol(std::string force_protocol);
         const std::string &get_force_protocol() const;
+        void set_phases(uint8_t phases) { this->phases_ = phases; }
+        uint8_t get_phases() const { return this->phases_; }
+        void set_phase_voltage(float phase_voltage) { this->phase_voltage_ = phase_voltage; }
+        float get_phase_voltage() const { return this->phase_voltage_; }
         void set_online_binary_sensor(binary_sensor::BinarySensor *online_binary_sensor) {
             this->online_binary_sensor_ = online_binary_sensor;
         }
@@ -146,6 +175,8 @@ class ChargePoint {
         void add_connector(Connector *connector) {
             if (connector != nullptr)
                 connector->set_max_current(this->max_current_);
+            if (connector != nullptr)
+                connector->set_phase_voltage(this->phase_voltage_);
             this->connectors_.push_back(connector);
         }
 
@@ -198,7 +229,9 @@ class ChargePoint {
         text_sensor::TextSensor *charger_info_text_sensor_{nullptr};
         std::vector<Connector *> connectors_;
         std::vector<std::string> debug_ocpp_exclude_actions_;
+        uint8_t phases_{1};
         uint32_t max_current_{0};
+        float phase_voltage_{DEFAULT_PHASE_VOLTAGE};
         size_t max_queued_messages_{DEFAULT_MAX_QUEUED_MESSAGES};
         bool debug_ocpp_messages_{false};
         uint32_t startup_notifications_delay_ms_{DEFAULT_STARTUP_NOTIFICATIONS_DELAY_MS};

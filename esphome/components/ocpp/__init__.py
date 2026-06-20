@@ -22,6 +22,8 @@ CONF_CHARGER_INFO = "charger_info"
 CONF_LOG_METER_VALUES = "log_meter_values"
 CONF_MAX_CURRENT = "max_current"
 CONF_ONLINE = "online"
+CONF_PHASE_VOLTAGE = "phase_voltage"
+CONF_PHASES = "phases"
 CONF_POWER = "power"
 CONF_PROTOCOL = "protocol"
 CONF_SERVER = "server"
@@ -29,6 +31,13 @@ CONF_SERVER_PATH = "path"
 CONF_STATUS = "status"
 CONF_STARTUP_NOTIFICATIONS_DELAY = "startup_notifications_delay"
 CONF_VOLTAGE = "voltage"
+CONF_ACTIVE_PHASES = "active_phases"
+CONF_CURRENT_L1 = "current_l1"
+CONF_CURRENT_L2 = "current_l2"
+CONF_CURRENT_L3 = "current_l3"
+CONF_VOLTAGE_L1 = "voltage_l1"
+CONF_VOLTAGE_L2 = "voltage_l2"
+CONF_VOLTAGE_L3 = "voltage_l3"
 
 SUPPORTED_PROTOCOLS = ["ocpp1.6", "ocpp2.0.1"]
 
@@ -67,7 +76,30 @@ CONNECTOR_SCHEMA = cv.Schema(
         cv.GenerateID(): cv.declare_id(Connector),
         cv.Optional(CONF_CONNECTOR_ID, default=1): cv.int_range(min=0),
         cv.Optional(CONF_LOG_METER_VALUES, default=False): cv.boolean,
+        cv.Optional(CONF_PHASES): cv.int_range(min=1, max=3),
+        cv.Optional(CONF_ACTIVE_PHASES): sensor.sensor_schema(
+            accuracy_decimals=0,
+            state_class="measurement",
+        ),
         cv.Optional(CONF_CURRENT): sensor.sensor_schema(
+            unit_of_measurement="A",
+            accuracy_decimals=1,
+            device_class="current",
+            state_class="measurement",
+        ),
+        cv.Optional(CONF_CURRENT_L1): sensor.sensor_schema(
+            unit_of_measurement="A",
+            accuracy_decimals=1,
+            device_class="current",
+            state_class="measurement",
+        ),
+        cv.Optional(CONF_CURRENT_L2): sensor.sensor_schema(
+            unit_of_measurement="A",
+            accuracy_decimals=1,
+            device_class="current",
+            state_class="measurement",
+        ),
+        cv.Optional(CONF_CURRENT_L3): sensor.sensor_schema(
             unit_of_measurement="A",
             accuracy_decimals=1,
             device_class="current",
@@ -102,6 +134,24 @@ CONNECTOR_SCHEMA = cv.Schema(
         ),
         cv.Optional(CONF_STATUS): text_sensor.text_sensor_schema(),
         cv.Optional(CONF_VOLTAGE): sensor.sensor_schema(
+            unit_of_measurement="V",
+            accuracy_decimals=1,
+            device_class="voltage",
+            state_class="measurement",
+        ),
+        cv.Optional(CONF_VOLTAGE_L1): sensor.sensor_schema(
+            unit_of_measurement="V",
+            accuracy_decimals=1,
+            device_class="voltage",
+            state_class="measurement",
+        ),
+        cv.Optional(CONF_VOLTAGE_L2): sensor.sensor_schema(
+            unit_of_measurement="V",
+            accuracy_decimals=1,
+            device_class="voltage",
+            state_class="measurement",
+        ),
+        cv.Optional(CONF_VOLTAGE_L3): sensor.sensor_schema(
             unit_of_measurement="V",
             accuracy_decimals=1,
             device_class="voltage",
@@ -149,6 +199,7 @@ CHARGE_POINT_SCHEMA = cv.Schema(
         cv.Optional(CONF_FORCE_PROTOCOL): validate_protocol,
         cv.Optional(CONF_CHARGER_INFO): text_sensor.text_sensor_schema(),
         cv.Required(CONF_MAX_CURRENT): cv.int_range(min=6),
+        cv.Required(CONF_PHASES): cv.int_range(min=1, max=3),
         cv.Optional(CONF_ONLINE): binary_sensor.binary_sensor_schema(),
         cv.Optional(CONF_PROTOCOL): text_sensor.text_sensor_schema(),
         cv.Optional(CONF_STARTUP_NOTIFICATIONS_DELAY, default=300): cv.int_range(min=0, max=4294967),
@@ -173,6 +224,10 @@ def validate_charge_points(config):
     for charge_point in config[CONF_CHARGE_POINTS]:
         connector_ids = set()
         for connector in charge_point[CONF_CONNECTORS]:
+            if CONF_PHASES not in connector:
+                connector[CONF_PHASES] = charge_point[CONF_PHASES]
+            if connector[CONF_PHASES] > charge_point[CONF_PHASES]:
+                raise cv.Invalid("connector phases must be less than or equal to charge point phases")
             connector_id = connector[CONF_CONNECTOR_ID]
             if connector_id in connector_ids:
                 raise cv.Invalid(f"Duplicate connector_id '{connector_id}' in charge point")
@@ -198,6 +253,7 @@ CONFIG_SCHEMA = cv.All(
         {
             cv.GenerateID(): cv.declare_id(OcppComponent),
             cv.Optional(CONF_SERVER, default={}): SERVER_SCHEMA,
+            cv.Optional(CONF_PHASE_VOLTAGE, default=230): cv.float_range(min=1),
             cv.Optional(CONF_CHARGE_POINTS, default=[]): cv.ensure_list(CHARGE_POINT_SCHEMA),
         }
     ).extend(cv.COMPONENT_SCHEMA),
@@ -219,6 +275,8 @@ async def to_code(config):
     for charge_point_conf in config[CONF_CHARGE_POINTS]:
         charge_point = cg.new_Pvariable(charge_point_conf[CONF_ID])
         cg.add(charge_point.set_max_current(charge_point_conf[CONF_MAX_CURRENT]))
+        cg.add(charge_point.set_phase_voltage(config[CONF_PHASE_VOLTAGE]))
+        cg.add(charge_point.set_phases(charge_point_conf[CONF_PHASES]))
         if CONF_CHARGE_POINT_ID in charge_point_conf:
             cg.add(charge_point.set_charge_point_id(charge_point_conf[CONF_CHARGE_POINT_ID]))
         if CONF_FORCE_PROTOCOL in charge_point_conf:
@@ -236,10 +294,23 @@ async def to_code(config):
             connector = cg.new_Pvariable(connector_conf[CONF_ID])
             cg.add(connector.set_connector_id(connector_conf[CONF_CONNECTOR_ID]))
             cg.add(connector.set_log_meter_values(connector_conf[CONF_LOG_METER_VALUES]))
+            cg.add(connector.set_phases(connector_conf[CONF_PHASES]))
             cg.add(connector.set_max_current(charge_point_conf[CONF_MAX_CURRENT]))
+            if CONF_ACTIVE_PHASES in connector_conf:
+                sens = await sensor.new_sensor(connector_conf[CONF_ACTIVE_PHASES])
+                cg.add(connector.set_active_phases_sensor(sens))
             if CONF_CURRENT in connector_conf:
                 sens = await sensor.new_sensor(connector_conf[CONF_CURRENT])
                 cg.add(connector.set_current_sensor(sens))
+            if CONF_CURRENT_L1 in connector_conf:
+                sens = await sensor.new_sensor(connector_conf[CONF_CURRENT_L1])
+                cg.add(connector.set_current_l1_sensor(sens))
+            if CONF_CURRENT_L2 in connector_conf:
+                sens = await sensor.new_sensor(connector_conf[CONF_CURRENT_L2])
+                cg.add(connector.set_current_l2_sensor(sens))
+            if CONF_CURRENT_L3 in connector_conf:
+                sens = await sensor.new_sensor(connector_conf[CONF_CURRENT_L3])
+                cg.add(connector.set_current_l3_sensor(sens))
             if CONF_CURRENT_LIMIT in connector_conf:
                 current_limit_max_value = connector_conf[CONF_CURRENT_LIMIT].get(
                     CONF_MAX_VALUE,
@@ -272,6 +343,15 @@ async def to_code(config):
             if CONF_VOLTAGE in connector_conf:
                 sens = await sensor.new_sensor(connector_conf[CONF_VOLTAGE])
                 cg.add(connector.set_voltage_sensor(sens))
+            if CONF_VOLTAGE_L1 in connector_conf:
+                sens = await sensor.new_sensor(connector_conf[CONF_VOLTAGE_L1])
+                cg.add(connector.set_voltage_l1_sensor(sens))
+            if CONF_VOLTAGE_L2 in connector_conf:
+                sens = await sensor.new_sensor(connector_conf[CONF_VOLTAGE_L2])
+                cg.add(connector.set_voltage_l2_sensor(sens))
+            if CONF_VOLTAGE_L3 in connector_conf:
+                sens = await sensor.new_sensor(connector_conf[CONF_VOLTAGE_L3])
+                cg.add(connector.set_voltage_l3_sensor(sens))
             if CONF_STATUS in connector_conf:
                 sens = await text_sensor.new_text_sensor(connector_conf[CONF_STATUS])
                 cg.add(connector.set_status_text_sensor(sens))

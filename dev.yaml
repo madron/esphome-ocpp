@@ -101,10 +101,12 @@ external_components:
 
 ocpp:
   id: ocpp_id
+  phase_voltage: 230
 
   charge_points:
     - id: garage
       charge_point_id: A99999
+      phases: 3
       max_current: 32
       debug_ocpp_messages: true
       debug_ocpp_exclude_actions:
@@ -126,8 +128,12 @@ ocpp:
             name: garage_status
           error:
             name: garage_error
-          current:
-            name: garage_current
+          current_l1:
+            name: garage_current_1
+          current_l2:
+            name: garage_current_2
+          current_l3:
+            name: garage_current_3
           current_limit:
             name: garage_current_limit
           current_control:
@@ -136,8 +142,15 @@ ocpp:
             name: garage_power
           energy:
             name: garage_energy
-          voltage:
-            name: garage_voltage
+          voltage_l1:
+            name: garage_voltage_l1
+          voltage_l2:
+            name: garage_voltage_l2
+          voltage_l3:
+            name: garage_voltage_l3
+          active_phases:
+            name: garage_active_phases
     - id: unknown
+      phases: 3
       max_current: 32
       debug_ocpp_messages: true
