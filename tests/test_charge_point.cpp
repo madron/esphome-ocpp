@@ -542,8 +542,12 @@ int main() {
         connector.publish_status_notification(StatusNotification("", 1, "NoError", "Preparing"), 10000);
         assert_equal("session_energy_reset_on_start", session_energy_sensor.state, 0.0f);
         assert_equal("session_time_reset_on_start", session_time_sensor.state, 0.0f);
+        connector.loop(10999);
+        assert_equal("session_time_not_updated_within_same_second", session_time_sensor.state, 0.0f);
         connector.loop(12000);
         assert_equal("session_time_updates_while_plugged", session_time_sensor.state, 2.0f);
+        connector.loop(12999);
+        assert_equal("session_time_not_updated_twice_in_same_second", session_time_sensor.state, 2.0f);
 
         connector.publish_meter_values("", MeterValues("", 1, {SampledValue(10.75f, "Energy.Active.Import.Register", "kWh")}));
         assert_equal("session_energy_from_total_delta", session_energy_sensor.state, 0.75f);

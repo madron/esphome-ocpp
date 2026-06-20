@@ -123,6 +123,7 @@ class Connector {
         binary_sensor::BinarySensor *plugged_binary_sensor_{nullptr};
         float last_total_energy_{NAN};
         float session_start_energy_{NAN};
+        uint32_t session_time_{0};
         uint32_t session_start_millis_{0};
         uint32_t last_update_millis_{0};
         bool plugged_{false};

@@ -164,6 +164,7 @@ void Connector::set_plugged_(bool plugged) {
 
 void Connector::on_session_start() {
     this->session_start_energy_ = this->last_total_energy_;
+    this->session_time_ = 0;
     this->session_start_millis_ = this->last_update_millis_;
     if (this->session_energy_sensor_ != nullptr)
         this->session_energy_sensor_->publish_state(0.0f);
@@ -193,10 +194,12 @@ void Connector::update_session_energy_(float total_energy) {
 }
 
 void Connector::update_session_time_(uint32_t now_millis) {
+    uint32_t session_time = (now_millis - this->session_start_millis_) / 1000;
+    if (session_time == this->session_time_)
+        return;
+    this->session_time_ = session_time;
     if (this->session_time_sensor_ != nullptr)
-        this->session_time_sensor_->publish_state(
-            static_cast<float>(now_millis - this->session_start_millis_) / 1000.0f
-        );
+        this->session_time_sensor_->publish_state(static_cast<float>(session_time));
 }
 
 void Connector::publish_meter_values(const std::string &connection_id, const MeterValues &meter_values) {

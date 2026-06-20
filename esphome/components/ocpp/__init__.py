@@ -138,7 +138,6 @@ CONNECTOR_SCHEMA = cv.Schema(
             unit_of_measurement="s",
             accuracy_decimals=0,
             device_class="duration",
-            filters=[{"throttle_with_priority": {"timeout": "10s", "value": 0.0}}],
             state_class="measurement",
         ),
         cv.Optional(CONF_ERROR): text_sensor.text_sensor_schema(),
