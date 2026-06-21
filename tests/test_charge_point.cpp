@@ -144,6 +144,41 @@ int main() {
     }
 
     {
+        // control_current zero/non-zero transitions stop and restart the OCPP transaction
+        TestChargePoint charge_point;
+        charge_point.on_connected("A99999");
+        charge_point.handle_ocpp_text(
+            R"([2,"start-1","StartTransaction",{"connectorId":1,"idTag":"free","meterStart":123,"timestamp":"2026-06-20T00:00:00Z"}])"
+        );
+        charge_point.messages.clear();
+
+        charge_point.connector.set_current_limit(0.0f);
+        assert_equal("remote_stop_on_zero_count", charge_point.messages.size(), 1);
+        assert_equal("remote_stop_on_zero", charge_point.messages[0].payload,
+                     R"([2,"remote-stop-transaction-1-1","RemoteStopTransaction",{"transactionId":1}])");
+
+        charge_point.handle_ocpp_text(
+            R"([2,"stop-1","StopTransaction",{"transactionId":1,"meterStop":456,"timestamp":"2026-06-20T00:10:00Z"}])"
+        );
+        assert_equal("remote_stop_clears_transaction", charge_point.connector.get_active_transaction_id(), 0U);
+        charge_point.messages.clear();
+
+        charge_point.connector.set_current_limit(6.0f);
+        assert_equal("remote_start_on_nonzero_count", charge_point.messages.size(), 1);
+        assert_equal("remote_start_on_nonzero", charge_point.messages[0].payload,
+                     R"([2,"remote-start-transaction-1-1","RemoteStartTransaction",{"connectorId":1,"idTag":"free"}])");
+
+        charge_point.handle_ocpp_text(
+            R"([2,"start-2","StartTransaction",{"connectorId":1,"idTag":"free","meterStart":456,"timestamp":"2026-06-20T00:11:00Z"}])"
+        );
+        assert_equal("remote_start_transaction_profile_count", charge_point.messages.size(), 3);
+        assert_equal("remote_start_transaction_response", charge_point.messages[1].payload,
+                     R"([3,"start-2",{"idTagInfo":{"status":"Accepted"},"transactionId":2}])");
+        assert_equal("remote_start_transaction_profile", charge_point.messages[2].payload,
+                     R"([2,"set-charging-profile-1-2","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":1,"transactionId":2,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Absolute","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":6}]}}}])");
+    }
+
+    {
         // StopTransaction clears the active transaction and disconnect also clears state
         TestChargePoint charge_point;
         charge_point.on_connected("A99999");

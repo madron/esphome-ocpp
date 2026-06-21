@@ -68,6 +68,12 @@ int main() {
     assert_equal("set_charging_profile_request",
                  protocol.make_set_charging_profile_request("set-profile-1", 1, 7, 1, 12.3f),
                  R"([2,"set-profile-1","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":1,"transactionId":7,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Absolute","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":12.3}]}}}])");
+    assert_equal("remote_start_transaction_request",
+                 protocol.make_remote_start_transaction_request("remote-start-1", 1, "free"),
+                 R"([2,"remote-start-1","RemoteStartTransaction",{"connectorId":1,"idTag":"free"}])");
+    assert_equal("remote_stop_transaction_request",
+                 protocol.make_remote_stop_transaction_request("remote-stop-1", 7),
+                 R"([2,"remote-stop-1","RemoteStopTransaction",{"transactionId":7}])");
     assert_equal("get_configuration_request", protocol.make_get_configuration_request("get-configuration"),
                  R"([2,"get-configuration","GetConfiguration",{"key":["MeterValueSampleInterval","MeterValuesSampledData","ConnectorSwitch3to1PhaseSupported"]}])");
     std::unique_ptr<OcppMessage> authorize_message = protocol.parse_message(
@@ -166,6 +172,10 @@ int main() {
                  std::string(""));
     assert_equal("set_charging_profile_ocpp201_empty",
                  protocol.make_set_charging_profile_request("set-profile-1", 1, 7, 1, 12.3f), std::string(""));
+    assert_equal("remote_start_transaction_ocpp201_empty",
+                 protocol.make_remote_start_transaction_request("remote-start-1", 1, "free"), std::string(""));
+    assert_equal("remote_stop_transaction_ocpp201_empty",
+                 protocol.make_remote_stop_transaction_request("remote-stop-1", 7), std::string(""));
     assert_equal("get_configuration_request_ocpp201_empty", protocol.make_get_configuration_request("get-configuration"),
                  std::string(""));
     std::unique_ptr<OcppMessage> ocpp201_status_notification_message = protocol.parse_message(

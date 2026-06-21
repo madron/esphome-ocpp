@@ -30,6 +30,12 @@ class OcppProtocol {
             uint32_t charging_profile_id,
             float current_limit
         ) const;
+        std::string make_remote_start_transaction_request(
+            const std::string &unique_id,
+            uint32_t connector_id,
+            const std::string &id_tag
+        ) const;
+        std::string make_remote_stop_transaction_request(const std::string &unique_id, uint32_t transaction_id) const;
         std::string make_get_configuration_request(const std::string &unique_id) const;
         std::string make_authorize_response(const std::string &unique_id) const;
         std::string make_boot_notification_response(const std::string &unique_id) const;

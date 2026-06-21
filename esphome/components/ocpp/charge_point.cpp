@@ -15,6 +15,9 @@ static const char *const CHANGE_CONFIGURATION_METER_VALUE_SAMPLE_INTERVAL_UNIQUE
 static const char *const CHANGE_CONFIGURATION_METER_VALUES_SAMPLED_DATA_UNIQUE_ID =
     "change-config-meter-values-sampled-data";
 static const char *const GET_CONFIGURATION_UNIQUE_ID = "get-configuration";
+static const char *const REMOTE_START_TRANSACTION_ID_TAG = "free";
+static const char *const REMOTE_START_TRANSACTION_UNIQUE_ID_PREFIX = "remote-start-transaction";
+static const char *const REMOTE_STOP_TRANSACTION_UNIQUE_ID_PREFIX = "remote-stop-transaction";
 static const char *const SET_CHARGING_PROFILE_UNIQUE_ID_PREFIX = "set-charging-profile";
 static const char *const METER_VALUE_SAMPLE_INTERVAL_KEY = "MeterValueSampleInterval";
 static constexpr const char *METER_VALUE_SAMPLE_INTERVAL_VALUE = "5";
@@ -266,7 +269,19 @@ void ChargePoint::handle_authorize_(const Authorize &authorize) {
                          authorize.unique_id, authorize.action});
 }
 
-void ChargePoint::on_connector_control_current_changed(Connector *connector) {
+void ChargePoint::on_connector_control_current_changed(
+    Connector *connector,
+    float old_control_current,
+    float new_control_current
+) {
+    if (old_control_current == 0.0f && new_control_current != 0.0f) {
+        this->send_connector_remote_start_transaction_(connector);
+        return;
+    }
+    if (old_control_current != 0.0f && new_control_current == 0.0f) {
+        this->send_connector_remote_stop_transaction_(connector);
+        return;
+    }
     this->send_connector_control_current_(connector);
 }
 
@@ -427,6 +442,9 @@ bool ChargePoint::send_connector_control_current_(Connector *connector) {
     if (connector == nullptr || !this->connected_ || !connector->has_active_transaction())
         return false;
 
+    if (connector->get_control_current() == 0.0f)
+        return false;
+
     std::string unique_id = std::string(SET_CHARGING_PROFILE_UNIQUE_ID_PREFIX) + "-" +
                             std::to_string(connector->get_connector_id()) + "-" +
                             std::to_string(this->next_set_charging_profile_sequence_++);
@@ -441,6 +459,41 @@ bool ChargePoint::send_connector_control_current_(Connector *connector) {
         return false;
 
     return this->send_message_({std::move(request), OcppMessageType::CALL, unique_id, "SetChargingProfile"});
+}
+
+bool ChargePoint::send_connector_remote_start_transaction_(Connector *connector) {
+    if (connector == nullptr || !this->connected_)
+        return false;
+
+    std::string unique_id = std::string(REMOTE_START_TRANSACTION_UNIQUE_ID_PREFIX) + "-" +
+                            std::to_string(connector->get_connector_id()) + "-" +
+                            std::to_string(this->next_remote_start_transaction_sequence_++);
+    std::string request = this->protocol_.make_remote_start_transaction_request(
+        unique_id,
+        connector->get_connector_id(),
+        REMOTE_START_TRANSACTION_ID_TAG
+    );
+    if (request.empty())
+        return false;
+
+    return this->send_message_({std::move(request), OcppMessageType::CALL, unique_id, "RemoteStartTransaction"});
+}
+
+bool ChargePoint::send_connector_remote_stop_transaction_(Connector *connector) {
+    if (connector == nullptr || !this->connected_ || !connector->has_active_transaction())
+        return false;
+
+    std::string unique_id = std::string(REMOTE_STOP_TRANSACTION_UNIQUE_ID_PREFIX) + "-" +
+                            std::to_string(connector->get_connector_id()) + "-" +
+                            std::to_string(this->next_remote_stop_transaction_sequence_++);
+    std::string request = this->protocol_.make_remote_stop_transaction_request(
+        unique_id,
+        connector->get_active_transaction_id()
+    );
+    if (request.empty())
+        return false;
+
+    return this->send_message_({std::move(request), OcppMessageType::CALL, unique_id, "RemoteStopTransaction"});
 }
 
 void ChargePoint::handle_startup_notification_trigger_reply_(const OcppMessage &message) {

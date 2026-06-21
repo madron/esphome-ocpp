@@ -116,7 +116,7 @@ void Connector::update_control_current_() {
     if (this->control_current_sensor_ != nullptr)
         this->control_current_sensor_->publish_state(this->control_current_);
     if (this->listener_ != nullptr && this->control_current_ != old_control_current)
-        this->listener_->on_connector_control_current_changed(this);
+        this->listener_->on_connector_control_current_changed(this, old_control_current, this->control_current_);
 }
 
 void Connector::clear_active_transaction() {

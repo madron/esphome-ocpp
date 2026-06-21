@@ -16,7 +16,11 @@ class Connector;
 class CurrentLimit;
 class ConnectorListener {
     public:
-        virtual void on_connector_control_current_changed(Connector *connector) = 0;
+        virtual void on_connector_control_current_changed(
+            Connector *connector,
+            float old_control_current,
+            float new_control_current
+        ) = 0;
 };
 class RequestedCurrent;
 

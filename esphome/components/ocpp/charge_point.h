@@ -82,7 +82,11 @@ class ChargePoint : public ConnectorListener {
         void handle_ocpp_text(const std::string &message, uint32_t now_millis = 0);
         void loop(uint32_t now_millis);
         bool pop_queued_message(std::string *message, uint32_t now_millis = 0);
-        void on_connector_control_current_changed(Connector *connector) override;
+        void on_connector_control_current_changed(
+            Connector *connector,
+            float old_control_current,
+            float new_control_current
+        ) override;
 
     protected:
         bool send_message_(QueuedMessage message);
@@ -101,6 +105,8 @@ class ChargePoint : public ConnectorListener {
         bool send_meter_value_sample_interval_change_request_();
         bool send_meter_values_sampled_data_change_request_();
         bool send_connector_control_current_(Connector *connector);
+        bool send_connector_remote_start_transaction_(Connector *connector);
+        bool send_connector_remote_stop_transaction_(Connector *connector);
         void send_get_configuration_request_();
         void send_startup_notification_triggers_();
         void send_boot_notification_trigger_();
@@ -143,6 +149,8 @@ class ChargePoint : public ConnectorListener {
         uint32_t connected_at_millis_{0};
         uint32_t current_millis_{0};
         uint32_t next_transaction_id_{1};
+        uint32_t next_remote_start_transaction_sequence_{1};
+        uint32_t next_remote_stop_transaction_sequence_{1};
         uint32_t next_set_charging_profile_sequence_{1};
         ChangeConfigurationStage change_configuration_stage_{ChangeConfigurationStage::IDLE};
         size_t meter_values_sampled_data_fallback_index_{0};

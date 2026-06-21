@@ -278,6 +278,27 @@ std::string OcppProtocol::make_set_charging_profile_request(
            "\"limit\":" + json_number(current_limit) + "}]}}}]";
 }
 
+std::string OcppProtocol::make_remote_start_transaction_request(
+    const std::string &unique_id,
+    uint32_t connector_id,
+    const std::string &id_tag
+) const {
+    if (this->version_ != OcppProtocolVersion::OCPP_1_6)
+        return "";
+    return "[2,\"" + json_escape(unique_id) + "\",\"RemoteStartTransaction\",{\"connectorId\":" +
+           std::to_string(connector_id) + ",\"idTag\":\"" + json_escape(id_tag) + "\"}]";
+}
+
+std::string OcppProtocol::make_remote_stop_transaction_request(
+    const std::string &unique_id,
+    uint32_t transaction_id
+) const {
+    if (this->version_ != OcppProtocolVersion::OCPP_1_6 || transaction_id == 0)
+        return "";
+    return "[2,\"" + json_escape(unique_id) + "\",\"RemoteStopTransaction\",{\"transactionId\":" +
+           std::to_string(transaction_id) + "}]";
+}
+
 std::unique_ptr<OcppMessage> OcppProtocol::parse_message(const std::string &message) const {
     JsonDocument document = json::parse_json(message);
     if (document.overflowed() || document.isNull() || !document.is<JsonArray>()) {
