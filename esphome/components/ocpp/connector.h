@@ -15,7 +15,7 @@ namespace esphome::ocpp {
 class CurrentLimit;
 class RequestedCurrent;
 
-float calculate_control_current(float requested_current, float current_limit);
+float calculate_control_current(float requested_current, float current_limit, uint32_t max_current);
 
 class Connector {
     public:

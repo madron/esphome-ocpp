@@ -25,8 +25,14 @@ bool status_notification_to_plugged(const std::string &status, bool *plugged) {
 
 }  // namespace
 
-float calculate_control_current(float requested_current, float current_limit) {
+float calculate_control_current(
+    float requested_current,
+    float current_limit,
+    uint32_t max_current
+) {
     float control_current = std::min(requested_current, current_limit);
+    if (max_current > 0)
+        control_current = std::min(control_current, static_cast<float>(max_current));
     if (control_current > 0.0f && control_current < MIN_CHARGING_PROFILE_CURRENT)
         return 0.0f;
     return control_current;
@@ -101,7 +107,11 @@ float Connector::clamp_current_limit_(float value) const {
 }
 
 void Connector::update_control_current_() {
-    this->control_current_ = calculate_control_current(this->requested_current_, this->current_limit_);
+    this->control_current_ = calculate_control_current(
+        this->requested_current_,
+        this->current_limit_,
+        this->max_current_
+    );
     if (this->control_current_sensor_ != nullptr)
         this->control_current_sensor_->publish_state(this->control_current_);
 }

@@ -78,9 +78,11 @@ int main() {
 
     {
         // Pure control-current calculation is independent from connector state and publishing
-        assert_equal("calculate_control_current_from_request", calculate_control_current(20.0f, 32.0f), 20.0f);
-        assert_equal("calculate_control_current_clamped_by_limit", calculate_control_current(20.0f, 10.0f), 10.0f);
-        assert_equal("calculate_control_current_sub_minimum_disabled", calculate_control_current(4.0f, 32.0f), 0.0f);
+        assert_equal("calculate_control_current_from_request", calculate_control_current(20.0f, 32.0f, 32U), 20.0f);
+        assert_equal("calculate_control_current_clamped_by_limit", calculate_control_current(20.0f, 10.0f, 32U), 10.0f);
+        assert_equal("calculate_control_current_clamped_by_max", calculate_control_current(20.0f, 32.0f, 16U), 16.0f);
+        assert_equal("calculate_control_current_zero_max_unlimited", calculate_control_current(20.0f, 32.0f, 0U), 20.0f);
+        assert_equal("calculate_control_current_sub_minimum_disabled", calculate_control_current(4.0f, 32.0f, 32U), 0.0f);
     }
 
     {
