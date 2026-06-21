@@ -147,8 +147,6 @@ class Connector {
         bool plugged_{false};
         uint32_t active_transaction_id_{0};
         bool log_meter_values_{false};
-        bool current_limit_has_state_{false};
-        bool current_limit_max_configured_{false};
 };
 
 class CurrentLimit : public number::Number {
@@ -219,8 +217,6 @@ class ChargePoint {
         void set_max_queued_messages(size_t max_queued_messages) { this->max_queued_messages_ = max_queued_messages; }
         size_t get_max_queued_messages() const { return this->max_queued_messages_; }
         void add_connector(Connector *connector) {
-            if (connector != nullptr)
-                connector->set_max_current(this->max_current_);
             if (connector != nullptr)
                 connector->set_phase_voltage(this->phase_voltage_);
             this->connectors_.push_back(connector);

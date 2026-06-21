@@ -26,9 +26,11 @@ class TestChargePoint : public ChargePoint {
     using ChargePoint::should_log_debug_ocpp_message_;
 
     TestChargePoint() {
+        this->set_max_current(32);
         this->set_online_binary_sensor(&this->online_sensor);
         this->set_protocol_text_sensor(&this->protocol_sensor);
         this->set_charger_info_text_sensor(&this->charger_info_sensor);
+        this->connector.set_max_current(this->get_max_current());
         this->connector.set_current_sensor(&this->current_sensor);
         this->connector.set_control_current_sensor(&this->control_current_sensor);
         this->connector.set_power_sensor(&this->power_sensor);
@@ -41,6 +43,7 @@ class TestChargePoint : public ChargePoint {
         this->connector.set_plugged_binary_sensor(&this->plugged_sensor);
         this->add_connector(&this->connector);
         this->second_connector.set_connector_id(2);
+        this->second_connector.set_max_current(this->get_max_current());
         this->second_connector.set_current_sensor(&this->second_current_sensor);
         this->second_connector.set_control_current_sensor(&this->second_control_current_sensor);
         this->second_connector.set_power_sensor(&this->second_power_sensor);
@@ -206,11 +209,11 @@ int main() {
         charge_point.set_startup_notifications_delay(0);
         assert_equal("set_startup_notifications_delay", charge_point.get_startup_notifications_delay(), 0U);
 
-        // set_max_current propagates to connectors
-        charge_point.set_max_current(32);
-        assert_equal("set_max_current", charge_point.get_max_current(), 32U);
-        assert_equal("set_max_current_connector", charge_point.connector.get_max_current(), 32U);
-        assert_equal("set_max_current_second_connector", charge_point.second_connector.get_max_current(), 32U);
+        // set_max_current stores the charge point installation limit; connectors are configured once
+        charge_point.set_max_current(24);
+        assert_equal("set_max_current", charge_point.get_max_current(), 24U);
+        assert_equal("set_max_current_connector_unchanged", charge_point.connector.get_max_current(), 32U);
+        assert_equal("set_max_current_second_connector_unchanged", charge_point.second_connector.get_max_current(), 32U);
 
         // set_max_queued_messages
         charge_point.set_max_queued_messages(16);
@@ -254,8 +257,6 @@ int main() {
         assert_equal("control_current_zero_with_zero_limit", connector.get_control_current(), 0.0f);
         requested_current_number.control(-1.0f);
         assert_equal("requested_current_min", connector.get_requested_current(), 0.0f);
-        connector.set_max_current(24);
-        assert_equal("requested_current_zero_survives_max_update", connector.get_requested_current(), 0.0f);
     }
 
     {
