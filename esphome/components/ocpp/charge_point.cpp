@@ -77,6 +77,7 @@ void Connector::set_max_current(uint32_t max_current) {
     this->update_control_current_();
 }
 
+// current_limit_max configures the current_limit number range; this method should only be called once during setup.
 void Connector::set_current_limit_max(uint32_t current_limit_max) {
     if (this->max_current_ > 0 && current_limit_max > this->max_current_)
         current_limit_max = this->max_current_;
