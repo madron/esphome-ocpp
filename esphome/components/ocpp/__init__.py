@@ -21,6 +21,7 @@ CONF_LOG_METER_VALUES = "log_meter_values"
 CONF_MAX_CURRENT = "max_current"
 CONF_ONLINE = "online"
 CONF_PHASE_VOLTAGE = "phase_voltage"
+CONF_PHASE_MAPPING = "phase_mapping"
 CONF_PHASES = "phases"
 CONF_PLUGGED = "plugged"
 CONF_POWER = "power"
@@ -44,6 +45,7 @@ CONF_VOLTAGE_L3 = "voltage_l3"
 
 SUPPORTED_PROTOCOLS = ["ocpp1.6", "ocpp2.0.1"]
 MIN_CHARGING_PROFILE_CURRENT = 6
+PHASE_MAPPING = {"l1": 1, "l2": 2, "l3": 3}
 
 ocpp_ns = cg.esphome_ns.namespace("ocpp")
 OcppComponent = ocpp_ns.class_("OcppComponent", cg.Component)
@@ -75,11 +77,20 @@ SERVER_SCHEMA = cv.Schema(
 # Connector
 #----------------------------------------------------------
 
+def validate_phase_mapping_phase(value):
+    value = cv.string(value).strip().lower()
+    if value not in PHASE_MAPPING:
+        supported = ", ".join(PHASE_MAPPING)
+        raise cv.Invalid(f"phase_mapping entries must be one of: {supported}")
+    return PHASE_MAPPING[value]
+
+
 CONNECTOR_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(Connector),
         cv.Optional(CONF_CONNECTOR_ID, default=1): cv.int_range(min=0),
         cv.Optional(CONF_LOG_METER_VALUES, default=False): cv.boolean,
+        cv.Optional(CONF_PHASE_MAPPING): cv.ensure_list(validate_phase_mapping_phase),
         cv.Optional(CONF_PHASES): cv.int_range(min=1, max=3),
         cv.Optional(CONF_ACTIVE_PHASES): sensor.sensor_schema(
             accuracy_decimals=0,
@@ -253,6 +264,14 @@ def validate_charge_points(config):
                 connector[CONF_PHASES] = charge_point[CONF_PHASES]
             if connector[CONF_PHASES] > charge_point[CONF_PHASES]:
                 raise cv.Invalid("connector phases must be less than or equal to charge point phases")
+            if CONF_PHASE_MAPPING not in connector:
+                connector[CONF_PHASE_MAPPING] = list(range(1, connector[CONF_PHASES] + 1))
+            if len(connector[CONF_PHASE_MAPPING]) != connector[CONF_PHASES]:
+                raise cv.Invalid("phase_mapping must contain exactly one entry for each connector phase")
+            if len(set(connector[CONF_PHASE_MAPPING])) != len(connector[CONF_PHASE_MAPPING]):
+                raise cv.Invalid("phase_mapping entries must not be repeated")
+            if max(connector[CONF_PHASE_MAPPING], default=0) > charge_point[CONF_PHASES]:
+                raise cv.Invalid("phase_mapping entries must be available on the charge point")
             connector_id = connector[CONF_CONNECTOR_ID]
             if connector_id in connector_ids:
                 raise cv.Invalid(f"Duplicate connector_id '{connector_id}' in charge point")
@@ -321,6 +340,8 @@ async def to_code(config):
             cg.add(connector.set_log_meter_values(connector_conf[CONF_LOG_METER_VALUES]))
             cg.add(connector.set_phases(connector_conf[CONF_PHASES]))
             cg.add(connector.set_max_current(charge_point_conf[CONF_MAX_CURRENT]))
+            for connector_phase, supply_phase in enumerate(connector_conf[CONF_PHASE_MAPPING], start=1):
+                cg.add(connector.set_phase_mapping(connector_phase, supply_phase))
             if CONF_ACTIVE_PHASES in connector_conf:
                 sens = await sensor.new_sensor(connector_conf[CONF_ACTIVE_PHASES])
                 cg.add(connector.set_active_phases_sensor(sens))

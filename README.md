@@ -44,6 +44,7 @@ ocpp:
         name: Garage Charger Info
       connectors:
         - connector_id: 1
+          phase_mapping: [l1, l2, l3]
           current:
             name: Garage Current
           log_meter_values: true
@@ -91,6 +92,8 @@ Connector current control separates the current requested by a user or automatio
 
 For each connector, the component first computes `min(requested_current, current_limit)`. If the sum of all connector requests is higher than the charge point `max_current`, the available current is shared fairly between the requesting connectors without exceeding each connector's request.
 
+For three-phase charge points, connector `phase_mapping` describes how connector pins map to supply phases. A rotated mapping such as `[l2, l3, l1]` means the connector's L1 pin is supplied by charge point phase L2. Until the component knows the EV's actual active phases from metering or inference, current sharing should safely assume that the connector uses all configured phases.
+
 | Connector 1 request | Connector 2 request | `max_current` | `control_current` result |
 | ---                 | ---                 | ---           | ---                      |
 | `20 A`              | `32 A`              | `32 A`        | `16 A` / `16 A`          |
@@ -123,6 +126,7 @@ Connector `status` and `error` text sensors are populated from `StatusNotificati
 | ---                            | --- |
 | `id` (Optional)                | ESPHome internal ID for this connector. Usually omit this and let ESPHome generate it. |
 | `connector_id` (Optional)      | Numeric OCPP connector ID used to match `MeterValues.connectorId` in OCPP 1.6 or `MeterValues.evseId` in OCPP 2.0.1. Defaults to `1`. Must be unique within the charge point. |
+| `phase_mapping` (Optional)     | Ordered list mapping connector pins to charge point supply phases. Use values `l1`, `l2`, and `l3`, for example `[l2, l3, l1]` for a rotated three-phase connector. Defaults to the first configured connector phases in order. |
 | `log_meter_values` (Optional)  | Logs a compact info-level summary of received `MeterValues` sampled values for this connector. Defaults to `false`. |
 | `current` (Optional)           | Sensor populated from `Current.Import` `MeterValues` in `A`. Missing values are published as unavailable/unknown. |
 | `current_limit` (Optional)     | Number entity for the connector current limit in `A`. Range is `0` to `max_value` when set, otherwise `0` to the charge point `max_current`, with a step of `1 A`. `max_value` must be less than or equal to the charge point `max_current`. |

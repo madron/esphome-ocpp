@@ -121,6 +121,7 @@ ocpp:
       connectors:
         - id: garage_1
           connector_id: 1
+          phase_mapping: [l1, l2, l3]
           log_meter_values: true
           status:
             name: 10_garage_status

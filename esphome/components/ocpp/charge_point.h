@@ -33,6 +33,16 @@ class Connector {
         uint32_t get_connector_id() const { return this->connector_id_; }
         void set_phases(uint8_t phases) { this->phases_ = phases; }
         uint8_t get_phases() const { return this->phases_; }
+        void set_phase_mapping(uint8_t connector_phase, uint8_t supply_phase) {
+            if (connector_phase < 1 || connector_phase > 3)
+                return;
+            this->phase_mapping_[connector_phase - 1] = supply_phase;
+        }
+        uint8_t get_phase_mapping(uint8_t connector_phase) const {
+            if (connector_phase < 1 || connector_phase > 3)
+                return 0;
+            return this->phase_mapping_[connector_phase - 1];
+        }
         void set_phase_voltage(float phase_voltage) { this->phase_voltage_ = phase_voltage; }
         float get_active_phases() const { return this->active_phases_; }
         void set_log_meter_values(bool log_meter_values) { this->log_meter_values_ = log_meter_values; }
@@ -97,6 +107,7 @@ class Connector {
 
         uint32_t connector_id_{DEFAULT_CONNECTOR_ID};
         uint8_t phases_{1};
+        uint8_t phase_mapping_[3]{1, 2, 3};
         uint32_t max_current_{0};
         float phase_voltage_{DEFAULT_PHASE_VOLTAGE};
         uint32_t current_limit_max_{0};

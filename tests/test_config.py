@@ -247,6 +247,85 @@ class ChargePointSchemaTests(unittest.TestCase):
         self.assertIn("current_limit", connector)
         self.assertIn("requested_current", connector)
 
+    def test_connector_phase_mapping_defaults_to_connector_phases(self):
+        validated = CONFIG_SCHEMA(
+            {
+                "id": "ocpp_id",
+                "charge_points": [
+                    {
+                        "id": "garage_left",
+                        "charge_point_id": "A99999",
+                        "phases": 3,
+                        "max_current": 32,
+                        "connectors": [{"connector_id": 1, "phases": 1}],
+                    }
+                ],
+            }
+        )
+
+        connector = validated["charge_points"][0]["connectors"][0]
+        self.assertEqual(connector["phase_mapping"], [1])
+
+    def test_connector_phase_mapping_accepts_rotation(self):
+        validated = CONFIG_SCHEMA(
+            {
+                "id": "ocpp_id",
+                "charge_points": [
+                    {
+                        "id": "garage_left",
+                        "charge_point_id": "A99999",
+                        "phases": 3,
+                        "max_current": 12,
+                        "connectors": [
+                            {"connector_id": 1, "phases": 3, "phase_mapping": ["l1", "l2", "l3"]},
+                            {"connector_id": 2, "phases": 3, "phase_mapping": ["l2", "l3", "l1"]},
+                        ],
+                    }
+                ],
+            }
+        )
+
+        connectors = validated["charge_points"][0]["connectors"]
+        self.assertEqual(connectors[0]["phase_mapping"], [1, 2, 3])
+        self.assertEqual(connectors[1]["phase_mapping"], [2, 3, 1])
+
+    def test_connector_phase_mapping_rejects_invalid_mapping(self):
+        invalid_connectors = [
+            {"connector_id": 1, "phases": 3, "phase_mapping": ["l1", "l2"]},
+            {"connector_id": 1, "phases": 3, "phase_mapping": ["l1", "l1", "l2"]},
+        ]
+        for connector in invalid_connectors:
+            with self.subTest(connector=connector), self.assertRaises(Exception):
+                CONFIG_SCHEMA(
+                    {
+                        "id": "ocpp_id",
+                        "charge_points": [
+                            {
+                                "id": "garage_left",
+                                "charge_point_id": "A99999",
+                                "phases": 3,
+                                "max_current": 6,
+                                "connectors": [connector],
+                            }
+                        ],
+                    }
+                )
+        with self.assertRaises(Exception):
+            CONFIG_SCHEMA(
+                {
+                    "id": "ocpp_id",
+                    "charge_points": [
+                        {
+                            "id": "garage_left",
+                            "charge_point_id": "A99999",
+                            "phases": 1,
+                            "max_current": 6,
+                            "connectors": [{"connector_id": 1, "phases": 1, "phase_mapping": ["l2"]}],
+                        }
+                    ],
+                }
+            )
+
     def test_connector_current_limit_max_value_override(self):
         validated = CONFIG_SCHEMA(
             {
