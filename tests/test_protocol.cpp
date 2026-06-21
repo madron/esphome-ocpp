@@ -170,6 +170,7 @@ int main() {
     assert_equal("ocpp201_status_notification_connector_id", ocpp201_status_notification->connector_id, 1U);
     assert_equal("ocpp201_status_notification_error_code_empty", ocpp201_status_notification->error_code, std::string(""));
     assert_equal("ocpp201_status_notification_status", ocpp201_status_notification->status, std::string("Faulted"));
+    assert_equal("reset_ocpp16_for_responses", protocol.set_websocket_protocol("ocpp1.6"), true);
     assert_equal("boot_response", protocol.make_boot_notification_response("boot-1"),
                  R"([3,"boot-1",{"currentTime":"1970-01-01T00:00:00Z","interval":300,"status":"Accepted"}])");
     assert_equal("authorize_response", protocol.make_authorize_response("authorize-1"),
