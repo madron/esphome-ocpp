@@ -193,10 +193,11 @@ class MeterValues : public OcppCall {
         MeterValues(
             std::string unique_id = "",
             uint32_t connector_id = 1,
-            std::vector<SampledValue> sampled_values = {}
+            std::vector<SampledValue> sampled_values = {},
+            uint32_t transaction_id = 0
         )
             : OcppCall("MeterValues", std::move(unique_id)), connector_id(connector_id),
-              sampled_values(std::move(sampled_values)) {
+              transaction_id(transaction_id), sampled_values(std::move(sampled_values)) {
             this->calculate_values_();
         }
 
@@ -231,6 +232,7 @@ class MeterValues : public OcppCall {
         }
 
         uint32_t connector_id;
+        uint32_t transaction_id;
         std::vector<SampledValue> sampled_values;
         float current;
         float power;

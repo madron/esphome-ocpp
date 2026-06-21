@@ -201,6 +201,7 @@ std::unique_ptr<OcppMessage> parse_status_notification(const std::string &unique
 
 std::unique_ptr<OcppMessage> parse_meter_values(const std::string &unique_id, const JsonObject &payload) {
     uint32_t connector_id = json_uint_or_default(payload["connectorId"], json_uint_or_default(payload["evseId"], 1));
+    uint32_t transaction_id = json_uint_or_default(payload["transactionId"], 0);
     std::vector<SampledValue> sampled_values;
 
     JsonVariant meter_value = payload["meterValue"];
@@ -230,7 +231,7 @@ std::unique_ptr<OcppMessage> parse_meter_values(const std::string &unique_id, co
         }
     }
 
-    return std::unique_ptr<OcppMessage>(new MeterValues(unique_id, connector_id, std::move(sampled_values)));
+    return std::unique_ptr<OcppMessage>(new MeterValues(unique_id, connector_id, std::move(sampled_values), transaction_id));
 }
 
 }  // namespace

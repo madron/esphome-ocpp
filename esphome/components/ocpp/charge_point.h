@@ -110,6 +110,7 @@ class ChargePoint : public ConnectorListener {
         void publish_charger_info_(const BootNotification &boot_notification);
         void publish_meter_values_(const MeterValues &meter_values);
         void publish_status_notification_(const StatusNotification &status_notification);
+        Connector *recover_active_transaction_id_from_meter_values_(const MeterValues &meter_values);
         Connector *find_connector_(uint32_t connector_id);
         Connector *find_connector_by_transaction_id_(uint32_t transaction_id);
 

@@ -107,11 +107,12 @@ int main() {
     assert_equal("change_configuration_response_exists", change_configuration_response != nullptr, true);
     assert_equal("change_configuration_response_status", change_configuration_response->status, std::string("Rejected"));
     std::unique_ptr<OcppMessage> meter_values_message = protocol.parse_message(
-        R"([2,"meter-1","MeterValues",{"connectorId":1,"meterValue":[{"timestamp":"2026-06-20T00:00:00Z","sampledValue":[{"value":"16.2","measurand":"Current.Import","unit":"A"},{"value":"3.68","measurand":"Power.Active.Import","unit":"kW"},{"value":"12345","measurand":"Energy.Active.Import.Register","unit":"Wh"},{"value":"230.5","measurand":"Voltage","unit":"V"}]}]}])"
+        R"([2,"meter-1","MeterValues",{"connectorId":1,"transactionId":7,"meterValue":[{"timestamp":"2026-06-20T00:00:00Z","sampledValue":[{"value":"16.2","measurand":"Current.Import","unit":"A"},{"value":"3.68","measurand":"Power.Active.Import","unit":"kW"},{"value":"12345","measurand":"Energy.Active.Import.Register","unit":"Wh"},{"value":"230.5","measurand":"Voltage","unit":"V"}]}]}])"
     );
     auto *meter_values = dynamic_cast<MeterValues *>(meter_values_message.get());
     assert_equal("meter_values_exists", meter_values != nullptr, true);
     assert_equal("meter_values_connector_id", meter_values->connector_id, 1U);
+    assert_equal("meter_values_transaction_id", meter_values->transaction_id, 7U);
     assert_equal("meter_values_current", meter_values->current, 16.2f);
     assert_equal("meter_values_power", meter_values->power, 3680.0f);
     assert_equal("meter_values_energy", meter_values->energy, 12.345f);

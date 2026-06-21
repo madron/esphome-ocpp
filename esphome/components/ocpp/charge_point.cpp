@@ -238,9 +238,12 @@ void ChargePoint::handle_ocpp_call_(const OcppMessage &call) {
     } else if (call.action == "MeterValues") {
         this->set_online_(true);
         const auto &meter_values = static_cast<const MeterValues &>(call);
+        Connector *recovered_transaction_connector = this->recover_active_transaction_id_from_meter_values_(meter_values);
         this->publish_meter_values_(meter_values);
-        this->send_message_({this->protocol_.make_meter_values_response(call.unique_id), OcppMessageType::CALL_RESULT,
-                             call.unique_id, call.action});
+        bool response_queued = this->send_message_({this->protocol_.make_meter_values_response(call.unique_id),
+                                                    OcppMessageType::CALL_RESULT, call.unique_id, call.action});
+        if (response_queued && recovered_transaction_connector != nullptr)
+            this->send_connector_control_current_(recovered_transaction_connector);
     } else if (call.action == "StatusNotification") {
         this->status_notification_pending_ = false;
         this->status_notification_trigger_in_flight_ = false;
@@ -550,6 +553,22 @@ void ChargePoint::publish_status_notification_(const StatusNotification &status_
         return;
     }
     connector->publish_status_notification(status_notification, this->current_millis_);
+}
+
+Connector *ChargePoint::recover_active_transaction_id_from_meter_values_(const MeterValues &meter_values) {
+    if (meter_values.transaction_id == 0)
+        return nullptr;
+
+    Connector *connector = this->find_connector_(meter_values.connector_id);
+    if (connector == nullptr)
+        return nullptr;
+
+    if (this->next_transaction_id_ <= meter_values.transaction_id)
+        this->next_transaction_id_ = meter_values.transaction_id + 1;
+
+    bool transaction_id_changed = connector->get_active_transaction_id() != meter_values.transaction_id;
+    connector->set_active_transaction_id(meter_values.transaction_id);
+    return transaction_id_changed ? connector : nullptr;
 }
 
 Connector *ChargePoint::find_connector_(uint32_t connector_id) {

@@ -394,6 +394,32 @@ int main() {
     }
 
     {
+        // MeterValues with transactionId recovers the active transaction after a restart
+        TestChargePoint charge_point;
+        charge_point.on_connected("A99999");
+        charge_point.handle_ocpp_text(
+            R"([2,"meter-transaction-1","MeterValues",{"connectorId":1,"transactionId":7,"meterValue":[{"sampledValue":[{"value":"10","measurand":"Current.Import","unit":"A"}]}]}])");
+        assert_equal("meter_values_recovers_transaction_id", charge_point.connector.get_active_transaction_id(), 7U);
+        assert_equal("meter_values_recovery_response_count", charge_point.messages.size(), 2);
+        assert_equal("meter_values_recovery_response", charge_point.messages[0].payload, R"([3,"meter-transaction-1",{}])");
+        assert_equal("meter_values_recovery_profile", charge_point.messages[1].payload,
+                     R"([2,"set-charging-profile-1-1","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":1,"transactionId":7,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Absolute","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":32}]}}}])");
+
+        charge_point.messages.clear();
+        charge_point.handle_ocpp_text(
+            R"([2,"meter-transaction-2","MeterValues",{"connectorId":1,"transactionId":7,"meterValue":[{"sampledValue":[{"value":"11","measurand":"Current.Import","unit":"A"}]}]}])");
+        assert_equal("meter_values_same_transaction_response_only", charge_point.messages.size(), 1);
+        assert_equal("meter_values_same_transaction_response", charge_point.messages[0].payload,
+                     R"([3,"meter-transaction-2",{}])");
+
+        charge_point.messages.clear();
+        charge_point.connector.set_current_limit(10.0f);
+        assert_equal("meter_values_recovered_transaction_current_change_count", charge_point.messages.size(), 1);
+        assert_equal("meter_values_recovered_transaction_current_change", charge_point.messages[0].payload,
+                     R"([2,"set-charging-profile-1-2","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":1,"transactionId":7,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Absolute","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":10}]}}}])");
+    }
+
+    {
         // StatusNotification
         TestChargePoint charge_point;
         charge_point.on_connected("A99999");
