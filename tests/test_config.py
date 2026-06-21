@@ -2,6 +2,8 @@ import unittest
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
+from esphome.core import CORE
+
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "esphome/components/ocpp/__init__.py"
 MODULE_SPEC = spec_from_file_location("local_ocpp_component", MODULE_PATH)
@@ -9,7 +11,14 @@ assert MODULE_SPEC is not None and MODULE_SPEC.loader is not None
 OCPP_MODULE = module_from_spec(MODULE_SPEC)
 MODULE_SPEC.loader.exec_module(OCPP_MODULE)
 
-CONFIG_SCHEMA = OCPP_MODULE.CONFIG_SCHEMA
+RAW_CONFIG_SCHEMA = OCPP_MODULE.CONFIG_SCHEMA
+TEST_CONFIG_PATH = Path(__file__).with_name("test_config.yaml")
+
+
+def CONFIG_SCHEMA(config):
+    CORE.reset()
+    CORE.config_path = TEST_CONFIG_PATH
+    return RAW_CONFIG_SCHEMA(config)
 
 
 class ChargePointSchemaTests(unittest.TestCase):
