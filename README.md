@@ -82,16 +82,16 @@ Set connector `log_meter_values: true` to log a compact info-level summary of pr
 
 ### Current control model
 
-Connector current control separates the current requested by a user or automation from the current that is actually applied to the wallbox with `SetChargingProfile`. The applied value is limited by the connector `current_limit`, by the charge point `max_current`, and, for multi-connector charge points, by the current reserved for other connectors.
+Connector current control separates the connector-local control request from the current that is actually applied to the wallbox with `SetChargingProfile`. `requested_current` is the permissive per-connector request exposed for a user, Home Assistant automation, or another external controller that wants to take control of one connector. It defaults to the charge point `max_current`, so each connector starts unrestricted. The main charging policy can then be decided at the charge point or site level and reflected in `control_current`.
 
-| Concept                  | Suggested name      | Meaning |
-| ---                      | ---                 | --- |
-| Hard charge-point cap    | `max_current`       | Physical or installation maximum for the whole charge point in `A`. |
-| Connector/user cap       | `current_limit`     | Local limit for one connector in `A`; useful for safety limits or automations. |
-| Requested connector amps | `requested_current` | Desired current in `A` set dynamically by a user, Home Assistant automation, or another component. |
-| Applied OCPP limit       | `control_current`   | Current in `A` actually applied to the connector after all limiting and sharing logic. |
+| Concept                   | Suggested name      | Meaning |
+| ---                       | ---                 | --- |
+| Hard charge-point cap     | `max_current`       | Physical or installation maximum for the whole charge point in `A`. |
+| Connector safety cap      | `current_limit`     | Local limit for one connector in `A`; useful for safety limits or automations. |
+| Connector control request | `requested_current` | Desired current in `A` for one connector. Defaults to `max_current` and can be lowered by an external controller. |
+| Applied connector current | `control_current`   | Current in `A` applied to the connector after connector limits and charge point or site policy. Defaults to the effective connector maximum. |
 
-For each connector, the component first computes `min(requested_current, current_limit)`. If the sum of all connector requests is higher than the charge point `max_current`, the available current is shared fairly between the requesting connectors without exceeding each connector's request.
+For each connector, the component starts from `min(requested_current, current_limit)`. With the default `requested_current`, startup `control_current` is the maximum possible for the connector: the lower of the connector `current_limit` and the charge point `max_current`. A charge point or site-level policy can reduce the applied connector value further when coordinating multiple connectors or other site loads.
 
 For three-phase charge points, connector `phase_mapping` describes how connector pins map to supply phases. A rotated mapping such as `[l2, l3, l1]` means the connector's L1 pin is supplied by charge point phase L2. Until the component knows the EV's actual active phases from metering or inference, current sharing should safely assume that the connector uses all configured phases.
 
@@ -132,8 +132,8 @@ Connector `status` and `error` text sensors are populated from `StatusNotificati
 | `log_meter_values` (Optional)  | Logs a compact info-level summary of received `MeterValues` sampled values for this connector. Defaults to `false`. |
 | `current` (Optional)           | Sensor populated from `Current.Import` `MeterValues` in `A`. Missing values are published as unavailable/unknown. |
 | `current_limit` (Optional)     | Number entity for the connector current limit in `A`. Range is `0` to `max_value` when set, otherwise `0` to the charge point `max_current`, with a step of `1 A`. `max_value` must be less than or equal to the charge point `max_current`. |
-| `requested_current` (Optional) | Number entity for connector requested current in `A`. Range is `0` to the charge point `max_current`, with a step of `0.1 A`. |
-| `control_current` (Optional)   | Sensor populated with the connector current in `A` actually applied through `SetChargingProfile` after limiting and sharing logic. |
+| `requested_current` (Optional) | Number entity for the connector control request in `A`. Range is `0` to the charge point `max_current`, with a step of `0.1 A`. Defaults to the charge point `max_current`. |
+| `control_current` (Optional)   | Sensor populated with the connector current in `A` actually applied through `SetChargingProfile` after connector limits and charge point or site policy. Defaults to the effective connector maximum. |
 | `power` (Optional)             | Sensor populated from `Power.Active.Import` `MeterValues` in `W`. Missing values are published as unavailable/unknown. |
 | `total_energy` (Optional)      | Sensor populated from the connector lifetime `Energy.Active.Import.Register` `MeterValues` in `kWh`. OCPP `Wh` values are converted to `kWh`. Missing values are published as unavailable/unknown. |
 | `session_energy` (Optional)    | Sensor reset to `0 kWh` when a car is plugged in. While plugged in, it reports the difference from the total energy baseline at session start in `kWh`; after unplugging, it keeps the last session value. |

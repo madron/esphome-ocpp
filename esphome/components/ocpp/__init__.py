@@ -10,6 +10,7 @@ CONF_CHARGE_POINT_ID = "charge_point_id"
 CONF_CHARGE_POINTS = "charge_points"
 CONF_CONNECTOR_ID = "connector_id"
 CONF_CONNECTORS = "connectors"
+CONF_CONTROL_CURRENT = "control_current"
 CONF_CURRENT = "current"
 CONF_CURRENT_LIMIT = "current_limit"
 CONF_DEBUG_OCPP_EXCLUDE_ACTIONS = "debug_ocpp_exclude_actions"
@@ -115,6 +116,12 @@ CONNECTOR_SCHEMA = cv.Schema(
             state_class="measurement",
         ),
         cv.Optional(CONF_CURRENT_L3): sensor.sensor_schema(
+            unit_of_measurement="A",
+            accuracy_decimals=1,
+            device_class="current",
+            state_class="measurement",
+        ),
+        cv.Optional(CONF_CONTROL_CURRENT): sensor.sensor_schema(
             unit_of_measurement="A",
             accuracy_decimals=1,
             device_class="current",
@@ -357,6 +364,9 @@ async def to_code(config):
             if CONF_CURRENT_L3 in connector_conf:
                 sens = await sensor.new_sensor(connector_conf[CONF_CURRENT_L3])
                 cg.add(connector.set_current_l3_sensor(sens))
+            if CONF_CONTROL_CURRENT in connector_conf:
+                sens = await sensor.new_sensor(connector_conf[CONF_CONTROL_CURRENT])
+                cg.add(connector.set_control_current_sensor(sens))
             if CONF_CURRENT_LIMIT in connector_conf:
                 current_limit_max_value = connector_conf[CONF_CURRENT_LIMIT].get(
                     CONF_MAX_VALUE,

@@ -15,6 +15,7 @@ using esphome::ocpp::QueuedMessage;
 using esphome::ocpp::RequestedCurrent;
 using esphome::ocpp::SampledValue;
 using esphome::ocpp::StatusNotification;
+using esphome::ocpp::calculate_control_current;
 using esphome::binary_sensor::BinarySensor;
 using esphome::sensor::Sensor;
 using esphome::text_sensor::TextSensor;
@@ -29,6 +30,7 @@ class TestChargePoint : public ChargePoint {
         this->set_protocol_text_sensor(&this->protocol_sensor);
         this->set_charger_info_text_sensor(&this->charger_info_sensor);
         this->connector.set_current_sensor(&this->current_sensor);
+        this->connector.set_control_current_sensor(&this->control_current_sensor);
         this->connector.set_power_sensor(&this->power_sensor);
         this->connector.set_total_energy_sensor(&this->total_energy_sensor);
         this->connector.set_session_energy_sensor(&this->session_energy_sensor);
@@ -40,6 +42,7 @@ class TestChargePoint : public ChargePoint {
         this->add_connector(&this->connector);
         this->second_connector.set_connector_id(2);
         this->second_connector.set_current_sensor(&this->second_current_sensor);
+        this->second_connector.set_control_current_sensor(&this->second_control_current_sensor);
         this->second_connector.set_power_sensor(&this->second_power_sensor);
         this->second_connector.set_total_energy_sensor(&this->second_total_energy_sensor);
         this->second_connector.set_voltage_sensor(&this->second_voltage_sensor);
@@ -57,12 +60,14 @@ class TestChargePoint : public ChargePoint {
     Connector connector;
     Connector second_connector;
     Sensor current_sensor;
+    Sensor control_current_sensor;
     Sensor power_sensor;
     Sensor total_energy_sensor;
     Sensor session_energy_sensor;
     Sensor session_time_sensor;
     Sensor voltage_sensor;
     Sensor second_current_sensor;
+    Sensor second_control_current_sensor;
     Sensor second_power_sensor;
     Sensor second_total_energy_sensor;
     Sensor second_voltage_sensor;
@@ -228,11 +233,13 @@ int main() {
         connector.set_requested_current_number(&requested_current_number);
 
         assert_equal("current_limit_initial", current_limit_number.state, 32.0f);
-        assert_equal("requested_current_initial", requested_current_number.state, 0.0f);
+        assert_equal("requested_current_initial", requested_current_number.state, 32.0f);
+        assert_equal("control_current_initial", connector.get_control_current(), 32.0f);
 
         current_limit_number.control(16.6f);
         assert_equal("current_limit_integer", connector.get_current_limit(), 17.0f);
         assert_equal("current_limit_number_state", current_limit_number.state, 17.0f);
+        assert_equal("control_current_tracks_limit", connector.get_control_current(), 17.0f);
         current_limit_number.control(40.0f);
         assert_equal("current_limit_max", connector.get_current_limit(), 32.0f);
         current_limit_number.control(-1.0f);
@@ -241,10 +248,50 @@ int main() {
         requested_current_number.control(12.34f);
         assert_equal("requested_current_one_decimal", connector.get_requested_current(), 12.3f);
         assert_equal("requested_current_number_state", requested_current_number.state, 12.3f);
+        assert_equal("control_current_respects_limit", connector.get_control_current(), 0.0f);
         requested_current_number.control(99.0f);
         assert_equal("requested_current_max", connector.get_requested_current(), 32.0f);
+        assert_equal("control_current_zero_with_zero_limit", connector.get_control_current(), 0.0f);
         requested_current_number.control(-1.0f);
         assert_equal("requested_current_min", connector.get_requested_current(), 0.0f);
+        connector.set_max_current(24);
+        assert_equal("requested_current_zero_survives_max_update", connector.get_requested_current(), 0.0f);
+    }
+
+    {
+        // Pure control-current calculation is independent from connector state and publishing
+        assert_equal("calculate_control_current_from_request", calculate_control_current(20.0f, 32.0f), 20.0f);
+        assert_equal("calculate_control_current_clamped_by_limit", calculate_control_current(20.0f, 10.0f), 10.0f);
+        assert_equal("calculate_control_current_sub_minimum_disabled", calculate_control_current(4.0f, 32.0f), 0.0f);
+    }
+
+    {
+        // control_current is the applied connector current after request/limit clamping and sub-6 A disable logic
+        Connector connector;
+        Sensor control_current_sensor;
+        TestCurrentLimit current_limit_number;
+        TestRequestedCurrent requested_current_number;
+        connector.set_control_current_sensor(&control_current_sensor);
+        current_limit_number.set_connector(&connector);
+        requested_current_number.set_connector(&connector);
+        connector.set_max_current(32);
+        connector.set_current_limit_number(&current_limit_number);
+        connector.set_requested_current_number(&requested_current_number);
+
+        assert_equal("control_current_sensor_initial", control_current_sensor.state, 32.0f);
+        assert_equal("control_current_startup_uses_limit", connector.get_control_current(), 32.0f);
+
+        requested_current_number.control(20.0f);
+        assert_equal("control_current_from_request", connector.get_control_current(), 20.0f);
+        assert_equal("control_current_sensor_from_request", control_current_sensor.state, 20.0f);
+
+        current_limit_number.control(10.0f);
+        assert_equal("control_current_clamped_by_limit", connector.get_control_current(), 10.0f);
+        assert_equal("control_current_sensor_clamped_by_limit", control_current_sensor.state, 10.0f);
+
+        requested_current_number.control(4.0f);
+        assert_equal("control_current_sub_minimum_disabled", connector.get_control_current(), 0.0f);
+        assert_equal("control_current_sensor_sub_minimum_disabled", control_current_sensor.state, 0.0f);
     }
 
     {
@@ -275,6 +322,8 @@ int main() {
 
         assert_equal("current_limit_override_max", connector.get_current_limit_max(), 16U);
         assert_equal("current_limit_override_initial", current_limit_number.state, 16.0f);
+        assert_equal("requested_current_override_initial", requested_current_number.state, 32.0f);
+        assert_equal("control_current_override_initial", connector.get_control_current(), 16.0f);
         current_limit_number.control(20.0f);
         assert_equal("current_limit_override_clamp", connector.get_current_limit(), 16.0f);
         requested_current_number.control(20.0f);

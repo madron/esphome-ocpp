@@ -27,6 +27,7 @@ static constexpr const char *const METER_VALUES_SAMPLED_DATA_FALLBACKS[] = {
 static const char *const TRIGGER_BOOT_NOTIFICATION_UNIQUE_ID = "trigger-boot-notification";
 static const char *const TRIGGER_STATUS_NOTIFICATION_UNIQUE_ID = "trigger-status-notification";
 static constexpr size_t DEBUG_OCPP_MESSAGE_CHUNK_SIZE = 360;
+static constexpr float MIN_CHARGING_PROFILE_CURRENT = 6.0f;
 
 bool status_notification_to_plugged(const std::string &status, bool *plugged) {
     if (status == "Preparing" || status == "Charging" || status == "SuspendedEVSE" || status == "SuspendedEV" ||
@@ -60,7 +61,15 @@ void log_ocpp_debug_message(const std::string &connection_id, const char *direct
 
 }  // namespace
 
+float calculate_control_current(float requested_current, float current_limit) {
+    float control_current = std::min(requested_current, current_limit);
+    if (control_current > 0.0f && control_current < MIN_CHARGING_PROFILE_CURRENT)
+        return 0.0f;
+    return control_current;
+}
+
 void Connector::set_max_current(uint32_t max_current) {
+    bool set_default_requested_current = this->max_current_ == 0 && this->requested_current_ <= 0.0f;
     this->max_current_ = max_current;
     if (!this->current_limit_max_configured_)
         this->current_limit_max_ = max_current;
@@ -70,11 +79,15 @@ void Connector::set_max_current(uint32_t max_current) {
         this->current_limit_ = static_cast<float>(this->current_limit_max_);
     else
         this->current_limit_ = this->clamp_current_limit_(this->current_limit_);
-    this->requested_current_ = this->clamp_current_(this->requested_current_);
+    if (set_default_requested_current)
+        this->requested_current_ = static_cast<float>(max_current);
+    else
+        this->requested_current_ = this->clamp_current_(this->requested_current_);
     if (this->current_limit_number_ != nullptr)
         this->current_limit_number_->publish_state(this->current_limit_);
     if (this->requested_current_number_ != nullptr)
         this->requested_current_number_->publish_state(this->requested_current_);
+    this->update_control_current_();
 }
 
 void Connector::set_current_limit_max(uint32_t current_limit_max) {
@@ -88,6 +101,13 @@ void Connector::set_current_limit_max(uint32_t current_limit_max) {
         this->current_limit_ = this->clamp_current_limit_(this->current_limit_);
     if (this->current_limit_number_ != nullptr)
         this->current_limit_number_->publish_state(this->current_limit_);
+    this->update_control_current_();
+}
+
+void Connector::set_control_current_sensor(sensor::Sensor *control_current_sensor) {
+    this->control_current_sensor_ = control_current_sensor;
+    if (this->control_current_sensor_ != nullptr)
+        this->control_current_sensor_->publish_state(this->control_current_);
 }
 
 void Connector::set_current_limit_number(CurrentLimit *current_limit_number) {
@@ -107,12 +127,14 @@ void Connector::set_current_limit(float current_limit) {
     this->current_limit_ = this->clamp_current_limit_(std::round(current_limit));
     if (this->current_limit_number_ != nullptr)
         this->current_limit_number_->publish_state(this->current_limit_);
+    this->update_control_current_();
 }
 
 void Connector::set_requested_current(float requested_current) {
     this->requested_current_ = this->clamp_current_(std::round(requested_current * 10.0f) / 10.0f);
     if (this->requested_current_number_ != nullptr)
         this->requested_current_number_->publish_state(this->requested_current_);
+    this->update_control_current_();
 }
 
 float Connector::clamp_current_(float value) const {
@@ -129,6 +151,12 @@ float Connector::clamp_current_limit_(float value) const {
     if (this->current_limit_max_ > 0 && value > static_cast<float>(this->current_limit_max_))
         return static_cast<float>(this->current_limit_max_);
     return this->clamp_current_(value);
+}
+
+void Connector::update_control_current_() {
+    this->control_current_ = calculate_control_current(this->requested_current_, this->current_limit_);
+    if (this->control_current_sensor_ != nullptr)
+        this->control_current_sensor_->publish_state(this->control_current_);
 }
 
 void Connector::clear_active_transaction() {

@@ -270,6 +270,30 @@ class ChargePointSchemaTests(unittest.TestCase):
         self.assertIn("current_limit", connector)
         self.assertIn("requested_current", connector)
 
+    def test_connector_control_current_sensor_enabled(self):
+        validated = CONFIG_SCHEMA(
+            {
+                "id": "ocpp_id",
+                "charge_points": [
+                    {
+                        "id": "garage_left",
+                        "charge_point_id": "A99999",
+                        "phases": 3,
+                        "max_current": 32,
+                        "connectors": [
+                            {
+                                "connector_id": 2,
+                                "control_current": {"name": "Garage Control Current"},
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+        connector = validated["charge_points"][0]["connectors"][0]
+        self.assertIn("control_current", connector)
+
     def test_connector_phase_mapping_defaults_to_connector_phases(self):
         validated = CONFIG_SCHEMA(
             {

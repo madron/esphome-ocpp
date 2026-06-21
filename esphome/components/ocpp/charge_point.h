@@ -17,6 +17,8 @@ namespace esphome::ocpp {
 class CurrentLimit;
 class RequestedCurrent;
 
+float calculate_control_current(float requested_current, float current_limit);
+
 struct QueuedMessage {
     std::string payload;
     OcppMessageType message_type_id{OcppMessageType::CALL_RESULT};
@@ -55,6 +57,7 @@ class Connector {
         void set_current_l1_sensor(sensor::Sensor *current_l1_sensor) { this->current_l1_sensor_ = current_l1_sensor; }
         void set_current_l2_sensor(sensor::Sensor *current_l2_sensor) { this->current_l2_sensor_ = current_l2_sensor; }
         void set_current_l3_sensor(sensor::Sensor *current_l3_sensor) { this->current_l3_sensor_ = current_l3_sensor; }
+        void set_control_current_sensor(sensor::Sensor *control_current_sensor);
         void set_current_limit_number(CurrentLimit *current_limit_number);
         void set_requested_current_number(RequestedCurrent *requested_current_number);
         void set_power_sensor(sensor::Sensor *power_sensor) { this->power_sensor_ = power_sensor; }
@@ -85,6 +88,7 @@ class Connector {
         float get_current_limit() const { return this->current_limit_; }
         void set_requested_current(float requested_current);
         float get_requested_current() const { return this->requested_current_; }
+        float get_control_current() const { return this->control_current_; }
         void loop(uint32_t now_millis);
         void publish_meter_values(const std::string &connection_id, const MeterValues &meter_values);
         void publish_status_notification(const StatusNotification &status_notification, uint32_t now_millis = 0);
@@ -93,6 +97,7 @@ class Connector {
     protected:
         float clamp_current_(float value) const;
         float clamp_current_limit_(float value) const;
+        void update_control_current_();
         void set_plugged_(bool plugged);
         void update_session_energy_(float total_energy);
         void update_session_time_(uint32_t now_millis);
@@ -113,11 +118,13 @@ class Connector {
         uint32_t current_limit_max_{0};
         float current_limit_{0.0f};
         float requested_current_{0.0f};
+        float control_current_{0.0f};
         float active_phases_{NAN};
         sensor::Sensor *current_sensor_{nullptr};
         sensor::Sensor *current_l1_sensor_{nullptr};
         sensor::Sensor *current_l2_sensor_{nullptr};
         sensor::Sensor *current_l3_sensor_{nullptr};
+        sensor::Sensor *control_current_sensor_{nullptr};
         CurrentLimit *current_limit_number_{nullptr};
         RequestedCurrent *requested_current_number_{nullptr};
         sensor::Sensor *power_sensor_{nullptr};
