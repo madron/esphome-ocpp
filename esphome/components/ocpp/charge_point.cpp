@@ -15,6 +15,7 @@ static const char *const CHANGE_CONFIGURATION_METER_VALUE_SAMPLE_INTERVAL_UNIQUE
 static const char *const CHANGE_CONFIGURATION_METER_VALUES_SAMPLED_DATA_UNIQUE_ID =
     "change-config-meter-values-sampled-data";
 static const char *const GET_CONFIGURATION_UNIQUE_ID = "get-configuration";
+static const char *const SET_CHARGING_PROFILE_UNIQUE_ID_PREFIX = "set-charging-profile";
 static const char *const METER_VALUE_SAMPLE_INTERVAL_KEY = "MeterValueSampleInterval";
 static constexpr const char *METER_VALUE_SAMPLE_INTERVAL_VALUE = "5";
 static const char *const METER_VALUES_SAMPLED_DATA_KEY = "MeterValuesSampledData";
@@ -262,6 +263,10 @@ void ChargePoint::handle_authorize_(const Authorize &authorize) {
                          authorize.unique_id, authorize.action});
 }
 
+void ChargePoint::on_connector_control_current_changed(Connector *connector) {
+    this->send_connector_control_current_(connector);
+}
+
 void ChargePoint::handle_ocpp_call_reply_(const OcppMessage &message) {
     if (this->in_flight_call_ == nullptr)
         return;
@@ -280,8 +285,12 @@ void ChargePoint::handle_start_transaction_(const StartTransaction &start_transa
         connector->set_active_transaction_id(transaction_id);
     }
 
-    this->send_message_({this->protocol_.make_start_transaction_response(start_transaction.unique_id, transaction_id),
-                         OcppMessageType::CALL_RESULT, start_transaction.unique_id, start_transaction.action});
+    bool response_queued = this->send_message_(
+        {this->protocol_.make_start_transaction_response(start_transaction.unique_id, transaction_id),
+         OcppMessageType::CALL_RESULT, start_transaction.unique_id, start_transaction.action}
+    );
+    if (response_queued)
+        this->send_connector_control_current_(connector);
 }
 
 void ChargePoint::handle_stop_transaction_(const StopTransaction &stop_transaction) {
@@ -409,6 +418,26 @@ bool ChargePoint::send_meter_values_sampled_data_change_request_() {
 
     return this->send_message_({std::move(request), OcppMessageType::CALL,
                                 CHANGE_CONFIGURATION_METER_VALUES_SAMPLED_DATA_UNIQUE_ID, "ChangeConfiguration"});
+}
+
+bool ChargePoint::send_connector_control_current_(Connector *connector) {
+    if (connector == nullptr || !this->connected_ || !connector->has_active_transaction())
+        return false;
+
+    std::string unique_id = std::string(SET_CHARGING_PROFILE_UNIQUE_ID_PREFIX) + "-" +
+                            std::to_string(connector->get_connector_id()) + "-" +
+                            std::to_string(this->next_set_charging_profile_sequence_++);
+    std::string request = this->protocol_.make_set_charging_profile_request(
+        unique_id,
+        connector->get_connector_id(),
+        connector->get_active_transaction_id(),
+        connector->get_connector_id(),
+        connector->get_control_current()
+    );
+    if (request.empty())
+        return false;
+
+    return this->send_message_({std::move(request), OcppMessageType::CALL, unique_id, "SetChargingProfile"});
 }
 
 void ChargePoint::handle_startup_notification_trigger_reply_(const OcppMessage &message) {

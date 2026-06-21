@@ -23,6 +23,13 @@ class OcppProtocol {
             const std::string &key,
             const std::string &value
         ) const;
+        std::string make_set_charging_profile_request(
+            const std::string &unique_id,
+            uint32_t connector_id,
+            uint32_t transaction_id,
+            uint32_t charging_profile_id,
+            float current_limit
+        ) const;
         std::string make_get_configuration_request(const std::string &unique_id) const;
         std::string make_authorize_response(const std::string &unique_id) const;
         std::string make_boot_notification_response(const std::string &unique_id) const;

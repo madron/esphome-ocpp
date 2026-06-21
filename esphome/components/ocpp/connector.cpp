@@ -107,6 +107,7 @@ float Connector::clamp_current_limit_(float value) const {
 }
 
 void Connector::update_control_current_() {
+    float old_control_current = this->control_current_;
     this->control_current_ = calculate_control_current(
         this->requested_current_,
         this->current_limit_,
@@ -114,6 +115,8 @@ void Connector::update_control_current_() {
     );
     if (this->control_current_sensor_ != nullptr)
         this->control_current_sensor_->publish_state(this->control_current_);
+    if (this->listener_ != nullptr && this->control_current_ != old_control_current)
+        this->listener_->on_connector_control_current_changed(this);
 }
 
 void Connector::clear_active_transaction() {

@@ -12,7 +12,12 @@
 
 namespace esphome::ocpp {
 
+class Connector;
 class CurrentLimit;
+class ConnectorListener {
+    public:
+        virtual void on_connector_control_current_changed(Connector *connector) = 0;
+};
 class RequestedCurrent;
 
 float calculate_control_current(float requested_current, float current_limit, uint32_t max_current);
@@ -23,6 +28,7 @@ class Connector {
 
         void set_connector_id(uint32_t connector_id) { this->connector_id_ = connector_id; }
         uint32_t get_connector_id() const { return this->connector_id_; }
+        void set_listener(ConnectorListener *listener) { this->listener_ = listener; }
         void set_phases(uint8_t phases) { this->phases_ = phases; }
         uint8_t get_phases() const { return this->phases_; }
         void set_phase_mapping(uint8_t connector_phase, uint8_t supply_phase) {
@@ -129,6 +135,7 @@ class Connector {
         text_sensor::TextSensor *status_text_sensor_{nullptr};
         text_sensor::TextSensor *error_text_sensor_{nullptr};
         binary_sensor::BinarySensor *plugged_binary_sensor_{nullptr};
+        ConnectorListener *listener_{nullptr};
         float last_total_energy_{NAN};
         float session_start_energy_{NAN};
         uint32_t session_time_{0};

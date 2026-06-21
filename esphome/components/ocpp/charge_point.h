@@ -21,7 +21,7 @@ struct QueuedMessage {
     uint32_t sent_at_millis{0};
 };
 
-class ChargePoint {
+class ChargePoint : public ConnectorListener {
     public:
         static constexpr size_t DEFAULT_MAX_QUEUED_MESSAGES = 8;
         static constexpr uint32_t DEFAULT_STARTUP_NOTIFICATIONS_DELAY_MS = 300000;
@@ -69,8 +69,10 @@ class ChargePoint {
         void set_max_queued_messages(size_t max_queued_messages) { this->max_queued_messages_ = max_queued_messages; }
         size_t get_max_queued_messages() const { return this->max_queued_messages_; }
         void add_connector(Connector *connector) {
-            if (connector != nullptr)
+            if (connector != nullptr) {
                 connector->set_phase_voltage(this->phase_voltage_);
+                connector->set_listener(this);
+            }
             this->connectors_.push_back(connector);
         }
 
@@ -80,6 +82,7 @@ class ChargePoint {
         void handle_ocpp_text(const std::string &message, uint32_t now_millis = 0);
         void loop(uint32_t now_millis);
         bool pop_queued_message(std::string *message, uint32_t now_millis = 0);
+        void on_connector_control_current_changed(Connector *connector) override;
 
     protected:
         bool send_message_(QueuedMessage message);
@@ -97,6 +100,7 @@ class ChargePoint {
         const std::string &debug_action_for_message_(const OcppMessage &message) const;
         bool send_meter_value_sample_interval_change_request_();
         bool send_meter_values_sampled_data_change_request_();
+        bool send_connector_control_current_(Connector *connector);
         void send_get_configuration_request_();
         void send_startup_notification_triggers_();
         void send_boot_notification_trigger_();
@@ -138,6 +142,7 @@ class ChargePoint {
         uint32_t connected_at_millis_{0};
         uint32_t current_millis_{0};
         uint32_t next_transaction_id_{1};
+        uint32_t next_set_charging_profile_sequence_{1};
         ChangeConfigurationStage change_configuration_stage_{ChangeConfigurationStage::IDLE};
         size_t meter_values_sampled_data_fallback_index_{0};
 };

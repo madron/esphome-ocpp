@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <memory>
+#include <sstream>
 
 namespace esphome::ocpp {
 namespace {
@@ -102,6 +103,12 @@ std::string sampled_value_unit(const JsonObject &sampled_value) {
 
 bool is_change_configuration_unique_id(const std::string &unique_id) {
     return unique_id.rfind(CHANGE_CONFIGURATION_UNIQUE_ID_PREFIX, 0) == 0;
+}
+
+std::string json_number(float value) {
+    std::ostringstream out;
+    out << value;
+    return out.str();
 }
 
 std::unique_ptr<OcppMessage> parse_boot_notification_1_6(const std::string &unique_id, const JsonObject &payload) {
@@ -251,6 +258,23 @@ std::string OcppProtocol::make_change_configuration_request(
         return "";
     return "[2,\"" + json_escape(unique_id) + "\",\"ChangeConfiguration\",{\"key\":\"" +
            json_escape(key) + "\",\"value\":\"" + json_escape(value) + "\"}]";
+}
+
+std::string OcppProtocol::make_set_charging_profile_request(
+    const std::string &unique_id,
+    uint32_t connector_id,
+    uint32_t transaction_id,
+    uint32_t charging_profile_id,
+    float current_limit
+) const {
+    if (this->version_ != OcppProtocolVersion::OCPP_1_6 || transaction_id == 0)
+        return "";
+    return "[2,\"" + json_escape(unique_id) + "\",\"SetChargingProfile\",{\"connectorId\":" +
+           std::to_string(connector_id) + ",\"csChargingProfiles\":{\"chargingProfileId\":" +
+           std::to_string(charging_profile_id) + ",\"transactionId\":" + std::to_string(transaction_id) +
+           ",\"stackLevel\":0,\"chargingProfilePurpose\":\"TxProfile\",\"chargingProfileKind\":\"Absolute\"," +
+           "\"chargingSchedule\":{\"chargingRateUnit\":\"A\",\"chargingSchedulePeriod\":[{\"startPeriod\":0," +
+           "\"limit\":" + json_number(current_limit) + "}]}}}]";
 }
 
 std::unique_ptr<OcppMessage> OcppProtocol::parse_message(const std::string &message) const {

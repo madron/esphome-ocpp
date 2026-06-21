@@ -65,6 +65,9 @@ int main() {
                                                             "MeterValuesSampledData",
                                                             "Current.Import,Power.Active.Import"),
                  R"([2,"change-config-meter-values-sampled-data","ChangeConfiguration",{"key":"MeterValuesSampledData","value":"Current.Import,Power.Active.Import"}])");
+    assert_equal("set_charging_profile_request",
+                 protocol.make_set_charging_profile_request("set-profile-1", 1, 7, 1, 12.3f),
+                 R"([2,"set-profile-1","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":1,"transactionId":7,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Absolute","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":12.3}]}}}])");
     assert_equal("get_configuration_request", protocol.make_get_configuration_request("get-configuration"),
                  R"([2,"get-configuration","GetConfiguration",{"key":["MeterValueSampleInterval","MeterValuesSampledData","ConnectorSwitch3to1PhaseSupported"]}])");
     std::unique_ptr<OcppMessage> authorize_message = protocol.parse_message(
@@ -160,6 +163,8 @@ int main() {
                                                             "MeterValuesSampledData",
                                                             "Current.Import"),
                  std::string(""));
+    assert_equal("set_charging_profile_ocpp201_empty",
+                 protocol.make_set_charging_profile_request("set-profile-1", 1, 7, 1, 12.3f), std::string(""));
     assert_equal("get_configuration_request_ocpp201_empty", protocol.make_get_configuration_request("get-configuration"),
                  std::string(""));
     std::unique_ptr<OcppMessage> ocpp201_status_notification_message = protocol.parse_message(
