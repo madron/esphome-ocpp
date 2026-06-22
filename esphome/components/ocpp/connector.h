@@ -57,6 +57,9 @@ class Connector {
         void set_current_l1_sensor(sensor::Sensor *current_l1_sensor) { this->current_l1_sensor_ = current_l1_sensor; }
         void set_current_l2_sensor(sensor::Sensor *current_l2_sensor) { this->current_l2_sensor_ = current_l2_sensor; }
         void set_current_l3_sensor(sensor::Sensor *current_l3_sensor) { this->current_l3_sensor_ = current_l3_sensor; }
+        void set_needed_current_l1_sensor(sensor::Sensor *needed_current_l1_sensor);
+        void set_needed_current_l2_sensor(sensor::Sensor *needed_current_l2_sensor);
+        void set_needed_current_l3_sensor(sensor::Sensor *needed_current_l3_sensor);
         void set_control_current_sensor(sensor::Sensor *control_current_sensor);
         void set_current_limit_number(CurrentLimit *current_limit_number);
         void set_requested_current_number(RequestedCurrent *requested_current_number);
@@ -88,6 +91,9 @@ class Connector {
         float get_current_limit() const { return this->current_limit_; }
         void set_requested_current(float requested_current);
         float get_requested_current() const { return this->requested_current_; }
+        float get_needed_current_l1() const { return this->needed_current_l1_; }
+        float get_needed_current_l2() const { return this->needed_current_l2_; }
+        float get_needed_current_l3() const { return this->needed_current_l3_; }
         float get_control_current() const { return this->control_current_; }
         void loop(uint32_t now_millis);
         void publish_meter_values(const std::string &connection_id, const MeterValues &meter_values);
@@ -98,6 +104,9 @@ class Connector {
         float clamp_current_(float value) const;
         float clamp_current_limit_(float value) const;
         void update_control_current_();
+        void set_needed_current_l1_(float needed_current_l1);
+        void set_needed_current_l2_(float needed_current_l2);
+        void set_needed_current_l3_(float needed_current_l3);
         void set_plugged_(bool plugged);
         void update_session_energy_(float total_energy);
         void update_session_time_(uint32_t now_millis);
@@ -124,6 +133,12 @@ class Connector {
         sensor::Sensor *current_l1_sensor_{nullptr};
         sensor::Sensor *current_l2_sensor_{nullptr};
         sensor::Sensor *current_l3_sensor_{nullptr};
+        float needed_current_l1_{0.0f};
+        float needed_current_l2_{0.0f};
+        float needed_current_l3_{0.0f};
+        sensor::Sensor *needed_current_l1_sensor_{nullptr};
+        sensor::Sensor *needed_current_l2_sensor_{nullptr};
+        sensor::Sensor *needed_current_l3_sensor_{nullptr};
         sensor::Sensor *control_current_sensor_{nullptr};
         CurrentLimit *current_limit_number_{nullptr};
         RequestedCurrent *requested_current_number_{nullptr};

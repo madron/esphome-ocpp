@@ -44,6 +44,9 @@ void Connector::set_max_current(uint32_t max_current) {
     this->current_limit_max_ = max_current;
     this->current_limit_ = static_cast<float>(max_current);
     this->requested_current_ = static_cast<float>(max_current);
+    this->set_needed_current_l1_(static_cast<float>(max_current));
+    this->set_needed_current_l2_(static_cast<float>(max_current));
+    this->set_needed_current_l3_(static_cast<float>(max_current));
     this->update_control_current_();
 }
 
@@ -56,6 +59,24 @@ void Connector::set_current_limit_max(uint32_t current_limit_max) {
     if (this->current_limit_number_ != nullptr)
         this->current_limit_number_->publish_state(this->current_limit_);
     this->update_control_current_();
+}
+
+void Connector::set_needed_current_l1_sensor(sensor::Sensor *needed_current_l1_sensor) {
+    this->needed_current_l1_sensor_ = needed_current_l1_sensor;
+    if (this->needed_current_l1_sensor_ != nullptr)
+        this->needed_current_l1_sensor_->publish_state(this->needed_current_l1_);
+}
+
+void Connector::set_needed_current_l2_sensor(sensor::Sensor *needed_current_l2_sensor) {
+    this->needed_current_l2_sensor_ = needed_current_l2_sensor;
+    if (this->needed_current_l2_sensor_ != nullptr)
+        this->needed_current_l2_sensor_->publish_state(this->needed_current_l2_);
+}
+
+void Connector::set_needed_current_l3_sensor(sensor::Sensor *needed_current_l3_sensor) {
+    this->needed_current_l3_sensor_ = needed_current_l3_sensor;
+    if (this->needed_current_l3_sensor_ != nullptr)
+        this->needed_current_l3_sensor_->publish_state(this->needed_current_l3_);
 }
 
 void Connector::set_control_current_sensor(sensor::Sensor *control_current_sensor) {
@@ -118,6 +139,25 @@ void Connector::update_control_current_() {
     if (this->listener_ != nullptr && this->control_current_ != old_control_current)
         this->listener_->on_connector_control_current_changed(this, old_control_current, this->control_current_);
 }
+
+void Connector::set_needed_current_l1_(float needed_current_l1) {
+    this->needed_current_l1_ = needed_current_l1;
+    if (this->needed_current_l1_sensor_ != nullptr)
+        this->needed_current_l1_sensor_->publish_state(this->needed_current_l1_);
+}
+
+void Connector::set_needed_current_l2_(float needed_current_l2) {
+    this->needed_current_l2_ = needed_current_l2;
+    if (this->needed_current_l2_sensor_ != nullptr)
+        this->needed_current_l2_sensor_->publish_state(this->needed_current_l2_);
+}
+
+void Connector::set_needed_current_l3_(float needed_current_l3) {
+    this->needed_current_l3_ = needed_current_l3;
+    if (this->needed_current_l3_sensor_ != nullptr)
+        this->needed_current_l3_sensor_->publish_state(this->needed_current_l3_);
+}
+
 
 void Connector::clear_active_transaction() {
     this->active_transaction_id_ = 0;

@@ -193,6 +193,9 @@ class ChargePointSchemaTests(unittest.TestCase):
                                 "connector_id": 2,
                                 "log_meter_values": True,
                                 "current": {"name": "Garage Current"},
+                                "needed_current_l1": {"name": "Garage Needed Current L1"},
+                                "needed_current_l2": {"name": "Garage Needed Current L2"},
+                                "needed_current_l3": {"name": "Garage Needed Current L3"},
                                 "power": {"name": "Garage Power"},
                                 "total_energy": {"name": "Garage Total Energy"},
                                 "session_energy": {"name": "Garage Session Energy"},
@@ -209,6 +212,9 @@ class ChargePointSchemaTests(unittest.TestCase):
         self.assertEqual(connector["connector_id"], 2)
         self.assertTrue(connector["log_meter_values"])
         self.assertIn("current", connector)
+        self.assertIn("needed_current_l1", connector)
+        self.assertIn("needed_current_l2", connector)
+        self.assertIn("needed_current_l3", connector)
         self.assertIn("power", connector)
         self.assertIn("total_energy", connector)
         self.assertIn("session_energy", connector)

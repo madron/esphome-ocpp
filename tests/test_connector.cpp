@@ -77,6 +77,26 @@ int main() {
     }
 
     {
+        // needed_current per phase starts at max_current and sensor attachment publishes the initial value
+        Connector connector;
+        Sensor needed_current_l1_sensor;
+        Sensor needed_current_l2_sensor;
+        Sensor needed_current_l3_sensor;
+
+        connector.set_max_current(32);
+        connector.set_needed_current_l1_sensor(&needed_current_l1_sensor);
+        connector.set_needed_current_l2_sensor(&needed_current_l2_sensor);
+        connector.set_needed_current_l3_sensor(&needed_current_l3_sensor);
+
+        assert_equal("needed_current_l1_initial", connector.get_needed_current_l1(), 32.0f);
+        assert_equal("needed_current_l2_initial", connector.get_needed_current_l2(), 32.0f);
+        assert_equal("needed_current_l3_initial", connector.get_needed_current_l3(), 32.0f);
+        assert_equal("needed_current_l1_sensor_initial", needed_current_l1_sensor.state, 32.0f);
+        assert_equal("needed_current_l2_sensor_initial", needed_current_l2_sensor.state, 32.0f);
+        assert_equal("needed_current_l3_sensor_initial", needed_current_l3_sensor.state, 32.0f);
+    }
+
+    {
         // Pure control-current calculation is independent from connector state and publishing
         assert_equal("calculate_control_current_from_request", calculate_control_current(20.0f, 32.0f, 32U), 20.0f);
         assert_equal("calculate_control_current_clamped_by_limit", calculate_control_current(20.0f, 10.0f, 32U), 10.0f);

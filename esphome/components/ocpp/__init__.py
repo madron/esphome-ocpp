@@ -40,6 +40,9 @@ CONF_ACTIVE_PHASES = "active_phases"
 CONF_CURRENT_L1 = "current_l1"
 CONF_CURRENT_L2 = "current_l2"
 CONF_CURRENT_L3 = "current_l3"
+CONF_NEEDED_CURRENT_L1 = "needed_current_l1"
+CONF_NEEDED_CURRENT_L2 = "needed_current_l2"
+CONF_NEEDED_CURRENT_L3 = "needed_current_l3"
 CONF_VOLTAGE_L1 = "voltage_l1"
 CONF_VOLTAGE_L2 = "voltage_l2"
 CONF_VOLTAGE_L3 = "voltage_l3"
@@ -116,6 +119,24 @@ CONNECTOR_SCHEMA = cv.Schema(
             state_class="measurement",
         ),
         cv.Optional(CONF_CURRENT_L3): sensor.sensor_schema(
+            unit_of_measurement="A",
+            accuracy_decimals=1,
+            device_class="current",
+            state_class="measurement",
+        ),
+        cv.Optional(CONF_NEEDED_CURRENT_L1): sensor.sensor_schema(
+            unit_of_measurement="A",
+            accuracy_decimals=1,
+            device_class="current",
+            state_class="measurement",
+        ),
+        cv.Optional(CONF_NEEDED_CURRENT_L2): sensor.sensor_schema(
+            unit_of_measurement="A",
+            accuracy_decimals=1,
+            device_class="current",
+            state_class="measurement",
+        ),
+        cv.Optional(CONF_NEEDED_CURRENT_L3): sensor.sensor_schema(
             unit_of_measurement="A",
             accuracy_decimals=1,
             device_class="current",
@@ -364,6 +385,15 @@ async def to_code(config):
             if CONF_CURRENT_L3 in connector_conf:
                 sens = await sensor.new_sensor(connector_conf[CONF_CURRENT_L3])
                 cg.add(connector.set_current_l3_sensor(sens))
+            if CONF_NEEDED_CURRENT_L1 in connector_conf:
+                sens = await sensor.new_sensor(connector_conf[CONF_NEEDED_CURRENT_L1])
+                cg.add(connector.set_needed_current_l1_sensor(sens))
+            if CONF_NEEDED_CURRENT_L2 in connector_conf:
+                sens = await sensor.new_sensor(connector_conf[CONF_NEEDED_CURRENT_L2])
+                cg.add(connector.set_needed_current_l2_sensor(sens))
+            if CONF_NEEDED_CURRENT_L3 in connector_conf:
+                sens = await sensor.new_sensor(connector_conf[CONF_NEEDED_CURRENT_L3])
+                cg.add(connector.set_needed_current_l3_sensor(sens))
             if CONF_CONTROL_CURRENT in connector_conf:
                 sens = await sensor.new_sensor(connector_conf[CONF_CONTROL_CURRENT])
                 cg.add(connector.set_control_current_sensor(sens))
