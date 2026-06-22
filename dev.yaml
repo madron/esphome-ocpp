@@ -25,6 +25,9 @@ wifi:
 
 logger:
 
+api:
+  reboot_timeout: 0s
+
 preferences:
   flash_write_interval: 1d
 
