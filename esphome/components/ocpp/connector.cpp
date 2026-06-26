@@ -10,14 +10,9 @@ namespace {
 static const char *const TAG = "ocpp.connector";
 static constexpr float MIN_CHARGING_PROFILE_CURRENT = 6.0f;
 
-bool status_notification_to_plugged(const std::string &status, bool *plugged) {
+bool get_plugged_from_status(const std::string &status) {
     if (status == "Preparing" || status == "Charging" || status == "SuspendedEVSE" || status == "SuspendedEV" ||
         status == "Finishing" || status == "Occupied") {
-        *plugged = true;
-        return true;
-    }
-    if (status == "Available" || status == "Reserved" || status == "Unavailable") {
-        *plugged = false;
         return true;
     }
     return false;
@@ -281,9 +276,8 @@ void Connector::publish_status_notification(const StatusNotification &status_not
         error_code.clear();
     if (this->error_text_sensor_ != nullptr)
         this->error_text_sensor_->publish_state(error_code);
-    bool plugged = false;
-    if (status_notification_to_plugged(status_notification.status, &plugged))
-        this->set_plugged_(plugged);
+    bool plugged = get_plugged_from_status(status_notification.status);
+    this->set_plugged_(plugged);
 }
 
 void Connector::publish_unavailable() {

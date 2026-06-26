@@ -186,7 +186,7 @@ int main() {
         connector_without_sensor.publish_status_notification(StatusNotification("", 1, "NoError", "Preparing"));
         assert_equal("connector_without_sensor_preparing_plugged", connector_without_sensor.is_plugged(), true);
         connector_without_sensor.publish_status_notification(StatusNotification("", 1, "GroundFailure", "Faulted"));
-        assert_equal("connector_without_sensor_faulted_plugged_unchanged", connector_without_sensor.is_plugged(), true);
+        assert_equal("connector_without_sensor_faulted_unplugged", connector_without_sensor.is_plugged(), false);
         connector_without_sensor.publish_status_notification(StatusNotification("", 1, "NoError", "Available"));
         assert_equal("connector_without_sensor_available_unplugged", connector_without_sensor.is_plugged(), false);
     }

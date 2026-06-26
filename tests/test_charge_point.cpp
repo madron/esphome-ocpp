@@ -488,8 +488,8 @@ int main() {
         assert_equal("status_notification_fault_status_sensor", charge_point.status_sensor.state, std::string("Faulted"));
         assert_equal("status_notification_fault_error_sensor", charge_point.error_sensor.state,
                      std::string("GroundFailure"));
-        assert_equal("status_notification_fault_plugged_unchanged", charge_point.plugged_sensor.state, true);
-        assert_equal("status_notification_fault_internal_plugged_unchanged", charge_point.connector.is_plugged(), true);
+        assert_equal("status_notification_fault_plugged_false", charge_point.plugged_sensor.state, false);
+        assert_equal("status_notification_fault_internal_unplugged", charge_point.connector.is_plugged(), false);
         assert_equal("status_notification_response_count", charge_point.messages.size(), 3);
         assert_equal("status_notification_response", charge_point.messages[0].payload, R"([3,"status-1",{}])");
         assert_equal("status_notification_preparing_response", charge_point.messages[1].payload, R"([3,"status-prepare",{}])");
@@ -500,7 +500,7 @@ int main() {
                      std::string(""));
         assert_equal("status_notification_error_sensor_after_disconnect", charge_point.error_sensor.state,
                      std::string(""));
-        assert_equal("status_notification_plugged_after_disconnect_kept", charge_point.plugged_sensor.state, true);
+        assert_equal("status_notification_plugged_after_disconnect_false", charge_point.plugged_sensor.state, false);
     }
 
 
