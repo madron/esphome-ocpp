@@ -52,10 +52,14 @@ ocpp:
           current_limit:
             name: Garage Current Limit
             max_value: 16
-          requested_current:
-            name: Garage Requested Current
+          needed_current_l1:
+            name: Garage Needed Current L1
+          needed_current_l2:
+            name: Garage Needed Current L2
+          needed_current_l3:
+            name: Garage Needed Current L3
           control_current:
-            name: Garage Control Current
+            name: Garage Allocated Current
           power:
             name: Garage Power
           total_energy:
@@ -82,27 +86,29 @@ Set connector `log_meter_values: true` to log a compact info-level summary of pr
 
 ### Current control model
 
-Connector current control separates the connector-local control request from the current that is actually applied to the wallbox with `SetChargingProfile`. `requested_current` is the permissive per-connector request exposed for a user, Home Assistant automation, or another external controller that wants to take control of one connector. It defaults to the charge point `max_current`, so each connector starts unrestricted. The main charging policy can then be decided at the charge point or site level and reflected in `control_current`.
+Current control is organized as a demand/allocation model. A connector owns its local limits and state, calculates the current it needs on each phase, and notifies the site when an allocation input changes. The site is the only layer that decides the final current allocation across all connectors and charge points. Charge points then execute the OCPP commands requested by the site.
 
-| Concept                   | Suggested name      | Meaning |
-| ---                       | ---                 | --- |
-| Hard charge-point cap     | `max_current`       | Physical or installation maximum for the whole charge point in `A`. |
-| Connector safety cap      | `current_limit`     | Local limit for one connector in `A`; useful for safety limits or automations. |
-| Connector control request | `requested_current` | Desired current in `A` for one connector. Defaults to `max_current` and can be lowered by an external controller. |
-| Applied connector current | `control_current`   | Current in `A` applied to the connector after connector limits and charge point or site policy. Defaults to the effective connector maximum. |
+The connector's needed current is derived from `current_limit`, charge point `max_current`, and the connector's active phases. For each active phase, the connector exposes the effective needed current; inactive phases need `0 A`. If the active phases are not known yet, current sharing should safely assume that the connector may use all configured phases.
 
-For each connector, the component starts from `min(requested_current, current_limit)`. With the default `requested_current`, startup `control_current` is the maximum possible for the connector: the lower of the connector `current_limit` and the charge point `max_current`. A charge point or site-level policy can reduce the applied connector value further when coordinating multiple connectors or other site loads.
+| Concept                     | Name                           | Owner        | Meaning |
+| ---                         | ---                            | ---          | --- |
+| Hard charge-point cap       | `max_current`                  | Charge point | Physical or installation maximum for the whole charge point in `A`. |
+| Connector safety cap        | `current_limit`                | Connector    | Local maximum for one connector in `A`; useful for safety limits or automations. |
+| Connector demand            | `needed_current_l1`/`l2`/`l3`  | Connector    | Effective current needed by the connector on each phase after local limits and active-phase detection. |
+| Allocated connector current | `control_current`              | Site         | Current in `A` allocated by the site and applied through OCPP commands. |
 
-For three-phase charge points, connector `phase_mapping` describes how connector pins map to supply phases. A rotated mapping such as `[l2, l3, l1]` means the connector's L1 pin is supplied by charge point phase L2. Until the component knows the EV's actual active phases from metering or inference, current sharing should safely assume that the connector uses all configured phases.
+When a connector's needed current, measured current, status, transaction state, active phases, or another allocation-relevant value changes, the site recalculates allocations for all connectors. The site can then ask the related charge point to send `SetChargingProfile`, `RemoteStartTransaction`, or `RemoteStopTransaction` as needed. The OCPP command methods belong to the charge point, but the allocation decision belongs to the site.
 
-| Connector 1 request | Connector 2 request | `max_current` | `control_current` result |
-| ---                 | ---                 | ---           | ---                      |
-| `20 A`              | `32 A`              | `32 A`        | `16 A` / `16 A`          |
-| `6 A`               | `32 A`              | `32 A`        | `6 A` / `26 A`           |
-| `10 A`              | `10 A`              | `32 A`        | `10 A` / `10 A`          |
-| `0 A`               | `32 A`              | `32 A`        | `0 A` / `32 A`           |
+For three-phase charge points, connector `phase_mapping` describes how connector pins map to charge point supply phases. A rotated mapping such as `[l2, l3, l1]` means the connector's L1 pin is supplied by charge point phase L2. The phase mapping is used when translating connector-local active phases into the phase currents that the site allocator must consider.
 
-OCPP charging profiles cannot request a charging current below `6 A`. When the computed applied value is greater than `0 A` but lower than `6 A`, `requested_current` keeps the requested value, but `control_current` is published as `0 A` and the connector is treated as disabled instead of applying an invalid sub-`6 A` profile.
+| Connector 1 need | Connector 2 need | `max_current` | Site allocation result |
+| ---              | ---              | ---           | ---                    |
+| `20 A`           | `32 A`           | `32 A`        | `16 A` / `16 A`        |
+| `6 A`            | `32 A`           | `32 A`        | `6 A` / `26 A`         |
+| `10 A`           | `10 A`           | `32 A`        | `10 A` / `10 A`        |
+| `0 A`            | `32 A`           | `32 A`        | `0 A` / `32 A`         |
+
+OCPP charging profiles cannot request a charging current below `6 A`. When the allocated value is greater than `0 A` but lower than `6 A`, the site treats the connector as disabled and applies `0 A` instead of sending an invalid sub-`6 A` charging profile.
 
 Connector `status` and `error` text sensors are populated from `StatusNotification` messages whose `connectorId` matches the connector's `connector_id`. `errorCode: NoError` is exposed as an empty string.
 
@@ -124,23 +130,25 @@ Connector `status` and `error` text sensors are populated from `StatusNotificati
 
 ### Connector options
 
-| Option                         | Description |
-| ---                            | --- |
-| `id` (Optional)                | ESPHome internal ID for this connector. Usually omit this and let ESPHome generate it. |
-| `connector_id` (Optional)      | Numeric OCPP connector ID used to match `MeterValues.connectorId` in OCPP 1.6 or `MeterValues.evseId` in OCPP 2.0.1. Defaults to `1`. Must be unique within the charge point. |
-| `phase_mapping` (Optional)     | Ordered list mapping connector pins to charge point supply phases. Use values `l1`, `l2`, and `l3`, for example `[l2, l3, l1]` for a rotated three-phase connector. Defaults to the first configured connector phases in order. |
-| `log_meter_values` (Optional)  | Logs a compact info-level summary of received `MeterValues` sampled values for this connector. Defaults to `false`. |
-| `current` (Optional)           | Sensor populated from `Current.Import` `MeterValues` in `A`. Missing values are published as unavailable/unknown. |
-| `current_limit` (Optional)     | Number entity for the connector current limit in `A`. Range is `0` to `max_value` when set, otherwise `0` to the charge point `max_current`, with a step of `1 A`. `max_value` must be less than or equal to the charge point `max_current`. |
-| `requested_current` (Optional) | Number entity for the connector control request in `A`. Range is `0` to the charge point `max_current`, with a step of `0.1 A`. Defaults to the charge point `max_current`. |
-| `control_current` (Optional)   | Sensor populated with the connector current in `A` actually applied through `SetChargingProfile` after connector limits and charge point or site policy. Defaults to the effective connector maximum. |
-| `power` (Optional)             | Sensor populated from `Power.Active.Import` `MeterValues` in `W`. Missing values are published as unavailable/unknown. |
-| `total_energy` (Optional)      | Sensor populated from the connector lifetime `Energy.Active.Import.Register` `MeterValues` in `kWh`. OCPP `Wh` values are converted to `kWh`. Missing values are published as unavailable/unknown. |
-| `session_energy` (Optional)    | Sensor reset to `0 kWh` when a car is plugged in. While plugged in, it reports the difference from the total energy baseline at session start in `kWh`; after unplugging, it keeps the last session value. |
-| `session_time` (Optional)      | Sensor reset to `0` seconds when a car is plugged in. While plugged in, it reports elapsed session time in whole seconds; after unplugging, it keeps the last session value. |
-| `voltage` (Optional)           | Sensor populated from `Voltage` `MeterValues` in `V`. Missing values are published as unavailable/unknown. |
-| `status` (Optional)            | Text sensor populated from `StatusNotification.status` for OCPP 1.6 or `StatusNotification.connectorStatus` for OCPP 2.0.1. Clears after disconnect. |
-| `error` (Optional)             | Text sensor populated from `StatusNotification.errorCode` when the charger provides it. `NoError` is published as an empty string. Clears after disconnect. |
+| Option                          | Description |
+| ---                             | --- |
+| `id` (Optional)                 | ESPHome internal ID for this connector. Usually omit this and let ESPHome generate it. |
+| `connector_id` (Optional)       | Numeric OCPP connector ID used to match `MeterValues.connectorId` in OCPP 1.6 or `MeterValues.evseId` in OCPP 2.0.1. Defaults to `1`. Must be unique within the charge point. |
+| `phase_mapping` (Optional)      | Ordered list mapping connector pins to charge point supply phases. Use values `l1`, `l2`, and `l3`, for example `[l2, l3, l1]` for a rotated three-phase connector. Defaults to the first configured connector phases in order. |
+| `log_meter_values` (Optional)   | Logs a compact info-level summary of received `MeterValues` sampled values for this connector. Defaults to `false`. |
+| `current` (Optional)            | Sensor populated from `Current.Import` `MeterValues` in `A`. Missing values are published as unavailable/unknown. |
+| `current_limit` (Optional)      | Number entity for the connector current limit in `A`. Range is `0` to `max_value` when set, otherwise `0` to the charge point `max_current`, with a step of `1 A`. `max_value` must be less than or equal to the charge point `max_current`. |
+| `needed_current_l1` (Optional)  | Sensor populated with the connector needed current on phase L1 in `A` after local limits and active-phase detection. |
+| `needed_current_l2` (Optional)  | Sensor populated with the connector needed current on phase L2 in `A` after local limits and active-phase detection. |
+| `needed_current_l3` (Optional)  | Sensor populated with the connector needed current on phase L3 in `A` after local limits and active-phase detection. |
+| `control_current` (Optional)    | Sensor populated with the current in `A` allocated by the site and applied through OCPP commands. |
+| `power` (Optional)              | Sensor populated from `Power.Active.Import` `MeterValues` in `W`. Missing values are published as unavailable/unknown. |
+| `total_energy` (Optional)       | Sensor populated from the connector lifetime `Energy.Active.Import.Register` `MeterValues` in `kWh`. OCPP `Wh` values are converted to `kWh`. Missing values are published as unavailable/unknown. |
+| `session_energy` (Optional)     | Sensor reset to `0 kWh` when a car is plugged in. While plugged in, it reports the difference from the total energy baseline at session start in `kWh`; after unplugging, it keeps the last session value. |
+| `session_time` (Optional)       | Sensor reset to `0` seconds when a car is plugged in. While plugged in, it reports elapsed session time in whole seconds; after unplugging, it keeps the last session value. |
+| `voltage` (Optional)            | Sensor populated from `Voltage` `MeterValues` in `V`. Missing values are published as unavailable/unknown. |
+| `status` (Optional)             | Text sensor populated from `StatusNotification.status` for OCPP 1.6 or `StatusNotification.connectorStatus` for OCPP 2.0.1. Clears after disconnect. |
+| `error` (Optional)              | Text sensor populated from `StatusNotification.errorCode` when the charger provides it. `NoError` is published as an empty string. Clears after disconnect. |
 
 ### Charger configuration
 
