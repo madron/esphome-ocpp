@@ -368,8 +368,7 @@ async def to_code(config):
             cg.add(connector.set_log_meter_values(connector_conf[CONF_LOG_METER_VALUES]))
             cg.add(connector.set_phases(connector_conf[CONF_PHASES]))
             cg.add(connector.set_max_current(charge_point_conf[CONF_MAX_CURRENT]))
-            for connector_phase, supply_phase in enumerate(connector_conf[CONF_PHASE_MAPPING], start=1):
-                cg.add(connector.set_phase_mapping(connector_phase, supply_phase))
+            cg.add(connector.set_phase_mapping(connector_conf[CONF_PHASE_MAPPING]))
             if CONF_ACTIVE_PHASES in connector_conf:
                 sens = await sensor.new_sensor(connector_conf[CONF_ACTIVE_PHASES])
                 cg.add(connector.set_active_phases_sensor(sens))

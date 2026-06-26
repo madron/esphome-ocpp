@@ -6,8 +6,10 @@
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <initializer_list>
 #include <string>
 
 namespace esphome::ocpp {
@@ -35,10 +37,8 @@ class Connector {
         void set_listener(ConnectorListener *listener) { this->listener_ = listener; }
         void set_phases(uint8_t phases) { this->phases_ = phases; }
         uint8_t get_phases() const { return this->phases_; }
-        void set_phase_mapping(uint8_t connector_phase, uint8_t supply_phase) {
-            if (connector_phase < 1 || connector_phase > 3)
-                return;
-            this->phase_mapping_[connector_phase - 1] = supply_phase;
+        void set_phase_mapping(std::initializer_list<uint8_t> phase_mapping) {
+            std::copy(phase_mapping.begin(), phase_mapping.end(), this->phase_mapping_);
         }
         uint8_t get_phase_mapping(uint8_t connector_phase) const {
             if (connector_phase < 1 || connector_phase > 3)

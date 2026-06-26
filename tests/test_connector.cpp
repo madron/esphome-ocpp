@@ -138,14 +138,13 @@ int main() {
         // Connector phase mapping stores connector-pin to supply-phase order
         Connector connector;
         connector.set_phases(3);
-        connector.set_phase_mapping(1, 2);
-        connector.set_phase_mapping(2, 3);
-        connector.set_phase_mapping(3, 1);
+        connector.set_phase_mapping({2, 3, 1});
 
         assert_equal("phase_mapping_l1", connector.get_phase_mapping(1), static_cast<uint8_t>(2));
         assert_equal("phase_mapping_l2", connector.get_phase_mapping(2), static_cast<uint8_t>(3));
         assert_equal("phase_mapping_l3", connector.get_phase_mapping(3), static_cast<uint8_t>(1));
         assert_equal("phase_mapping_invalid", connector.get_phase_mapping(4), static_cast<uint8_t>(0));
+
     }
 
     {
