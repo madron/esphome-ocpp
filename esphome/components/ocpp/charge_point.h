@@ -25,7 +25,7 @@ class ChargePoint : public ConnectorListener {
     public:
         static constexpr size_t DEFAULT_MAX_QUEUED_MESSAGES = 8;
         static constexpr uint32_t DEFAULT_STARTUP_NOTIFICATIONS_DELAY_MS = 300000;
-        static constexpr uint32_t DEFAULT_CALL_TIMEOUT_MS = 60000;
+        static constexpr uint32_t DEFAULT_CALL_TIMEOUT_MS = 90000;
 
         enum class ChangeConfigurationStage : uint8_t {
             IDLE = 0,
