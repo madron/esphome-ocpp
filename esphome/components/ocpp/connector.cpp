@@ -130,6 +130,8 @@ void Connector::update_needed_current_() {
 
     if (this->is_plugged() && this->status_ != "SuspendedEV") {
         float needed_current = std::min(this->current_limit_, static_cast<float>(this->max_current_));
+        if (needed_current < MIN_CHARGING_PROFILE_CURRENT)
+            needed_current = 0.0f;
 
         // If active_phases is not yet available we assume all the phases are used
         if (this->active_phases_ == 0) {

@@ -128,6 +128,13 @@ int main() {
         assert_equal("needed_current_tracks_current_limit_l2", connector.get_needed_current_l2(), 16.0f);
         assert_equal("needed_current_tracks_current_limit_l3", connector.get_needed_current_l3(), 16.0f);
 
+        connector.set_current_limit(5.0f);
+        assert_equal("needed_current_sub_minimum_disabled_l1", connector.get_needed_current_l1(), 0.0f);
+        assert_equal("needed_current_sub_minimum_disabled_l2", connector.get_needed_current_l2(), 0.0f);
+        assert_equal("needed_current_sub_minimum_disabled_l3", connector.get_needed_current_l3(), 0.0f);
+
+        connector.set_current_limit(16.0f);
+
         connector.publish_meter_values("", one_phase_meter_values);
         assert_equal("needed_current_straight_mapping_single_phase_l1", connector.get_needed_current_l1(), 16.0f);
         assert_equal("needed_current_straight_mapping_single_phase_l2", connector.get_needed_current_l2(), 0.0f);
