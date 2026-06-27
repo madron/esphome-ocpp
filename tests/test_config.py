@@ -449,6 +449,21 @@ class ChargePointSchemaTests(unittest.TestCase):
                     ],
                 }
             )
+        with self.assertRaises(Exception):
+            CONFIG_SCHEMA(
+                {
+                    "id": "ocpp_id",
+                    "charge_points": [
+                        {
+                            "id": "garage_left",
+                            "charge_point_id": "A99999",
+                            "phases": 1,
+                            "max_current": 6,
+                            "connectors": [{"connector_id": 1, "phase_mapping": [1, 2, 3]}],
+                        }
+                    ],
+                }
+            )
 
     def test_connector_current_limit_max_value_override(self):
         validated = CONFIG_SCHEMA(
