@@ -7,6 +7,7 @@
 #include "esphome/components/text_sensor/text_sensor.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <initializer_list>
@@ -45,6 +46,10 @@ class Connector {
             if (connector_phase < 1 || connector_phase > 3)
                 return 0;
             return this->phase_mapping_[connector_phase - 1];
+        }
+        std::array<float, 3> map_phases(std::array<float, 3> currents) const;
+        std::array<float, 3> map_phases(float current_l1, float current_l2, float current_l3) const {
+            return this->map_phases({current_l1, current_l2, current_l3});
         }
         void set_phase_voltage(float phase_voltage) { this->phase_voltage_ = phase_voltage; }
         void set_active_phases(uint8_t active_phases);

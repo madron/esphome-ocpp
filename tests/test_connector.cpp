@@ -217,6 +217,23 @@ int main() {
     }
 
     {
+        // map_phases_default_mapping
+        Connector connector;
+        connector.set_phases(3);
+        auto currents = connector.map_phases(1.0f, 2.0f, 3.0f);
+        assert_equal("map_phases_default_mapping_1", currents[0], 1.0f);
+        assert_equal("map_phases_default_mapping_2", currents[1], 2.0f);
+        assert_equal("map_phases_default_mapping_3", currents[2], 3.0f);
+
+        // map_phases_custom_mapping
+        connector.set_phase_mapping({2, 3, 1});
+        currents = connector.map_phases(1.0f, 2.0f, 3.0f);
+        assert_equal("map_phases_custom_mapping_1", currents[0], 3.0f);
+        assert_equal("map_phases_custom_mapping_2", currents[1], 1.0f);
+        assert_equal("map_phases_custom_mapping_3", currents[2], 2.0f);
+    }
+
+    {
         // current_limit can use a lower connector-specific max while requested_current still uses max_current
         Connector connector;
         TestCurrentLimit current_limit_number;
