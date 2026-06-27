@@ -82,6 +82,7 @@ class Connector {
             if (this->plugged_binary_sensor_ != nullptr)
                 this->plugged_binary_sensor_->publish_initial_state(this->plugged_);
         }
+        const std::string &get_status() const { return this->status_; }
         bool is_plugged() const { return this->plugged_; }
         bool has_active_transaction() const { return this->active_transaction_id_ != 0; }
         uint32_t get_active_transaction_id() const { return this->active_transaction_id_; }

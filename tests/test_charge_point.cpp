@@ -144,6 +144,38 @@ int main() {
     }
 
     {
+        // Resuming from SuspendedEV reapplies the transaction profile even when control_current is unchanged
+        TestChargePoint charge_point;
+        charge_point.on_connected("A99999");
+        charge_point.connector.set_current_limit(7.0f);
+        charge_point.connector.set_active_transaction_id(1);
+        charge_point.connector.publish_status_notification(StatusNotification("", 1, "NoError", "Charging"));
+
+        charge_point.handle_ocpp_text(
+            R"([2,"status-suspended","StatusNotification",{"connectorId":1,"errorCode":"NoError","status":"SuspendedEV"}])"
+        );
+        assert_equal("suspended_ev_response_only_count", charge_point.messages.size(), 1);
+        assert_equal("suspended_ev_response", charge_point.messages[0].payload, R"([3,"status-suspended",{}])");
+
+        charge_point.messages.clear();
+        charge_point.handle_ocpp_text(
+            R"([2,"status-charging","StatusNotification",{"connectorId":1,"errorCode":"NoError","status":"Charging"}])"
+        );
+        assert_equal("charging_resume_profile_count", charge_point.messages.size(), 2);
+        assert_equal("charging_resume_response", charge_point.messages[0].payload, R"([3,"status-charging",{}])");
+        assert_equal("charging_resume_profile", charge_point.messages[1].payload,
+                     R"([2,"set-charging-profile-1-1","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":1,"transactionId":1,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Absolute","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":7}]}}}])");
+
+        charge_point.messages.clear();
+        charge_point.handle_ocpp_text(
+            R"([2,"status-charging-duplicate","StatusNotification",{"connectorId":1,"errorCode":"NoError","status":"Charging"}])"
+        );
+        assert_equal("duplicate_charging_response_only_count", charge_point.messages.size(), 1);
+        assert_equal("duplicate_charging_response", charge_point.messages[0].payload,
+                     R"([3,"status-charging-duplicate",{}])");
+    }
+
+    {
         // control_current zero/non-zero transitions stop and restart the OCPP transaction
         TestChargePoint charge_point;
         charge_point.on_connected("A99999");

@@ -254,6 +254,7 @@ void ChargePoint::handle_ocpp_call_(const OcppMessage &call) {
         const auto &status_notification = static_cast<const StatusNotification &>(call);
         Connector *connector = this->find_connector_(status_notification.connector_id);
         bool was_plugged = connector != nullptr && connector->is_plugged();
+        bool was_suspended_ev = connector != nullptr && connector->get_status() == "SuspendedEV";
         this->publish_status_notification_(status_notification);
         bool response_queued = this->send_message_({this->protocol_.make_status_notification_response(call.unique_id),
                                                     OcppMessageType::CALL_RESULT, call.unique_id, call.action});
@@ -263,6 +264,8 @@ void ChargePoint::handle_ocpp_call_(const OcppMessage &call) {
                 this->send_connector_control_current_(connector);
             else
                 this->send_connector_remote_start_transaction_(connector);
+        } else if (response_queued && connector != nullptr && was_suspended_ev && status_notification.status == "Charging") {
+            this->send_connector_control_current_(connector);
         }
     } else {
         ESP_LOGW(TAG, "Unsupported OCPP action '%s' from charge point '%s'", call.action.c_str(),
