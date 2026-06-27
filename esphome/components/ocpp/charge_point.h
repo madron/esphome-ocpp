@@ -154,7 +154,7 @@ class ChargePoint : public ConnectorListener {
         std::vector<Connector *> connectors_;
         std::vector<std::string> debug_ocpp_exclude_actions_;
         uint8_t phases_{1};
-        uint8_t phase_mapping_[3]{0, 0, 0};
+        uint8_t phase_mapping_[3]{1, 2, 3};
         uint32_t max_current_{0};
         float phase_voltage_{DEFAULT_PHASE_VOLTAGE};
         size_t max_queued_messages_{DEFAULT_MAX_QUEUED_MESSAGES};

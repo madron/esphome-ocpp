@@ -124,18 +124,10 @@ float Connector::clamp_current_limit_(float value) const {
 
 std::array<float, 3> Connector::map_phases(std::array<float, 3> currents) const {
     std::array<float, 3> mapped_currents{0.0f, 0.0f, 0.0f};
-    bool has_phase_mapping = false;
-    for (uint8_t connector_phase = 1; connector_phase <= 3; connector_phase++) {
-        if (this->get_phase_mapping(connector_phase) != 0) {
-            has_phase_mapping = true;
-            break;
-        }
-    }
-
     uint8_t phases = std::min<uint8_t>(this->phases_, 3);
     for (uint8_t connector_phase = 1; connector_phase <= phases; connector_phase++) {
-        uint8_t mapped_phase = has_phase_mapping ? this->get_phase_mapping(connector_phase) : connector_phase;
-        if (mapped_phase < 1 || mapped_phase > 3)
+        uint8_t mapped_phase = this->get_phase_mapping(connector_phase);
+        if (mapped_phase == 0)
             continue;
         mapped_currents[mapped_phase - 1] = currents[connector_phase - 1];
     }

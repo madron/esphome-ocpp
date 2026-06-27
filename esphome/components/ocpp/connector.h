@@ -130,7 +130,7 @@ class Connector {
 
         uint32_t connector_id_{DEFAULT_CONNECTOR_ID};
         uint8_t phases_{1};
-        uint8_t phase_mapping_[3]{0, 0, 0};
+        uint8_t phase_mapping_[3]{1, 2, 3};
         uint32_t max_current_{0};
         float phase_voltage_{DEFAULT_PHASE_VOLTAGE};
         uint32_t current_limit_max_{0};

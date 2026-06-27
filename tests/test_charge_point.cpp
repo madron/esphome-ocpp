@@ -283,9 +283,13 @@ int main() {
         assert_equal("set_max_current_second_connector_unchanged", charge_point.second_connector.get_max_current(), 32U);
 
         // set_phase_mapping stores charge-point phase to site phase order
-        assert_equal("phase_mapping_default_l1", charge_point.get_phase_mapping(1), static_cast<uint8_t>(0));
-        assert_equal("phase_mapping_default_l2", charge_point.get_phase_mapping(2), static_cast<uint8_t>(0));
-        assert_equal("phase_mapping_default_l3", charge_point.get_phase_mapping(3), static_cast<uint8_t>(0));
+        assert_equal("phase_mapping_default_l1", charge_point.get_phase_mapping(1), static_cast<uint8_t>(1));
+        assert_equal("phase_mapping_default_l2", charge_point.get_phase_mapping(2), static_cast<uint8_t>(2));
+        assert_equal("phase_mapping_default_l3", charge_point.get_phase_mapping(3), static_cast<uint8_t>(3));
+        charge_point.set_phase_mapping({0, 0, 0});
+        assert_equal("phase_mapping_unconfigured_l1", charge_point.get_phase_mapping(1), static_cast<uint8_t>(0));
+        assert_equal("phase_mapping_unconfigured_l2", charge_point.get_phase_mapping(2), static_cast<uint8_t>(0));
+        assert_equal("phase_mapping_unconfigured_l3", charge_point.get_phase_mapping(3), static_cast<uint8_t>(0));
         charge_point.set_phase_mapping({2, 3, 1});
         assert_equal("phase_mapping_l1", charge_point.get_phase_mapping(1), static_cast<uint8_t>(2));
         assert_equal("phase_mapping_l2", charge_point.get_phase_mapping(2), static_cast<uint8_t>(3));
