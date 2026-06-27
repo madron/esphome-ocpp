@@ -57,7 +57,7 @@ class OcppServer {
 
         bool request_matches_path_(const std::string &uri, std::string *connection_id) const;
         std::string websocket_accept_key_(const std::string &client_key);
-        bool has_connection_id_(const std::string &connection_id, const ClientSession *except) const;
+        bool close_connection_id_(const std::string &connection_id, const ClientSession *except);
 
         OcppServerListener *listener_{nullptr};
         std::unique_ptr<socket::ListenSocket> server_;

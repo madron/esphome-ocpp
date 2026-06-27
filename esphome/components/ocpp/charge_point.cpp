@@ -252,9 +252,18 @@ void ChargePoint::handle_ocpp_call_(const OcppMessage &call) {
         this->status_notification_trigger_in_flight_ = false;
         this->set_online_(true);
         const auto &status_notification = static_cast<const StatusNotification &>(call);
+        Connector *connector = this->find_connector_(status_notification.connector_id);
+        bool was_plugged = connector != nullptr && connector->is_plugged();
         this->publish_status_notification_(status_notification);
-        this->send_message_({this->protocol_.make_status_notification_response(call.unique_id), OcppMessageType::CALL_RESULT,
-                             call.unique_id, call.action});
+        bool response_queued = this->send_message_({this->protocol_.make_status_notification_response(call.unique_id),
+                                                    OcppMessageType::CALL_RESULT, call.unique_id, call.action});
+        if (response_queued && connector != nullptr && !was_plugged && connector->is_plugged() &&
+            connector->get_control_current() != 0.0f) {
+            if (connector->has_active_transaction())
+                this->send_connector_control_current_(connector);
+            else
+                this->send_connector_remote_start_transaction_(connector);
+        }
     } else {
         ESP_LOGW(TAG, "Unsupported OCPP action '%s' from charge point '%s'", call.action.c_str(),
                 this->connection_id_.c_str());

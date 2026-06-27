@@ -247,7 +247,8 @@ void OcppServer::accept_client_() {
     auto client = this->server_->accept_loop_monitored(reinterpret_cast<sockaddr *>(&addr), &addr_len);
     if (client == nullptr)
         return;
-    if (this->clients_.size() >= this->max_clients_) {
+    size_t max_sessions = this->max_clients_ + 1;
+    if (this->clients_.size() >= max_sessions) {
         ESP_LOGW(TAG, "Rejecting additional WebSocket connection; no free client session is available");
         client->close();
         return;
@@ -332,10 +333,17 @@ bool OcppServer::handle_http_handshake_(ClientSessions::iterator client) {
     std::string key = header_value(request, "Sec-WebSocket-Key");
     std::string client_protocols = header_value(request, "Sec-WebSocket-Protocol");
     std::string connection_id;
-    if (request.rfind("GET ", 0) != 0 || key.empty() || !this->request_matches_path_(uri, &connection_id) ||
-        this->has_connection_id_(connection_id, &*client)) {
-        ESP_LOGW(TAG, "Rejecting WebSocket handshake: uri='%s' configured_path='%s' has_key=%s", uri.c_str(),
-                this->server_path_.c_str(), YESNO(!key.empty()));
+    const char *handshake_reject_reason = nullptr;
+    if (request.rfind("GET ", 0) != 0)
+        handshake_reject_reason = "request is not GET";
+    else if (key.empty())
+        handshake_reject_reason = "missing Sec-WebSocket-Key";
+    else if (!this->request_matches_path_(uri, &connection_id))
+        handshake_reject_reason = "URI does not match configured path";
+
+    if (handshake_reject_reason != nullptr) {
+        ESP_LOGW(TAG, "Rejecting WebSocket handshake: reason='%s' uri='%s' configured_path='%s' has_key=%s",
+                handshake_reject_reason, uri.c_str(), this->server_path_.c_str(), YESNO(!key.empty()));
         static constexpr const char *BAD_REQUEST = "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n";
         client->socket->write(BAD_REQUEST, std::strlen(BAD_REQUEST));
         this->close_client_(client);
@@ -355,6 +363,9 @@ bool OcppServer::handle_http_handshake_(ClientSessions::iterator client) {
         this->close_client_(client);
         return false;
     }
+
+    if (this->close_connection_id_(connection_id, &*client))
+        ESP_LOGW(TAG, "Replaced existing WebSocket connection for duplicate connection '%s'", connection_id.c_str());
 
     std::string response = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n";
     response += "Sec-WebSocket-Accept: " + this->websocket_accept_key_(key) + "\r\n";
@@ -459,10 +470,12 @@ void OcppServer::write_frame_(ClientSession *client, uint8_t opcode, const std::
     client->socket->write(frame.data(), frame.size());
 }
 
-bool OcppServer::has_connection_id_(const std::string &connection_id, const ClientSession *except) const {
-    for (const auto &client : this->clients_) {
-        if (&client != except && client.handshake_done && client.connection_id == connection_id)
+bool OcppServer::close_connection_id_(const std::string &connection_id, const ClientSession *except) {
+    for (auto client = this->clients_.begin(); client != this->clients_.end(); ++client) {
+        if (&*client != except && client->handshake_done && client->connection_id == connection_id) {
+            this->close_client_(client);
             return true;
+        }
     }
     return false;
 }

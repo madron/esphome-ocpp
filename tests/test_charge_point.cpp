@@ -482,6 +482,8 @@ int main() {
             R"([2,"status-prepare","StatusNotification",{"connectorId":1,"errorCode":"NoError","status":"Preparing"}])");
         assert_equal("status_notification_preparing_plugged_true", charge_point.plugged_sensor.state, true);
         assert_equal("status_notification_preparing_internal_plugged_true", charge_point.connector.is_plugged(), true);
+        assert_equal("status_notification_preparing_remote_start", charge_point.messages[2].payload,
+                     R"([2,"remote-start-transaction-1-1","RemoteStartTransaction",{"connectorId":1,"idTag":"free"}])");
 
         charge_point.handle_ocpp_text(
             R"([2,"status-2","StatusNotification",{"connectorId":1,"errorCode":"GroundFailure","status":"Faulted"}])");
@@ -490,10 +492,10 @@ int main() {
                      std::string("GroundFailure"));
         assert_equal("status_notification_fault_plugged_false", charge_point.plugged_sensor.state, false);
         assert_equal("status_notification_fault_internal_unplugged", charge_point.connector.is_plugged(), false);
-        assert_equal("status_notification_response_count", charge_point.messages.size(), 3);
+        assert_equal("status_notification_response_count", charge_point.messages.size(), 4);
         assert_equal("status_notification_response", charge_point.messages[0].payload, R"([3,"status-1",{}])");
         assert_equal("status_notification_preparing_response", charge_point.messages[1].payload, R"([3,"status-prepare",{}])");
-        assert_equal("status_notification_fault_response", charge_point.messages[2].payload, R"([3,"status-2",{}])");
+        assert_equal("status_notification_fault_response", charge_point.messages[3].payload, R"([3,"status-2",{}])");
 
         charge_point.on_disconnected();
         assert_equal("status_notification_status_sensor_after_disconnect", charge_point.status_sensor.state,
