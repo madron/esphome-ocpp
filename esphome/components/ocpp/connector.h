@@ -46,7 +46,8 @@ class Connector {
             return this->phase_mapping_[connector_phase - 1];
         }
         void set_phase_voltage(float phase_voltage) { this->phase_voltage_ = phase_voltage; }
-        float get_active_phases() const { return this->active_phases_; }
+        void set_active_phases(uint8_t active_phases);
+        uint8_t get_active_phases() const { return this->active_phases_; }
         void set_log_meter_values(bool log_meter_values) { this->log_meter_values_ = log_meter_values; }
         bool get_log_meter_values() const { return this->log_meter_values_; }
         void set_max_current(uint32_t max_current);
@@ -129,7 +130,7 @@ class Connector {
         float current_limit_{0.0f};
         float requested_current_{0.0f};
         float control_current_{0.0f};
-        float active_phases_{NAN};
+        uint8_t active_phases_{0};
         sensor::Sensor *current_sensor_{nullptr};
         sensor::Sensor *current_l1_sensor_{nullptr};
         sensor::Sensor *current_l2_sensor_{nullptr};

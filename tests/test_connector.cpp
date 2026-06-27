@@ -312,18 +312,18 @@ int main() {
              SampledValue(230.0f, "Voltage", "V")});
 
         connector.publish_meter_values("", one_phase_meter_values);
-        assert_equal("active_phases_not_latched_before_plugged", std::isnan(connector.get_active_phases()), true);
+        assert_equal("active_phases_not_latched_before_plugged", connector.get_active_phases(), static_cast<uint8_t>(0));
 
         connector.publish_status_notification(StatusNotification("", 1, "NoError", "Preparing"));
         connector.publish_meter_values("", one_phase_meter_values);
-        assert_equal("active_phases_latched_after_plugged", connector.get_active_phases(), 1.0f);
+        assert_equal("active_phases_latched_after_plugged", connector.get_active_phases(), static_cast<uint8_t>(1));
         connector.set_active_transaction_id(1);
-        assert_equal("active_phases_kept_after_start_transaction", connector.get_active_phases(), 1.0f);
+        assert_equal("active_phases_kept_after_start_transaction", connector.get_active_phases(), static_cast<uint8_t>(1));
         connector.clear_active_transaction();
-        assert_equal("active_phases_kept_after_stop_transaction", connector.get_active_phases(), 1.0f);
+        assert_equal("active_phases_kept_after_stop_transaction", connector.get_active_phases(), static_cast<uint8_t>(1));
 
         connector.publish_status_notification(StatusNotification("", 1, "NoError", "Available"));
-        assert_equal("active_phases_reset_after_unplugged", std::isnan(connector.get_active_phases()), true);
+        assert_equal("active_phases_reset_after_unplugged", connector.get_active_phases(), static_cast<uint8_t>(0));
         assert_equal("active_phases_sensor_reset_after_unplugged", std::isnan(active_phases_sensor.state), true);
     }
 

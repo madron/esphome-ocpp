@@ -132,10 +132,10 @@ void Connector::update_needed_current_() {
         float needed_current = std::min(this->current_limit_, static_cast<float>(this->max_current_));
 
         // If active_phases is not yet available we assume all the phases are used
-        if (std::isnan(this->get_active_phases())) {
+        if (this->active_phases_ == 0) {
             phases = this->get_phases();
         } else {
-            phases = this->get_active_phases();
+            phases = this->active_phases_;
         }
 
         if (phases >= 1)
@@ -199,8 +199,15 @@ void Connector::clear_active_transaction() {
     this->active_transaction_id_ = 0;
 }
 
+void Connector::set_active_phases(uint8_t active_phases) {
+    if (this->active_phases_ == active_phases)
+        return;
+    this->active_phases_ = active_phases;
+    this->update_needed_current_();
+}
+
 void Connector::reset_active_phases() {
-    this->active_phases_ = NAN;
+    this->active_phases_ = 0;
     if (this->active_phases_sensor_ != nullptr)
         this->active_phases_sensor_->publish_state(NAN);
     this->update_needed_current_();
@@ -269,15 +276,14 @@ void Connector::update_session_time_(uint32_t now_millis) {
 
 void Connector::publish_meter_values(const std::string &connection_id, const MeterValues &meter_values) {
     MeterValues derived_meter_values = meter_values;
-    float latched_active_phases = this->plugged_ ? this->active_phases_ : NAN;
+    float latched_active_phases = this->plugged_ && this->active_phases_ != 0 ? static_cast<float>(this->active_phases_) : NAN;
     derived_meter_values.calculate_phase_values(this->phases_, this->phase_voltage_, latched_active_phases);
     if (this->plugged_) {
-        if (std::isnan(this->active_phases_) && !std::isnan(derived_meter_values.active_phases)) {
-            this->active_phases_ = derived_meter_values.active_phases;
-            this->update_needed_current_();
+        if (this->active_phases_ == 0 && !std::isnan(derived_meter_values.active_phases)) {
+            this->set_active_phases(static_cast<uint8_t>(std::round(derived_meter_values.active_phases)));
         }
-        if (!std::isnan(this->active_phases_) && derived_meter_values.active_phases != this->active_phases_)
-            derived_meter_values.calculate_phase_values(this->phases_, this->phase_voltage_, this->active_phases_);
+        if (this->active_phases_ != 0 && derived_meter_values.active_phases != static_cast<float>(this->active_phases_))
+            derived_meter_values.calculate_phase_values(this->phases_, this->phase_voltage_, static_cast<float>(this->active_phases_));
     }
 
     if (this->log_meter_values_ && !connection_id.empty()) {
@@ -308,7 +314,8 @@ void Connector::publish_meter_values(const std::string &connection_id, const Met
     if (this->voltage_l3_sensor_ != nullptr)
         this->voltage_l3_sensor_->publish_state(derived_meter_values.voltage_l3);
     if (this->active_phases_sensor_ != nullptr)
-        this->active_phases_sensor_->publish_state(this->active_phases_);
+        this->active_phases_sensor_->publish_state(
+            this->active_phases_ == 0 ? NAN : static_cast<float>(this->active_phases_));
 }
 
 void Connector::publish_status_notification(const StatusNotification &status_notification, uint32_t now_millis) {
