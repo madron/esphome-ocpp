@@ -103,6 +103,7 @@ class Connector {
     protected:
         float clamp_current_(float value) const;
         float clamp_current_limit_(float value) const;
+        void update_needed_current_();
         void update_control_current_();
         void set_needed_current_l1_(float needed_current_l1);
         void set_needed_current_l2_(float needed_current_l2);

@@ -39,9 +39,7 @@ void Connector::set_max_current(uint32_t max_current) {
     this->current_limit_max_ = max_current;
     this->current_limit_ = static_cast<float>(max_current);
     this->requested_current_ = static_cast<float>(max_current);
-    this->set_needed_current_l1_(static_cast<float>(max_current));
-    this->set_needed_current_l2_(static_cast<float>(max_current));
-    this->set_needed_current_l3_(static_cast<float>(max_current));
+    this->update_needed_current_();
     this->update_control_current_();
 }
 
@@ -53,6 +51,7 @@ void Connector::set_current_limit_max(uint32_t current_limit_max) {
     this->current_limit_ = static_cast<float>(current_limit_max);
     if (this->current_limit_number_ != nullptr)
         this->current_limit_number_->publish_state(this->current_limit_);
+    this->update_needed_current_();
     this->update_control_current_();
 }
 
@@ -96,6 +95,7 @@ void Connector::set_current_limit(float current_limit) {
     this->current_limit_ = this->clamp_current_limit_(std::round(current_limit));
     if (this->current_limit_number_ != nullptr)
         this->current_limit_number_->publish_state(this->current_limit_);
+    this->update_needed_current_();
     this->update_control_current_();
 }
 
@@ -120,6 +120,48 @@ float Connector::clamp_current_limit_(float value) const {
     if (this->current_limit_max_ > 0 && value > static_cast<float>(this->current_limit_max_))
         return static_cast<float>(this->current_limit_max_);
     return this->clamp_current_(value);
+}
+
+void Connector::update_needed_current_() {
+    float needed_current_l1 = 0.0f;
+    float needed_current_l2 = 0.0f;
+    float needed_current_l3 = 0.0f;
+    uint8_t phases;
+
+    if (this->is_plugged()) {
+        float needed_current = std::min(this->current_limit_, static_cast<float>(this->max_current_));
+
+        // If active_phases is not yet available we assume all the phases are used
+        if (std::isnan(this->get_active_phases())) {
+            phases = this->get_phases();
+        } else {
+            phases = this->get_active_phases();
+        }
+
+        if (phases >= 1)
+            needed_current_l1 = needed_current;
+        if (phases >= 2)
+            needed_current_l2 = needed_current;
+        if (phases >= 3)
+            needed_current_l3 = needed_current;
+
+        // to be done: adjust the currents taking in phase_mapping
+
+    }
+
+    bool updated = false;
+    if (needed_current_l1 != this->needed_current_l1_) {
+        updated = true;
+        this->set_needed_current_l1_(needed_current_l1);
+    }
+    if (needed_current_l2 != this->needed_current_l2_) {
+        updated = true;
+        this->set_needed_current_l2_(needed_current_l2);
+    }
+    if (needed_current_l3 != this->needed_current_l3_) {
+        updated = true;
+        this->set_needed_current_l3_(needed_current_l3);
+    }
 }
 
 void Connector::update_control_current_() {
@@ -153,7 +195,6 @@ void Connector::set_needed_current_l3_(float needed_current_l3) {
         this->needed_current_l3_sensor_->publish_state(this->needed_current_l3_);
 }
 
-
 void Connector::clear_active_transaction() {
     this->active_transaction_id_ = 0;
 }
@@ -162,6 +203,7 @@ void Connector::reset_active_phases() {
     this->active_phases_ = NAN;
     if (this->active_phases_sensor_ != nullptr)
         this->active_phases_sensor_->publish_state(NAN);
+    this->update_needed_current_();
 }
 
 void Connector::loop(uint32_t now_millis) {
@@ -230,8 +272,10 @@ void Connector::publish_meter_values(const std::string &connection_id, const Met
     float latched_active_phases = this->plugged_ ? this->active_phases_ : NAN;
     derived_meter_values.calculate_phase_values(this->phases_, this->phase_voltage_, latched_active_phases);
     if (this->plugged_) {
-        if (std::isnan(this->active_phases_) && !std::isnan(derived_meter_values.active_phases))
+        if (std::isnan(this->active_phases_) && !std::isnan(derived_meter_values.active_phases)) {
             this->active_phases_ = derived_meter_values.active_phases;
+            this->update_needed_current_();
+        }
         if (!std::isnan(this->active_phases_) && derived_meter_values.active_phases != this->active_phases_)
             derived_meter_values.calculate_phase_values(this->phases_, this->phase_voltage_, this->active_phases_);
     }
