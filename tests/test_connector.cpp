@@ -200,22 +200,23 @@ int main() {
         // Connector phase mapping stores connector-pin to supply-phase order
         Connector connector;
         connector.set_phases(3);
-        assert_equal("phase_mapping_default_l1", connector.get_phase_mapping(1), static_cast<uint8_t>(1));
-        assert_equal("phase_mapping_default_l2", connector.get_phase_mapping(2), static_cast<uint8_t>(2));
-        assert_equal("phase_mapping_default_l3", connector.get_phase_mapping(3), static_cast<uint8_t>(3));
+        const auto &phase_mapping = connector.get_phase_mapping();
+        assert_equal("phase_mapping_default_l1", phase_mapping[0], static_cast<uint8_t>(1));
+        assert_equal("phase_mapping_default_l2", phase_mapping[1], static_cast<uint8_t>(2));
+        assert_equal("phase_mapping_default_l3", phase_mapping[2], static_cast<uint8_t>(3));
         connector.set_phase_mapping({0, 0, 0});
-        assert_equal("phase_mapping_unconfigured_l1", connector.get_phase_mapping(1), static_cast<uint8_t>(0));
-        assert_equal("phase_mapping_unconfigured_l2", connector.get_phase_mapping(2), static_cast<uint8_t>(0));
-        assert_equal("phase_mapping_unconfigured_l3", connector.get_phase_mapping(3), static_cast<uint8_t>(0));
+        assert_equal("phase_mapping_unconfigured_l1", phase_mapping[0], static_cast<uint8_t>(0));
+        assert_equal("phase_mapping_unconfigured_l2", phase_mapping[1], static_cast<uint8_t>(0));
+        assert_equal("phase_mapping_unconfigured_l3", phase_mapping[2], static_cast<uint8_t>(0));
         connector.set_phase_mapping({2, 3, 1});
-        assert_equal("phase_mapping_l1", connector.get_phase_mapping(1), static_cast<uint8_t>(2));
-        assert_equal("phase_mapping_l2", connector.get_phase_mapping(2), static_cast<uint8_t>(3));
-        assert_equal("phase_mapping_l3", connector.get_phase_mapping(3), static_cast<uint8_t>(1));
-        assert_equal("phase_mapping_invalid", connector.get_phase_mapping(4), static_cast<uint8_t>(0));
+        assert_equal("phase_mapping_l1", phase_mapping[0], static_cast<uint8_t>(2));
+        assert_equal("phase_mapping_l2", phase_mapping[1], static_cast<uint8_t>(3));
+        assert_equal("phase_mapping_l3", phase_mapping[2], static_cast<uint8_t>(1));
+        assert_equal("phase_mapping_size", phase_mapping.size(), static_cast<size_t>(3));
         connector.set_phase_mapping({2});
-        assert_equal("phase_mapping_short_l1", connector.get_phase_mapping(1), static_cast<uint8_t>(2));
-        assert_equal("phase_mapping_short_l2", connector.get_phase_mapping(2), static_cast<uint8_t>(0));
-        assert_equal("phase_mapping_short_l3", connector.get_phase_mapping(3), static_cast<uint8_t>(0));
+        assert_equal("phase_mapping_short_l1", phase_mapping[0], static_cast<uint8_t>(2));
+        assert_equal("phase_mapping_short_l2", phase_mapping[1], static_cast<uint8_t>(0));
+        assert_equal("phase_mapping_short_l3", phase_mapping[2], static_cast<uint8_t>(0));
     }
 
     {

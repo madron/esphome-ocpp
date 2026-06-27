@@ -39,14 +39,10 @@ class Connector {
         void set_phases(uint8_t phases) { this->phases_ = phases; }
         uint8_t get_phases() const { return this->phases_; }
         void set_phase_mapping(std::initializer_list<uint8_t> phase_mapping) {
-            std::fill(this->phase_mapping_, this->phase_mapping_ + 3, 0);
+            this->phase_mapping_.fill(0);
             std::copy(phase_mapping.begin(), phase_mapping.end(), this->phase_mapping_);
         }
-        uint8_t get_phase_mapping(uint8_t connector_phase) const {
-            if (connector_phase < 1 || connector_phase > 3)
-                return 0;
-            return this->phase_mapping_[connector_phase - 1];
-        }
+        const std::array<uint8_t, 3> &get_phase_mapping() const { return this->phase_mapping_; }
         std::array<float, 3> map_phases(std::array<float, 3> currents) const;
         std::array<float, 3> map_phases(float current_l1, float current_l2, float current_l3) const {
             return this->map_phases({current_l1, current_l2, current_l3});
@@ -130,7 +126,7 @@ class Connector {
 
         uint32_t connector_id_{DEFAULT_CONNECTOR_ID};
         uint8_t phases_{1};
-        uint8_t phase_mapping_[3]{1, 2, 3};
+        std::array<uint8_t, 3> phase_mapping_{{1, 2, 3}};
         uint32_t max_current_{0};
         float phase_voltage_{DEFAULT_PHASE_VOLTAGE};
         uint32_t current_limit_max_{0};

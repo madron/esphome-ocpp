@@ -283,22 +283,23 @@ int main() {
         assert_equal("set_max_current_second_connector_unchanged", charge_point.second_connector.get_max_current(), 32U);
 
         // set_phase_mapping stores charge-point phase to site phase order
-        assert_equal("phase_mapping_default_l1", charge_point.get_phase_mapping(1), static_cast<uint8_t>(1));
-        assert_equal("phase_mapping_default_l2", charge_point.get_phase_mapping(2), static_cast<uint8_t>(2));
-        assert_equal("phase_mapping_default_l3", charge_point.get_phase_mapping(3), static_cast<uint8_t>(3));
+        const auto &phase_mapping = charge_point.get_phase_mapping();
+        assert_equal("phase_mapping_default_l1", phase_mapping[0], static_cast<uint8_t>(1));
+        assert_equal("phase_mapping_default_l2", phase_mapping[1], static_cast<uint8_t>(2));
+        assert_equal("phase_mapping_default_l3", phase_mapping[2], static_cast<uint8_t>(3));
         charge_point.set_phase_mapping({0, 0, 0});
-        assert_equal("phase_mapping_unconfigured_l1", charge_point.get_phase_mapping(1), static_cast<uint8_t>(0));
-        assert_equal("phase_mapping_unconfigured_l2", charge_point.get_phase_mapping(2), static_cast<uint8_t>(0));
-        assert_equal("phase_mapping_unconfigured_l3", charge_point.get_phase_mapping(3), static_cast<uint8_t>(0));
+        assert_equal("phase_mapping_unconfigured_l1", phase_mapping[0], static_cast<uint8_t>(0));
+        assert_equal("phase_mapping_unconfigured_l2", phase_mapping[1], static_cast<uint8_t>(0));
+        assert_equal("phase_mapping_unconfigured_l3", phase_mapping[2], static_cast<uint8_t>(0));
         charge_point.set_phase_mapping({2, 3, 1});
-        assert_equal("phase_mapping_l1", charge_point.get_phase_mapping(1), static_cast<uint8_t>(2));
-        assert_equal("phase_mapping_l2", charge_point.get_phase_mapping(2), static_cast<uint8_t>(3));
-        assert_equal("phase_mapping_l3", charge_point.get_phase_mapping(3), static_cast<uint8_t>(1));
-        assert_equal("phase_mapping_invalid", charge_point.get_phase_mapping(4), static_cast<uint8_t>(0));
+        assert_equal("phase_mapping_l1", phase_mapping[0], static_cast<uint8_t>(2));
+        assert_equal("phase_mapping_l2", phase_mapping[1], static_cast<uint8_t>(3));
+        assert_equal("phase_mapping_l3", phase_mapping[2], static_cast<uint8_t>(1));
+        assert_equal("phase_mapping_size", phase_mapping.size(), static_cast<size_t>(3));
         charge_point.set_phase_mapping({2});
-        assert_equal("phase_mapping_short_l1", charge_point.get_phase_mapping(1), static_cast<uint8_t>(2));
-        assert_equal("phase_mapping_short_l2", charge_point.get_phase_mapping(2), static_cast<uint8_t>(0));
-        assert_equal("phase_mapping_short_l3", charge_point.get_phase_mapping(3), static_cast<uint8_t>(0));
+        assert_equal("phase_mapping_short_l1", phase_mapping[0], static_cast<uint8_t>(2));
+        assert_equal("phase_mapping_short_l2", phase_mapping[1], static_cast<uint8_t>(0));
+        assert_equal("phase_mapping_short_l3", phase_mapping[2], static_cast<uint8_t>(0));
 
         // add_connector composes connector-to-charge-point and charge-point-to-site mappings
         ChargePoint rotated_charge_point;
@@ -307,9 +308,10 @@ int main() {
         rotated_connector.set_phases(2);
         rotated_connector.set_phase_mapping({2, 1});
         rotated_charge_point.add_connector(&rotated_connector);
-        assert_equal("composed_phase_mapping_l1", rotated_connector.get_phase_mapping(1), static_cast<uint8_t>(1));
-        assert_equal("composed_phase_mapping_l2", rotated_connector.get_phase_mapping(2), static_cast<uint8_t>(3));
-        assert_equal("composed_phase_mapping_l3", rotated_connector.get_phase_mapping(3), static_cast<uint8_t>(0));
+        const auto &composed_phase_mapping = rotated_connector.get_phase_mapping();
+        assert_equal("composed_phase_mapping_l1", composed_phase_mapping[0], static_cast<uint8_t>(1));
+        assert_equal("composed_phase_mapping_l2", composed_phase_mapping[1], static_cast<uint8_t>(3));
+        assert_equal("composed_phase_mapping_l3", composed_phase_mapping[2], static_cast<uint8_t>(0));
 
         // set_max_queued_messages
         charge_point.set_max_queued_messages(16);

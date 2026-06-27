@@ -6,6 +6,7 @@
 #include "esphome/components/text_sensor/text_sensor.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstddef>
 #include <initializer_list>
@@ -44,14 +45,10 @@ class ChargePoint : public ConnectorListener {
         void set_phases(uint8_t phases) { this->phases_ = phases; }
         uint8_t get_phases() const { return this->phases_; }
         void set_phase_mapping(std::initializer_list<uint8_t> phase_mapping) {
-            std::fill(this->phase_mapping_, this->phase_mapping_ + 3, 0);
-            std::copy_n(phase_mapping.begin(), std::min<size_t>(phase_mapping.size(), 3), this->phase_mapping_);
+            this->phase_mapping_.fill(0);
+            std::copy(phase_mapping.begin(), phase_mapping.end(), this->phase_mapping_);
         }
-        uint8_t get_phase_mapping(uint8_t charge_point_phase) const {
-            if (charge_point_phase < 1 || charge_point_phase > 3)
-                return 0;
-            return this->phase_mapping_[charge_point_phase - 1];
-        }
+        const std::array<uint8_t, 3> &get_phase_mapping() const { return this->phase_mapping_; }
         void set_phase_voltage(float phase_voltage) { this->phase_voltage_ = phase_voltage; }
         float get_phase_voltage() const { return this->phase_voltage_; }
         void set_online_binary_sensor(binary_sensor::BinarySensor *online_binary_sensor) {
@@ -81,12 +78,15 @@ class ChargePoint : public ConnectorListener {
         size_t get_max_queued_messages() const { return this->max_queued_messages_; }
         void add_connector(Connector *connector) {
             if (connector != nullptr) {
-                uint8_t site_phase_mapping[3]{0, 0, 0};
-                for (uint8_t connector_phase = 1;
-                     connector_phase <= connector->get_phases() && connector_phase <= 3;
+                const auto &connector_phase_mapping = connector->get_phase_mapping();
+                std::array<uint8_t, 3> site_phase_mapping{{0, 0, 0}};
+                for (size_t connector_phase = 0;
+                     connector_phase < connector->get_phases() && connector_phase < site_phase_mapping.size();
                      connector_phase++) {
-                    uint8_t charge_point_phase = connector->get_phase_mapping(connector_phase);
-                    site_phase_mapping[connector_phase - 1] = this->get_phase_mapping(charge_point_phase);
+                    uint8_t charge_point_phase = connector_phase_mapping[connector_phase];
+                    if (charge_point_phase < 1 || charge_point_phase > this->phase_mapping_.size())
+                        continue;
+                    site_phase_mapping[connector_phase] = this->phase_mapping_[charge_point_phase - 1];
                 }
                 connector->set_phase_mapping({site_phase_mapping[0], site_phase_mapping[1], site_phase_mapping[2]});
                 connector->set_phase_voltage(this->phase_voltage_);
@@ -154,7 +154,7 @@ class ChargePoint : public ConnectorListener {
         std::vector<Connector *> connectors_;
         std::vector<std::string> debug_ocpp_exclude_actions_;
         uint8_t phases_{1};
-        uint8_t phase_mapping_[3]{1, 2, 3};
+        std::array<uint8_t, 3> phase_mapping_{{1, 2, 3}};
         uint32_t max_current_{0};
         float phase_voltage_{DEFAULT_PHASE_VOLTAGE};
         size_t max_queued_messages_{DEFAULT_MAX_QUEUED_MESSAGES};
