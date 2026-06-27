@@ -13,12 +13,19 @@ MODULE_SPEC.loader.exec_module(OCPP_MODULE)
 
 RAW_CONFIG_SCHEMA = OCPP_MODULE.CONFIG_SCHEMA
 TEST_CONFIG_PATH = Path(__file__).with_name("test_config.yaml")
+DEFAULT_SITE = {"phases": 3, "phase_voltage": 230}
 
 
-def CONFIG_SCHEMA(config):
+def RAW_CONFIG(config):
     CORE.reset()
     CORE.config_path = TEST_CONFIG_PATH
     return RAW_CONFIG_SCHEMA(config)
+
+
+def CONFIG_SCHEMA(config):
+    config = dict(config)
+    config.setdefault("site", dict(DEFAULT_SITE))
+    return RAW_CONFIG(config)
 
 
 class ChargePointSchemaTests(unittest.TestCase):
@@ -178,6 +185,70 @@ class ChargePointSchemaTests(unittest.TestCase):
         self.assertEqual(connectors[0]["connector_id"], 1)
         self.assertFalse(connectors[0]["log_meter_values"])
 
+    def test_site_required_options_configured(self):
+        validated = CONFIG_SCHEMA(
+            {
+                "id": "ocpp_id",
+                "site": {"phases": 2, "phase_voltage": 240},
+                "charge_points": [
+                    {"id": "garage_left", "charge_point_id": "A99999", "phases": 2, "max_current": 32}
+                ],
+            }
+        )
+
+        self.assertEqual(validated["site"]["phases"], 2)
+        self.assertEqual(validated["site"]["phase_voltage"], 240)
+        self.assertEqual(validated["charge_points"][0]["phase_mapping"], [1, 2])
+
+    def test_site_required_and_top_level_phase_voltage_rejected(self):
+        invalid_configs = [
+            {"id": "ocpp_id"},
+            {"id": "ocpp_id", "site": {"phase_voltage": 230}},
+            {"id": "ocpp_id", "site": {"phases": 3}},
+            {"id": "ocpp_id", "site": {"phases": 3, "phase_voltage": 230.5}},
+            {"id": "ocpp_id", "site": DEFAULT_SITE, "phase_voltage": 230},
+            {"id": "ocpp_id", "site": DEFAULT_SITE, "phases": 3},
+        ]
+        for config in invalid_configs:
+            with self.subTest(config=config), self.assertRaises(Exception):
+                RAW_CONFIG(config)
+
+    def test_charge_point_phase_mapping_accepts_rotation(self):
+        validated = CONFIG_SCHEMA(
+            {
+                "id": "ocpp_id",
+                "site": {"phases": 3, "phase_voltage": 230},
+                "charge_points": [
+                    {
+                        "id": "garage_left",
+                        "charge_point_id": "A99999",
+                        "phases": 2,
+                        "phase_mapping": [2, 3],
+                        "max_current": 32,
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(validated["charge_points"][0]["phase_mapping"], [2, 3])
+
+    def test_charge_point_phase_mapping_rejects_invalid_mapping(self):
+        invalid_charge_points = [
+            {"id": "garage_left", "phases": 3, "phase_mapping": [1, 2], "max_current": 6},
+            {"id": "garage_left", "phases": 3, "phase_mapping": [1, 1, 2], "max_current": 6},
+            {"id": "garage_left", "phases": 2, "phase_mapping": [1, 3], "max_current": 6},
+            {"id": "garage_left", "phases": 3, "max_current": 6},
+        ]
+        for charge_point in invalid_charge_points:
+            with self.subTest(charge_point=charge_point), self.assertRaises(Exception):
+                CONFIG_SCHEMA(
+                    {
+                        "id": "ocpp_id",
+                        "site": {"phases": 2, "phase_voltage": 230},
+                        "charge_points": [charge_point],
+                    }
+                )
+
     def test_connector_meter_value_sensors_enabled(self):
         validated = CONFIG_SCHEMA(
             {
@@ -330,8 +401,8 @@ class ChargePointSchemaTests(unittest.TestCase):
                         "phases": 3,
                         "max_current": 12,
                         "connectors": [
-                            {"connector_id": 1, "phases": 3, "phase_mapping": ["l1", "l2", "l3"]},
-                            {"connector_id": 2, "phases": 3, "phase_mapping": ["l2", "l3", "l1"]},
+                            {"connector_id": 1, "phases": 3, "phase_mapping": [1, 2, 3]},
+                            {"connector_id": 2, "phases": 3, "phase_mapping": [2, 3, 1]},
                         ],
                     }
                 ],
@@ -344,8 +415,8 @@ class ChargePointSchemaTests(unittest.TestCase):
 
     def test_connector_phase_mapping_rejects_invalid_mapping(self):
         invalid_connectors = [
-            {"connector_id": 1, "phases": 3, "phase_mapping": ["l1", "l2"]},
-            {"connector_id": 1, "phases": 3, "phase_mapping": ["l1", "l1", "l2"]},
+            {"connector_id": 1, "phases": 3, "phase_mapping": [1, 2]},
+            {"connector_id": 1, "phases": 3, "phase_mapping": [1, 1, 2]},
         ]
         for connector in invalid_connectors:
             with self.subTest(connector=connector), self.assertRaises(Exception):
@@ -373,7 +444,7 @@ class ChargePointSchemaTests(unittest.TestCase):
                             "charge_point_id": "A99999",
                             "phases": 1,
                             "max_current": 6,
-                            "connectors": [{"connector_id": 1, "phases": 1, "phase_mapping": ["l2"]}],
+                            "connectors": [{"connector_id": 1, "phases": 1, "phase_mapping": [2]}],
                         }
                     ],
                 }

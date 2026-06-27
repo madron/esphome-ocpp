@@ -30,6 +30,7 @@ CONF_PROTOCOL = "protocol"
 CONF_REQUESTED_CURRENT = "requested_current"
 CONF_SERVER = "server"
 CONF_SERVER_PATH = "path"
+CONF_SITE = "site"
 CONF_SESSION_ENERGY = "session_energy"
 CONF_SESSION_TIME = "session_time"
 CONF_STATUS = "status"
@@ -49,7 +50,7 @@ CONF_VOLTAGE_L3 = "voltage_l3"
 
 SUPPORTED_PROTOCOLS = ["ocpp1.6", "ocpp2.0.1"]
 MIN_CHARGING_PROFILE_CURRENT = 6
-PHASE_MAPPING = {"l1": 1, "l2": 2, "l3": 3}
+MAX_PHASES = 3
 
 ocpp_ns = cg.esphome_ns.namespace("ocpp")
 OcppComponent = ocpp_ns.class_("OcppComponent", cg.Component)
@@ -57,6 +58,11 @@ ChargePoint = ocpp_ns.class_("ChargePoint")
 Connector = ocpp_ns.class_("Connector")
 CurrentLimit = ocpp_ns.class_("CurrentLimit", number.Number)
 RequestedCurrent = ocpp_ns.class_("RequestedCurrent", number.Number)
+
+
+def validate_phase_mapping_phase(value):
+    return cv.int_range(min=1, max=MAX_PHASES)(value)
+
 
 #----------------------------------------------------------
 # Server
@@ -81,21 +87,13 @@ SERVER_SCHEMA = cv.Schema(
 # Connector
 #----------------------------------------------------------
 
-def validate_phase_mapping_phase(value):
-    value = cv.string(value).strip().lower()
-    if value not in PHASE_MAPPING:
-        supported = ", ".join(PHASE_MAPPING)
-        raise cv.Invalid(f"phase_mapping entries must be one of: {supported}")
-    return PHASE_MAPPING[value]
-
-
 CONNECTOR_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(Connector),
         cv.Optional(CONF_CONNECTOR_ID, default=1): cv.int_range(min=0),
         cv.Optional(CONF_LOG_METER_VALUES, default=False): cv.boolean,
         cv.Optional(CONF_PHASE_MAPPING): cv.ensure_list(validate_phase_mapping_phase),
-        cv.Optional(CONF_PHASES): cv.int_range(min=1, max=3),
+        cv.Optional(CONF_PHASES): cv.int_range(min=1, max=MAX_PHASES),
         cv.Optional(CONF_ACTIVE_PHASES): sensor.sensor_schema(
             accuracy_decimals=0,
             state_class="measurement",
@@ -257,7 +255,8 @@ CHARGE_POINT_SCHEMA = cv.Schema(
         cv.Optional(CONF_FORCE_PROTOCOL): validate_protocol,
         cv.Optional(CONF_CHARGER_INFO): text_sensor.text_sensor_schema(),
         cv.Required(CONF_MAX_CURRENT): cv.int_range(min=MIN_CHARGING_PROFILE_CURRENT),
-        cv.Required(CONF_PHASES): cv.int_range(min=1, max=3),
+        cv.Optional(CONF_PHASE_MAPPING): cv.ensure_list(validate_phase_mapping_phase),
+        cv.Required(CONF_PHASES): cv.int_range(min=1, max=MAX_PHASES),
         cv.Optional(CONF_ONLINE): binary_sensor.binary_sensor_schema(),
         cv.Optional(CONF_PROTOCOL): text_sensor.text_sensor_schema(),
         cv.Optional(CONF_STARTUP_NOTIFICATIONS_DELAY, default=300): cv.int_range(min=0, max=4294967),
@@ -269,6 +268,29 @@ CHARGE_POINT_SCHEMA = cv.Schema(
 # Site
 #----------------------------------------------------------
 
+SITE_SCHEMA = cv.Schema(
+    {
+        cv.Required(CONF_PHASES): cv.int_range(min=1, max=MAX_PHASES),
+        cv.Required(CONF_PHASE_VOLTAGE): cv.int_range(min=1),
+    }
+)
+
+
+def validate_phase_mapping(config, owner_name, parent_name, parent_phases):
+    phases = config[CONF_PHASES]
+    if phases > parent_phases:
+        raise cv.Invalid(f"{owner_name} phases must be less than or equal to {parent_name} phases")
+    if CONF_PHASE_MAPPING not in config:
+        config[CONF_PHASE_MAPPING] = list(range(1, phases + 1))
+    phase_mapping = config[CONF_PHASE_MAPPING]
+    if len(phase_mapping) != phases:
+        raise cv.Invalid(f"{owner_name} phase_mapping must contain exactly one entry for each {owner_name} phase")
+    if len(set(phase_mapping)) != len(phase_mapping):
+        raise cv.Invalid(f"{owner_name} phase_mapping entries must not be repeated")
+    if max(phase_mapping, default=0) > parent_phases:
+        raise cv.Invalid(f"{owner_name} phase_mapping entries must be available on the {parent_name}")
+
+
 def consume_sockets(config):
     from esphome.components import socket
     # 1 socket for server and 1 for each client/charge_point
@@ -279,8 +301,10 @@ def consume_sockets(config):
 
 def validate_charge_points(config):
     charge_point_ids = set()
+    site_phases = config[CONF_SITE][CONF_PHASES]
     for charge_point in config[CONF_CHARGE_POINTS]:
         connector_ids = set()
+        validate_phase_mapping(charge_point, "charge point", "site", site_phases)
         minimum_max_current = MIN_CHARGING_PROFILE_CURRENT * len(charge_point[CONF_CONNECTORS])
         if charge_point[CONF_MAX_CURRENT] < minimum_max_current:
             raise cv.Invalid(
@@ -290,16 +314,7 @@ def validate_charge_points(config):
         for connector in charge_point[CONF_CONNECTORS]:
             if CONF_PHASES not in connector:
                 connector[CONF_PHASES] = charge_point[CONF_PHASES]
-            if connector[CONF_PHASES] > charge_point[CONF_PHASES]:
-                raise cv.Invalid("connector phases must be less than or equal to charge point phases")
-            if CONF_PHASE_MAPPING not in connector:
-                connector[CONF_PHASE_MAPPING] = list(range(1, connector[CONF_PHASES] + 1))
-            if len(connector[CONF_PHASE_MAPPING]) != connector[CONF_PHASES]:
-                raise cv.Invalid("phase_mapping must contain exactly one entry for each connector phase")
-            if len(set(connector[CONF_PHASE_MAPPING])) != len(connector[CONF_PHASE_MAPPING]):
-                raise cv.Invalid("phase_mapping entries must not be repeated")
-            if max(connector[CONF_PHASE_MAPPING], default=0) > charge_point[CONF_PHASES]:
-                raise cv.Invalid("phase_mapping entries must be available on the charge point")
+            validate_phase_mapping(connector, "connector", "charge point", charge_point[CONF_PHASES])
             connector_id = connector[CONF_CONNECTOR_ID]
             if connector_id in connector_ids:
                 raise cv.Invalid(f"Duplicate connector_id '{connector_id}' in charge point")
@@ -325,7 +340,7 @@ CONFIG_SCHEMA = cv.All(
         {
             cv.GenerateID(): cv.declare_id(OcppComponent),
             cv.Optional(CONF_SERVER, default={}): SERVER_SCHEMA,
-            cv.Optional(CONF_PHASE_VOLTAGE, default=230): cv.float_range(min=1),
+            cv.Required(CONF_SITE): SITE_SCHEMA,
             cv.Optional(CONF_CHARGE_POINTS, default=[]): cv.ensure_list(CHARGE_POINT_SCHEMA),
         }
     ).extend(cv.COMPONENT_SCHEMA),
@@ -347,8 +362,9 @@ async def to_code(config):
     for charge_point_conf in config[CONF_CHARGE_POINTS]:
         charge_point = cg.new_Pvariable(charge_point_conf[CONF_ID])
         cg.add(charge_point.set_max_current(charge_point_conf[CONF_MAX_CURRENT]))
-        cg.add(charge_point.set_phase_voltage(config[CONF_PHASE_VOLTAGE]))
+        cg.add(charge_point.set_phase_voltage(config[CONF_SITE][CONF_PHASE_VOLTAGE]))
         cg.add(charge_point.set_phases(charge_point_conf[CONF_PHASES]))
+        cg.add(charge_point.set_phase_mapping(charge_point_conf[CONF_PHASE_MAPPING]))
         if CONF_CHARGE_POINT_ID in charge_point_conf:
             cg.add(charge_point.set_charge_point_id(charge_point_conf[CONF_CHARGE_POINT_ID]))
         if CONF_FORCE_PROTOCOL in charge_point_conf:

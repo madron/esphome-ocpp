@@ -10,7 +10,7 @@ The configuration is organized around three electrical and OCPP concepts: the
 site, chargers, and connectors. Each level has a different responsibility.
 
 - The `site` describes the shared electrical installation. It defines the number
-  of available phases, the phase-to-neutral voltage in `V`.
+  of available phases and the phase-to-neutral voltage in `V`.
 - A `charge_point` describes one OCPP charge point that connects to this component.
   It is identified by its `charge_point_id`, which must match the identity used
   by the charger in the WebSocket URL. Charger-level configuration is about
@@ -32,10 +32,15 @@ ocpp:
   server:
     port: 9000
 
+  site:
+    phases: 3
+    phase_voltage: 230
+
   charge_points:
     - id: garage_left
       charge_point_id: A99999
       phases: 3
+      phase_mapping: [1, 2, 3]
       max_current: 32
       debug_ocpp_messages: true
       debug_ocpp_exclude_actions:
@@ -45,7 +50,7 @@ ocpp:
         name: Garage Charger Info
       connectors:
         - connector_id: 1
-          phase_mapping: [l1, l2, l3]
+          phase_mapping: [1, 2, 3]
           current:
             name: Garage Current
           log_meter_values: true
@@ -99,7 +104,7 @@ The connector's needed current is derived from `current_limit`, charge point `ma
 
 When a connector's needed current, measured current, status, transaction state, active phases, or another allocation-relevant value changes, the site recalculates allocations for all connectors. The site can then ask the related charge point to send `SetChargingProfile`, `RemoteStartTransaction`, or `RemoteStopTransaction` as needed. The OCPP command methods belong to the charge point, but the allocation decision belongs to the site.
 
-For three-phase charge points, connector `phase_mapping` describes how connector pins map to charge point supply phases. A rotated mapping such as `[l2, l3, l1]` means the connector's L1 pin is supplied by charge point phase L2. The phase mapping is used when translating connector-local active phases into the phase currents that the site allocator must consider.
+For multi-phase installations, charge point `phase_mapping` describes how charge point phases map to site phases. A rotated mapping such as `[2, 3, 1]` means charge point phase 1 is supplied by site phase 2. Connector `phase_mapping` follows the same rule relative to its parent charge point; `[2, 3, 1]` means connector phase 1 is supplied by charge point phase 2. Phase mappings are used when translating connector-local active phases into the phase currents that the site allocator must consider.
 
 | Connector 1 need | Connector 2 need | `max_current` | Site allocation result |
 | ---              | ---              | ---           | ---                    |
@@ -112,12 +117,21 @@ OCPP charging profiles cannot request a charging current below `6 A`. When the a
 
 Connector `status` and `error` text sensors are populated from `StatusNotification` messages whose `connectorId` matches the connector's `connector_id`. `errorCode: NoError` is exposed as an empty string.
 
+### Site options
+
+| Option                             | Description |
+| ---                                | --- |
+| `site` (Required)                  | Shared electrical installation settings. |
+| `phases` (Required)                | Number of site phases available to charge points. Must be `1`, `2`, or `3`. |
+| `phase_voltage` (Required)         | Integer phase-to-neutral voltage in `V`, used for phase inference from meter values. |
+
 ### Charge point options
 
 | Option                                   | Description |
 | ---                                      | --- |
 | `id` (Required)                          | ESPHome ID for this charge point. |
-| `phases` (Required)                      | Number of supply phases available to this charge point. Must be `1`, `2`, or `3`. |
+| `phases` (Required)                      | Number of supply phases available to this charge point. Must be `1`, `2`, or `3`, and less than or equal to site `phases`. |
+| `phase_mapping` (Optional)               | Ordered integer list mapping charge point phases to site phases, for example `[2, 3, 1]` for a rotated three-phase charge point. Entries must be unique, available on the site, and exactly match the charge point phase count. Defaults to `[1, 2, 3]`, `[1, 2]`, or `[1]` according to `phases`. |
 | `max_current` (Required)                 | Maximum configured current for this charge point in `A`. Must be at least `6 A` times the number of configured connectors; no upper limit is enforced. |
 | `charge_point_id` (Optional)             | OCPP/WebSocket identity expected from the charger. When omitted, the first free dynamic charge point slot is used. |
 | `connectors` (Optional)                  | List of OCPP connectors for this charge point. Defaults to one connector with `connector_id: 1`. Connector IDs must be unique within the charge point. |
@@ -134,7 +148,8 @@ Connector `status` and `error` text sensors are populated from `StatusNotificati
 | ---                             | --- |
 | `id` (Optional)                 | ESPHome internal ID for this connector. Usually omit this and let ESPHome generate it. |
 | `connector_id` (Optional)       | Numeric OCPP connector ID used to match `MeterValues.connectorId` in OCPP 1.6 or `MeterValues.evseId` in OCPP 2.0.1. Defaults to `1`. Must be unique within the charge point. |
-| `phase_mapping` (Optional)      | Ordered list mapping connector pins to charge point supply phases. Use values `l1`, `l2`, and `l3`, for example `[l2, l3, l1]` for a rotated three-phase connector. Defaults to the first configured connector phases in order. |
+| `phases` (Optional)             | Number of connector phases. Must be less than or equal to the parent charge point `phases`. Defaults to the parent charge point phase count. |
+| `phase_mapping` (Optional)      | Ordered integer list mapping connector phases to parent charge point phases, for example `[2, 3, 1]` for a rotated three-phase connector. Entries must be unique, available on the charge point, and exactly match the connector phase count. Defaults to `[1, 2, 3]`, `[1, 2]`, or `[1]` according to `phases`. |
 | `log_meter_values` (Optional)   | Logs a compact info-level summary of received `MeterValues` sampled values for this connector. Defaults to `false`. |
 | `current` (Optional)            | Sensor populated from `Current.Import` `MeterValues` in `A`. Missing values are published as unavailable/unknown. |
 | `current_limit` (Optional)      | Number entity for the connector current limit in `A`. Range is `0` to `max_value` when set, otherwise `0` to the charge point `max_current`, with a step of `1 A`. `max_value` must be less than or equal to the charge point `max_current`. |

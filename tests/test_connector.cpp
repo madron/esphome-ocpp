@@ -98,7 +98,6 @@ int main() {
 
     {
         // needed_current follows plugged state and active phase inference using straight L1/L2/L3 mapping
-        // TODO: add a dedicated test for custom phase_mapping once update_needed_current_ applies it.
         Connector connector;
         Sensor needed_current_l1_sensor;
         Sensor needed_current_l2_sensor;
@@ -201,12 +200,19 @@ int main() {
         // Connector phase mapping stores connector-pin to supply-phase order
         Connector connector;
         connector.set_phases(3);
+        assert_equal("phase_mapping_default_l1", connector.get_phase_mapping(1), static_cast<uint8_t>(0));
+        assert_equal("phase_mapping_default_l2", connector.get_phase_mapping(2), static_cast<uint8_t>(0));
+        assert_equal("phase_mapping_default_l3", connector.get_phase_mapping(3), static_cast<uint8_t>(0));
         connector.set_phase_mapping({2, 3, 1});
 
         assert_equal("phase_mapping_l1", connector.get_phase_mapping(1), static_cast<uint8_t>(2));
         assert_equal("phase_mapping_l2", connector.get_phase_mapping(2), static_cast<uint8_t>(3));
         assert_equal("phase_mapping_l3", connector.get_phase_mapping(3), static_cast<uint8_t>(1));
         assert_equal("phase_mapping_invalid", connector.get_phase_mapping(4), static_cast<uint8_t>(0));
+        connector.set_phase_mapping({2});
+        assert_equal("phase_mapping_short_l1", connector.get_phase_mapping(1), static_cast<uint8_t>(2));
+        assert_equal("phase_mapping_short_l2", connector.get_phase_mapping(2), static_cast<uint8_t>(0));
+        assert_equal("phase_mapping_short_l3", connector.get_phase_mapping(3), static_cast<uint8_t>(0));
 
     }
 
