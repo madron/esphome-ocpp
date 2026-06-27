@@ -40,7 +40,7 @@ class Connector {
         uint8_t get_phases() const { return this->phases_; }
         void set_phase_mapping(std::initializer_list<uint8_t> phase_mapping) {
             this->phase_mapping_.fill(0);
-            std::copy(phase_mapping.begin(), phase_mapping.end(), this->phase_mapping_);
+            std::copy(phase_mapping.begin(), phase_mapping.end(), this->phase_mapping_.begin());
         }
         const std::array<uint8_t, 3> &get_phase_mapping() const { return this->phase_mapping_; }
         std::array<float, 3> map_phases(std::array<float, 3> currents) const;
