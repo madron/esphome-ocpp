@@ -215,17 +215,35 @@ void Connector::clear_active_transaction() {
     this->active_transaction_id_ = 0;
 }
 
+void Connector::set_phases(uint8_t phases) {
+    this->phases_ = phases;
+    this->reset_active_phases();
+}
+
 void Connector::set_active_phases(uint8_t active_phases) {
     if (this->active_phases_ == active_phases)
         return;
     this->active_phases_ = active_phases;
     this->update_needed_current_();
+    this->publish_active_phases_sensor();
+}
+
+void Connector::publish_active_phases_sensor() {
+    if (this->active_phases_sensor_ != nullptr)
+        this->active_phases_sensor_->publish_state(this->active_phases_ == 0 ? NAN : static_cast<float>(this->active_phases_));
+}
+
+void Connector::set_active_phases_sensor(sensor::Sensor *active_phases_sensor) {
+    this->active_phases_sensor_ = active_phases_sensor;
+    this->publish_active_phases_sensor();
 }
 
 void Connector::reset_active_phases() {
-    this->active_phases_ = 0;
-    if (this->active_phases_sensor_ != nullptr)
-        this->active_phases_sensor_->publish_state(NAN);
+    uint8_t active_phases = this->phases_ == 1 ? 1 : 0;
+    bool updated = this->active_phases_ != active_phases;
+    this->set_active_phases(active_phases);
+    if (updated)
+        this->update_needed_current_();
 }
 
 void Connector::loop(uint32_t now_millis) {

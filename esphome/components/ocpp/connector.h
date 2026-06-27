@@ -36,7 +36,7 @@ class Connector {
         void set_connector_id(uint32_t connector_id) { this->connector_id_ = connector_id; }
         uint32_t get_connector_id() const { return this->connector_id_; }
         void set_listener(ConnectorListener *listener) { this->listener_ = listener; }
-        void set_phases(uint8_t phases) { this->phases_ = phases; }
+        void set_phases(uint8_t phases);
         uint8_t get_phases() const { return this->phases_; }
         void set_phase_mapping(std::initializer_list<uint8_t> phase_mapping) {
             this->phase_mapping_.fill(0);
@@ -76,7 +76,8 @@ class Connector {
         void set_voltage_l1_sensor(sensor::Sensor *voltage_l1_sensor) { this->voltage_l1_sensor_ = voltage_l1_sensor; }
         void set_voltage_l2_sensor(sensor::Sensor *voltage_l2_sensor) { this->voltage_l2_sensor_ = voltage_l2_sensor; }
         void set_voltage_l3_sensor(sensor::Sensor *voltage_l3_sensor) { this->voltage_l3_sensor_ = voltage_l3_sensor; }
-        void set_active_phases_sensor(sensor::Sensor *active_phases_sensor) { this->active_phases_sensor_ = active_phases_sensor; }
+        void publish_active_phases_sensor();
+        void set_active_phases_sensor(sensor::Sensor *active_phases_sensor);
         void set_status_text_sensor(text_sensor::TextSensor *status_text_sensor) { this->status_text_sensor_ = status_text_sensor; }
         void set_error_text_sensor(text_sensor::TextSensor *error_text_sensor) { this->error_text_sensor_ = error_text_sensor; }
         void set_plugged_binary_sensor(binary_sensor::BinarySensor *plugged_binary_sensor) {

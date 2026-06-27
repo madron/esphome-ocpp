@@ -367,6 +367,17 @@ int main() {
     }
 
     {
+        // Active phase: for 1 phase connector the active_phases are 1 otherwise it is unknown (0)
+        Connector connector;
+        connector.set_phases(1);
+        assert_equal("active_phases_1_phase_connector", connector.get_active_phases(), static_cast<uint8_t>(1));
+        connector.set_phases(2);
+        assert_equal("active_phases_2_phase_connector", connector.get_active_phases(), static_cast<uint8_t>(0));
+        connector.set_phases(3);
+        assert_equal("active_phases_3_phase_connector", connector.get_active_phases(), static_cast<uint8_t>(0));
+    }
+
+    {
         // Active phase inference is bound to plugged/unplugged transitions, not transaction lifetime
         Connector connector;
         Sensor active_phases_sensor;
@@ -391,6 +402,22 @@ int main() {
         connector.publish_status_notification(StatusNotification("", 1, "NoError", "Available"));
         assert_equal("active_phases_reset_after_unplugged", connector.get_active_phases(), static_cast<uint8_t>(0));
         assert_equal("active_phases_sensor_reset_after_unplugged", std::isnan(active_phases_sensor.state), true);
+    }
+
+    {
+        // Single-phase connectors do not need guessing: active phases are always known to be 1
+        Connector connector;
+        Sensor active_phases_sensor;
+        connector.set_phases(1);
+        connector.set_active_phases_sensor(&active_phases_sensor);
+        assert_equal("single_phase_connector_starts_with_one_active_phase", connector.get_active_phases(),
+                     static_cast<uint8_t>(1));
+        assert_equal("single_phase_connector_publishes_one_active_phase_on_startup", active_phases_sensor.state, 1.0f);
+        connector.publish_status_notification(StatusNotification("", 1, "NoError", "Preparing"));
+        connector.publish_meter_values("", MeterValues("", 1, {SampledValue(230.0f, "Voltage", "V")}));
+        assert_equal("single_phase_connector_latches_one_active_phase", connector.get_active_phases(),
+                     static_cast<uint8_t>(1));
+        assert_equal("single_phase_connector_reports_one_active_phase", active_phases_sensor.state, 1.0f);
     }
 
     return 0;
