@@ -128,7 +128,7 @@ void Connector::update_needed_current_() {
     float needed_current_l3 = 0.0f;
     uint8_t phases;
 
-    if (this->is_plugged()) {
+    if (this->is_plugged() && this->status_ != "SuspendedEV") {
         float needed_current = std::min(this->current_limit_, static_cast<float>(this->max_current_));
 
         // If active_phases is not yet available we assume all the phases are used
@@ -210,7 +210,6 @@ void Connector::reset_active_phases() {
     this->active_phases_ = 0;
     if (this->active_phases_sensor_ != nullptr)
         this->active_phases_sensor_->publish_state(NAN);
-    this->update_needed_current_();
 }
 
 void Connector::loop(uint32_t now_millis) {
@@ -220,18 +219,16 @@ void Connector::loop(uint32_t now_millis) {
 }
 
 void Connector::set_plugged_(bool plugged) {
-    bool changed = this->plugged_ != plugged;
-    this->plugged_ = plugged;
-    if (changed)
+    if (this->plugged_ != plugged) {
+        this->plugged_ = plugged;
         this->reset_active_phases();
-    if (this->plugged_binary_sensor_ != nullptr)
-        this->plugged_binary_sensor_->publish_state(plugged);
-    if (changed) {
-        if (plugged)
+        if (this->plugged_)
             this->on_session_start();
         else
             this->on_session_stop();
     }
+    if (this->plugged_binary_sensor_ != nullptr)
+        this->plugged_binary_sensor_->publish_state(this->plugged_);
 }
 
 void Connector::on_session_start() {
@@ -320,15 +317,22 @@ void Connector::publish_meter_values(const std::string &connection_id, const Met
 
 void Connector::publish_status_notification(const StatusNotification &status_notification, uint32_t now_millis) {
     this->last_update_millis_ = now_millis;
-    if (this->status_text_sensor_ != nullptr)
-        this->status_text_sensor_->publish_state(status_notification.status);
+    // Error
     std::string error_code = status_notification.error_code;
     if (error_code == "NoError")
         error_code.clear();
     if (this->error_text_sensor_ != nullptr)
         this->error_text_sensor_->publish_state(error_code);
+    // Plugged
     bool plugged = get_plugged_from_status(status_notification.status);
     this->set_plugged_(plugged);
+    // Status
+    if (this->status_ != status_notification.status) {
+        this->status_ = status_notification.status;
+        this->update_needed_current_();
+    }
+    if (this->status_text_sensor_ != nullptr)
+        this->status_text_sensor_->publish_state(status_notification.status);
 }
 
 void Connector::publish_unavailable() {

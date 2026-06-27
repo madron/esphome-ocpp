@@ -162,6 +162,7 @@ class Connector {
         uint32_t session_time_{0};
         uint32_t session_start_millis_{0};
         uint32_t last_update_millis_{0};
+        std::string status_;
         bool plugged_{false};
         uint32_t active_transaction_id_{0};
         bool log_meter_values_{false};

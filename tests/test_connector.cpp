@@ -137,9 +137,14 @@ int main() {
         assert_equal("needed_current_straight_mapping_sensor_l3", needed_current_l3_sensor.state, 0.0f);
 
         connector.publish_status_notification(StatusNotification("", 1, "NoError", "SuspendedEV"));
-        assert_equal("needed_current_kept_while_still_plugged_l1", connector.get_needed_current_l1(), 16.0f);
-        assert_equal("needed_current_kept_while_still_plugged_l2", connector.get_needed_current_l2(), 0.0f);
-        assert_equal("needed_current_kept_while_still_plugged_l3", connector.get_needed_current_l3(), 0.0f);
+        assert_equal("needed_current_zero_when_suspended_ev_l1", connector.get_needed_current_l1(), 0.0f);
+        assert_equal("needed_current_zero_when_suspended_ev_l2", connector.get_needed_current_l2(), 0.0f);
+        assert_equal("needed_current_zero_when_suspended_ev_l3", connector.get_needed_current_l3(), 0.0f);
+
+        connector.publish_status_notification(StatusNotification("", 1, "NoError", "Charging"));
+        assert_equal("needed_current_restored_after_suspended_ev_l1", connector.get_needed_current_l1(), 16.0f);
+        assert_equal("needed_current_restored_after_suspended_ev_l2", connector.get_needed_current_l2(), 0.0f);
+        assert_equal("needed_current_restored_after_suspended_ev_l3", connector.get_needed_current_l3(), 0.0f);
 
         connector.publish_status_notification(StatusNotification("", 1, "NoError", "Available"));
         assert_equal("needed_current_zero_when_unplugged_l1", connector.get_needed_current_l1(), 0.0f);
