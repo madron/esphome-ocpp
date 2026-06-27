@@ -77,7 +77,7 @@ int main() {
     }
 
     {
-        // needed_current per phase starts at max_current and sensor attachment publishes the initial value
+        // needed_current stays at 0 A until the connector is charging
         Connector connector;
         Sensor needed_current_l1_sensor;
         Sensor needed_current_l2_sensor;
@@ -88,12 +88,63 @@ int main() {
         connector.set_needed_current_l2_sensor(&needed_current_l2_sensor);
         connector.set_needed_current_l3_sensor(&needed_current_l3_sensor);
 
-        assert_equal("needed_current_l1_initial", connector.get_needed_current_l1(), 32.0f);
-        assert_equal("needed_current_l2_initial", connector.get_needed_current_l2(), 32.0f);
-        assert_equal("needed_current_l3_initial", connector.get_needed_current_l3(), 32.0f);
-        assert_equal("needed_current_l1_sensor_initial", needed_current_l1_sensor.state, 32.0f);
-        assert_equal("needed_current_l2_sensor_initial", needed_current_l2_sensor.state, 32.0f);
-        assert_equal("needed_current_l3_sensor_initial", needed_current_l3_sensor.state, 32.0f);
+        assert_equal("needed_current_l1_initial", connector.get_needed_current_l1(), 0.0f);
+        assert_equal("needed_current_l2_initial", connector.get_needed_current_l2(), 0.0f);
+        assert_equal("needed_current_l3_initial", connector.get_needed_current_l3(), 0.0f);
+        assert_equal("needed_current_l1_sensor_initial", needed_current_l1_sensor.state, 0.0f);
+        assert_equal("needed_current_l2_sensor_initial", needed_current_l2_sensor.state, 0.0f);
+        assert_equal("needed_current_l3_sensor_initial", needed_current_l3_sensor.state, 0.0f);
+    }
+
+    {
+        // needed_current follows plugged state and active phase inference using straight L1/L2/L3 mapping
+        // TODO: add a dedicated test for custom phase_mapping once update_needed_current_ applies it.
+        Connector connector;
+        Sensor needed_current_l1_sensor;
+        Sensor needed_current_l2_sensor;
+        Sensor needed_current_l3_sensor;
+        MeterValues one_phase_meter_values(
+            "", 1,
+            {SampledValue(10.0f, "Current.Import", "A"), SampledValue(2300.0f, "Power.Active.Import", "W"),
+             SampledValue(230.0f, "Voltage", "V")});
+        connector.set_phases(3);
+        connector.set_max_current(32);
+        connector.set_needed_current_l1_sensor(&needed_current_l1_sensor);
+        connector.set_needed_current_l2_sensor(&needed_current_l2_sensor);
+        connector.set_needed_current_l3_sensor(&needed_current_l3_sensor);
+
+        connector.publish_status_notification(StatusNotification("", 1, "NoError", "Preparing"));
+        assert_equal("needed_current_unknown_active_phases_uses_all_l1", connector.get_needed_current_l1(), 32.0f);
+        assert_equal("needed_current_unknown_active_phases_uses_all_l2", connector.get_needed_current_l2(), 32.0f);
+        assert_equal("needed_current_unknown_active_phases_uses_all_l3", connector.get_needed_current_l3(), 32.0f);
+
+        connector.publish_status_notification(StatusNotification("", 1, "NoError", "Charging"));
+        assert_equal("needed_current_unchanged_while_still_plugged_l1", connector.get_needed_current_l1(), 32.0f);
+        assert_equal("needed_current_unchanged_while_still_plugged_l2", connector.get_needed_current_l2(), 32.0f);
+        assert_equal("needed_current_unchanged_while_still_plugged_l3", connector.get_needed_current_l3(), 32.0f);
+
+        connector.set_current_limit(16.0f);
+        assert_equal("needed_current_tracks_current_limit_l1", connector.get_needed_current_l1(), 16.0f);
+        assert_equal("needed_current_tracks_current_limit_l2", connector.get_needed_current_l2(), 16.0f);
+        assert_equal("needed_current_tracks_current_limit_l3", connector.get_needed_current_l3(), 16.0f);
+
+        connector.publish_meter_values("", one_phase_meter_values);
+        assert_equal("needed_current_straight_mapping_single_phase_l1", connector.get_needed_current_l1(), 16.0f);
+        assert_equal("needed_current_straight_mapping_single_phase_l2", connector.get_needed_current_l2(), 0.0f);
+        assert_equal("needed_current_straight_mapping_single_phase_l3", connector.get_needed_current_l3(), 0.0f);
+        assert_equal("needed_current_straight_mapping_sensor_l1", needed_current_l1_sensor.state, 16.0f);
+        assert_equal("needed_current_straight_mapping_sensor_l2", needed_current_l2_sensor.state, 0.0f);
+        assert_equal("needed_current_straight_mapping_sensor_l3", needed_current_l3_sensor.state, 0.0f);
+
+        connector.publish_status_notification(StatusNotification("", 1, "NoError", "SuspendedEV"));
+        assert_equal("needed_current_kept_while_still_plugged_l1", connector.get_needed_current_l1(), 16.0f);
+        assert_equal("needed_current_kept_while_still_plugged_l2", connector.get_needed_current_l2(), 0.0f);
+        assert_equal("needed_current_kept_while_still_plugged_l3", connector.get_needed_current_l3(), 0.0f);
+
+        connector.publish_status_notification(StatusNotification("", 1, "NoError", "Available"));
+        assert_equal("needed_current_zero_when_unplugged_l1", connector.get_needed_current_l1(), 0.0f);
+        assert_equal("needed_current_zero_when_unplugged_l2", connector.get_needed_current_l2(), 0.0f);
+        assert_equal("needed_current_zero_when_unplugged_l3", connector.get_needed_current_l3(), 0.0f);
     }
 
     {
