@@ -32,10 +32,22 @@ preferences:
   flash_write_interval: 1d
 
 web_server:
+  version: 3
   port: 80
   auth:
     username: !secret web_server_username
     password: !secret web_server_password
+  sorting_groups:
+    - id: sorting_group_status
+      name: "Status"
+      sorting_weight: 10
+    - id: sorting_group_control
+      name: "Control"
+      sorting_weight: 20
+    - id: sorting_group_values
+      name: "Values"
+      sorting_weight: 30
+
 
 external_components:
   - components: [ ocpp ]
@@ -129,46 +141,96 @@ ocpp:
           connector_id: 1
           phase_mapping: [1, 2, 3]
           log_meter_values: true
+          # Status
           status:
-            name: 10_garage_status
-          error:
-            name: 11_garage_error
+            name: status
+            web_server:
+              sorting_group_id: sorting_group_status
+              sorting_weight: 10
           plugged:
-            name: 12_garage_plugged
+            name: plugged
+            web_server:
+              sorting_group_id: sorting_group_status
+              sorting_weight: 11
+          active_transaction:
+            name: active_transaction
+            web_server:
+              sorting_group_id: sorting_group_status
+              sorting_weight: 12
           active_phases:
-            name: 20_garage_active_phases
+            name: active_phases
+            web_server:
+              sorting_group_id: sorting_group_status
+              sorting_weight: 13
+          error:
+            name: error
+            web_server:
+              sorting_group_id: sorting_group_status
+              sorting_weight: 19
+          # Control
           current_limit:
-            name: 30_garage_current_limit
-          requested_current:
-            name: 31_garage_requested_current
+            name: current_limit
+            web_server:
+              sorting_group_id: sorting_group_control
+              sorting_weight: 10
           control_current:
-            name: 32_garage_control_current
-          needed_current_l1:
-            name: 34_garage_needed_current_1
-          needed_current_l2:
-            name: 35_garage_needed_current_2
-          needed_current_l3:
-            name: 36_garage_needed_current_3
+            name: control_current
+            web_server:
+              sorting_group_id: sorting_group_control
+              sorting_weight: 30
+          # requested_current:
+          #   name: requested_current
+          #   web_server:
+          #     sorting_group_id: sorting_group_control
+          #     sorting_weight: 20
+          # needed_current_l1:
+          #   name: needed_current_l1
+          #   web_server:
+          #     sorting_group_id: sorting_group_control
+          #     sorting_weight: 40
+          # needed_current_l2:
+          #   name: needed_current_l2
+          #   web_server:
+          #     sorting_group_id: sorting_group_control
+          #     sorting_weight: 40
+          # needed_current_l3:
+          #   name: needed_current_l3
+          #   web_server:
+          #     sorting_group_id: sorting_group_control
+          #     sorting_weight: 40
+          # Values
           current_l1:
-            name: 41_garage_current_1
+            name: current_l1
+            web_server:
+              sorting_group_id: sorting_group_values
+              sorting_weight: 10
           current_l2:
-            name: 42_garage_current_2
+            name: current_l2
+            web_server:
+              sorting_group_id: sorting_group_values
+              sorting_weight: 10
           current_l3:
-            name: 43_garage_current_3
+            name: current_l3
+            web_server:
+              sorting_group_id: sorting_group_values
+              sorting_weight: 10
           power:
-            name: 50_garage_power
-          total_energy:
-            name: 51_garage_total_energy
-          session_time:
-            name: 61_garage_session_time
-          session_energy:
-            name: 62_garage_session_energy
+            name: power
+            web_server:
+              sorting_group_id: sorting_group_values
+              sorting_weight: 20
+          # total_energy:
+          #   name: 51_total_energy
+          # session_time:
+          #   name: 61_session_time
+          # session_energy:
+          #  name: 62_session_energy
           # voltage_l1:
-          #   name: garage_voltage_l1
+          #   name: 71_voltage_l1
           # voltage_l2:
-          #   name: garage_voltage_l2
+          #   name: 72_voltage_l2
           # voltage_l3:
-          #   name: garage_voltage_l3
+          #   name: 73_voltage_l3
     - id: unknown
       phases: 3
       max_current: 32
