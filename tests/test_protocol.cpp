@@ -67,7 +67,7 @@ int main() {
                  R"([2,"change-config-meter-values-sampled-data","ChangeConfiguration",{"key":"MeterValuesSampledData","value":"Current.Import,Power.Active.Import"}])");
     assert_equal("set_charging_profile_request",
                  protocol.make_set_charging_profile_request("set-profile-1", 1, 7, 1, 12.3f),
-                 R"([2,"set-profile-1","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":1,"transactionId":7,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Absolute","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":12.3}]}}}])");
+                 R"([2,"set-profile-1","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":1,"transactionId":7,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Relative","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":12.3}]}}}])");
     assert_equal("remote_start_transaction_request",
                  protocol.make_remote_start_transaction_request("remote-start-1", 1, "free"),
                  R"([2,"remote-start-1","RemoteStartTransaction",{"connectorId":1,"idTag":"free"}])");

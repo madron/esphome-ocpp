@@ -105,7 +105,7 @@ int main() {
         assert_equal("start_transaction_response", charge_point.messages[0].payload,
                      R"([3,"start-1",{"idTagInfo":{"status":"Accepted"},"transactionId":1}])");
         assert_equal("start_transaction_profile", charge_point.messages[1].payload,
-                     R"([2,"set-charging-profile-1-1","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":1,"transactionId":1,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Absolute","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":32}]}}}])");
+                     R"([2,"set-charging-profile-1-1","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":1,"transactionId":1,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Relative","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":32}]}}}])");
         assert_equal("start_transaction_connector_1_active_id", charge_point.connector.get_active_transaction_id(), 1U);
 
         charge_point.handle_ocpp_text(
@@ -115,7 +115,7 @@ int main() {
         assert_equal("start_transaction_second_response", charge_point.messages[2].payload,
                      R"([3,"start-2",{"idTagInfo":{"status":"Accepted"},"transactionId":2}])");
         assert_equal("start_transaction_second_profile", charge_point.messages[3].payload,
-                     R"([2,"set-charging-profile-2-2","SetChargingProfile",{"connectorId":2,"csChargingProfiles":{"chargingProfileId":2,"transactionId":2,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Absolute","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":32}]}}}])");
+                     R"([2,"set-charging-profile-2-2","SetChargingProfile",{"connectorId":2,"csChargingProfiles":{"chargingProfileId":2,"transactionId":2,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Relative","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":32}]}}}])");
         assert_equal("start_transaction_connector_2_active_id", charge_point.second_connector.get_active_transaction_id(), 2U);
     }
 
@@ -131,13 +131,13 @@ int main() {
         );
         assert_equal("profile_sent_on_start_count", charge_point.messages.size(), 2);
         assert_equal("profile_sent_on_start_current", charge_point.messages[1].payload,
-                     R"([2,"set-charging-profile-1-1","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":1,"transactionId":1,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Absolute","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":12.3}]}}}])");
+                     R"([2,"set-charging-profile-1-1","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":1,"transactionId":1,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Relative","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":12.3}]}}}])");
 
         charge_point.messages.clear();
         charge_point.connector.set_current_limit(10.0f);
         assert_equal("profile_sent_on_control_current_change_count", charge_point.messages.size(), 1);
         assert_equal("profile_sent_on_control_current_change", charge_point.messages[0].payload,
-                     R"([2,"set-charging-profile-1-2","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":1,"transactionId":1,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Absolute","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":10}]}}}])");
+                     R"([2,"set-charging-profile-1-2","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":1,"transactionId":1,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Relative","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":10}]}}}])");
 
         charge_point.connector.set_current_limit(10.0f);
         assert_equal("profile_not_repeated_when_control_current_unchanged", charge_point.messages.size(), 1);
@@ -164,7 +164,7 @@ int main() {
         assert_equal("charging_resume_profile_count", charge_point.messages.size(), 2);
         assert_equal("charging_resume_response", charge_point.messages[0].payload, R"([3,"status-charging",{}])");
         assert_equal("charging_resume_profile", charge_point.messages[1].payload,
-                     R"([2,"set-charging-profile-1-1","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":1,"transactionId":1,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Absolute","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":7}]}}}])");
+                     R"([2,"set-charging-profile-1-1","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":1,"transactionId":1,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Relative","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":7}]}}}])");
 
         charge_point.messages.clear();
         charge_point.handle_ocpp_text(
@@ -207,7 +207,7 @@ int main() {
         assert_equal("remote_start_transaction_response", charge_point.messages[1].payload,
                      R"([3,"start-2",{"idTagInfo":{"status":"Accepted"},"transactionId":2}])");
         assert_equal("remote_start_transaction_profile", charge_point.messages[2].payload,
-                     R"([2,"set-charging-profile-1-2","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":1,"transactionId":2,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Absolute","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":6}]}}}])");
+                     R"([2,"set-charging-profile-1-2","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":1,"transactionId":2,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Relative","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":6}]}}}])");
     }
 
     {
@@ -501,7 +501,7 @@ int main() {
         assert_equal("meter_values_recovery_response_count", charge_point.messages.size(), 2);
         assert_equal("meter_values_recovery_response", charge_point.messages[0].payload, R"([3,"meter-transaction-1",{}])");
         assert_equal("meter_values_recovery_profile", charge_point.messages[1].payload,
-                     R"([2,"set-charging-profile-1-1","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":1,"transactionId":7,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Absolute","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":32}]}}}])");
+                     R"([2,"set-charging-profile-1-1","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":1,"transactionId":7,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Relative","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":32}]}}}])");
 
         charge_point.messages.clear();
         charge_point.handle_ocpp_text(
@@ -514,7 +514,7 @@ int main() {
         charge_point.connector.set_current_limit(10.0f);
         assert_equal("meter_values_recovered_transaction_current_change_count", charge_point.messages.size(), 1);
         assert_equal("meter_values_recovered_transaction_current_change", charge_point.messages[0].payload,
-                     R"([2,"set-charging-profile-1-2","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":1,"transactionId":7,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Absolute","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":10}]}}}])");
+                     R"([2,"set-charging-profile-1-2","SetChargingProfile",{"connectorId":1,"csChargingProfiles":{"chargingProfileId":1,"transactionId":7,"stackLevel":0,"chargingProfilePurpose":"TxProfile","chargingProfileKind":"Relative","chargingSchedule":{"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":10}]}}}])");
     }
 
     {

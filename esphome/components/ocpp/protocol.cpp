@@ -273,7 +273,7 @@ std::string OcppProtocol::make_set_charging_profile_request(
     return "[2,\"" + json_escape(unique_id) + "\",\"SetChargingProfile\",{\"connectorId\":" +
            std::to_string(connector_id) + ",\"csChargingProfiles\":{\"chargingProfileId\":" +
            std::to_string(charging_profile_id) + ",\"transactionId\":" + std::to_string(transaction_id) +
-           ",\"stackLevel\":0,\"chargingProfilePurpose\":\"TxProfile\",\"chargingProfileKind\":\"Absolute\"," +
+           ",\"stackLevel\":0,\"chargingProfilePurpose\":\"TxProfile\",\"chargingProfileKind\":\"Relative\"," +
            "\"chargingSchedule\":{\"chargingRateUnit\":\"A\",\"chargingSchedulePeriod\":[{\"startPeriod\":0," +
            "\"limit\":" + json_number(current_limit) + "}]}}}]";
 }
