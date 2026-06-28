@@ -73,6 +73,8 @@ ocpp:
             name: Garage Session Energy
           session_time:
             name: Garage Session Time
+          active_transaction:
+            name: Garage Active Transaction
           voltage:
             name: Garage Voltage
           status:
@@ -116,6 +118,8 @@ For multi-phase installations, charge point `phase_mapping` describes how charge
 OCPP charging profiles cannot request a charging current below `6 A`. When the allocated value is greater than `0 A` but lower than `6 A`, the site treats the connector as disabled and applies `0 A` instead of sending an invalid sub-`6 A` charging profile.
 
 Connector `status` and `error` text sensors are populated from `StatusNotification` messages whose `connectorId` matches the connector's `connector_id`. `errorCode: NoError` is exposed as an empty string.
+
+Connector `active_transaction` is a binary sensor that turns `on` when the connector has a non-zero active OCPP transaction ID and `off` otherwise. This is mainly useful for debugging transaction recovery and charging-profile edge cases.
 
 ### Site options
 
@@ -161,6 +165,7 @@ Connector `status` and `error` text sensors are populated from `StatusNotificati
 | `total_energy` (Optional)       | Sensor populated from the connector lifetime `Energy.Active.Import.Register` `MeterValues` in `kWh`. OCPP `Wh` values are converted to `kWh`. Missing values are published as unavailable/unknown. |
 | `session_energy` (Optional)     | Sensor reset to `0 kWh` when a car is plugged in. While plugged in, it reports the difference from the total energy baseline at session start in `kWh`; after unplugging, it keeps the last session value. |
 | `session_time` (Optional)       | Sensor reset to `0` seconds when a car is plugged in. While plugged in, it reports elapsed session time in whole seconds; after unplugging, it keeps the last session value. |
+| `active_transaction` (Optional) | Binary sensor that is `on` when the connector currently has a non-zero active OCPP transaction ID, and `off` otherwise. Useful for debugging transaction recovery. |
 | `voltage` (Optional)            | Sensor populated from `Voltage` `MeterValues` in `V`. Missing values are published as unavailable/unknown. |
 | `status` (Optional)             | Text sensor populated from `StatusNotification.status` for OCPP 1.6 or `StatusNotification.connectorStatus` for OCPP 2.0.1. Clears after disconnect. |
 | `error` (Optional)              | Text sensor populated from `StatusNotification.errorCode` when the charger provides it. `NoError` is published as an empty string. Clears after disconnect. |

@@ -80,6 +80,11 @@ class Connector {
         void set_active_phases_sensor(sensor::Sensor *active_phases_sensor);
         void set_status_text_sensor(text_sensor::TextSensor *status_text_sensor) { this->status_text_sensor_ = status_text_sensor; }
         void set_error_text_sensor(text_sensor::TextSensor *error_text_sensor) { this->error_text_sensor_ = error_text_sensor; }
+        void set_active_transaction_binary_sensor(binary_sensor::BinarySensor *active_transaction_binary_sensor) {
+            this->active_transaction_binary_sensor_ = active_transaction_binary_sensor;
+            if (this->active_transaction_binary_sensor_ != nullptr)
+                this->active_transaction_binary_sensor_->publish_initial_state(this->has_active_transaction());
+        }
         void set_plugged_binary_sensor(binary_sensor::BinarySensor *plugged_binary_sensor) {
             this->plugged_binary_sensor_ = plugged_binary_sensor;
             if (this->plugged_binary_sensor_ != nullptr)
@@ -89,7 +94,7 @@ class Connector {
         bool is_plugged() const { return this->plugged_; }
         bool has_active_transaction() const { return this->active_transaction_id_ != 0; }
         uint32_t get_active_transaction_id() const { return this->active_transaction_id_; }
-        void set_active_transaction_id(uint32_t active_transaction_id) { this->active_transaction_id_ = active_transaction_id; }
+        void set_active_transaction_id(uint32_t active_transaction_id);
         void clear_active_transaction();
         void reset_active_phases();
         void set_current_limit(float current_limit);
@@ -159,6 +164,7 @@ class Connector {
         sensor::Sensor *active_phases_sensor_{nullptr};
         text_sensor::TextSensor *status_text_sensor_{nullptr};
         text_sensor::TextSensor *error_text_sensor_{nullptr};
+        binary_sensor::BinarySensor *active_transaction_binary_sensor_{nullptr};
         binary_sensor::BinarySensor *plugged_binary_sensor_{nullptr};
         ConnectorListener *listener_{nullptr};
         float last_total_energy_{NAN};

@@ -211,8 +211,14 @@ void Connector::set_needed_current_l3_(float needed_current_l3) {
         this->needed_current_l3_sensor_->publish_state(this->needed_current_l3_);
 }
 
+void Connector::set_active_transaction_id(uint32_t active_transaction_id) {
+    this->active_transaction_id_ = active_transaction_id;
+    if (this->active_transaction_binary_sensor_ != nullptr)
+        this->active_transaction_binary_sensor_->publish_state(this->has_active_transaction());
+}
+
 void Connector::clear_active_transaction() {
-    this->active_transaction_id_ = 0;
+    this->set_active_transaction_id(0);
 }
 
 void Connector::set_phases(uint8_t phases) {

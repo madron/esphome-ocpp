@@ -38,6 +38,7 @@ CONF_STARTUP_NOTIFICATIONS_DELAY = "startup_notifications_delay"
 CONF_TOTAL_ENERGY = "total_energy"
 CONF_VOLTAGE = "voltage"
 CONF_ACTIVE_PHASES = "active_phases"
+CONF_ACTIVE_TRANSACTION = "active_transaction"
 CONF_CURRENT_L1 = "current_l1"
 CONF_CURRENT_L2 = "current_l2"
 CONF_CURRENT_L3 = "current_l3"
@@ -179,6 +180,7 @@ CONNECTOR_SCHEMA = cv.Schema(
             state_class="measurement",
         ),
         cv.Optional(CONF_ERROR): text_sensor.text_sensor_schema(),
+        cv.Optional(CONF_ACTIVE_TRANSACTION): binary_sensor.binary_sensor_schema(),
         cv.Optional(CONF_PLUGGED): binary_sensor.binary_sensor_schema(
             device_class="plug",
         ),
@@ -465,6 +467,9 @@ async def to_code(config):
             if CONF_ERROR in connector_conf:
                 sens = await text_sensor.new_text_sensor(connector_conf[CONF_ERROR])
                 cg.add(connector.set_error_text_sensor(sens))
+            if CONF_ACTIVE_TRANSACTION in connector_conf:
+                sens = await binary_sensor.new_binary_sensor(connector_conf[CONF_ACTIVE_TRANSACTION])
+                cg.add(connector.set_active_transaction_binary_sensor(sens))
             if CONF_PLUGGED in connector_conf:
                 sens = await binary_sensor.new_binary_sensor(connector_conf[CONF_PLUGGED])
                 cg.add(connector.set_plugged_binary_sensor(sens))

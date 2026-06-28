@@ -287,6 +287,25 @@ int main() {
     }
 
     {
+        // Active-transaction binary sensor starts OFF and follows transaction state changes
+        Connector connector;
+        BinarySensor active_transaction_sensor;
+        active_transaction_sensor.publish_state(true);
+        connector.set_active_transaction_binary_sensor(&active_transaction_sensor);
+        assert_equal("active_transaction_sensor_has_initial_state_when_configured", active_transaction_sensor.has_state,
+                     true);
+        assert_equal("active_transaction_sensor_off_when_configured", active_transaction_sensor.state, false);
+
+        connector.set_active_transaction_id(123);
+        assert_equal("active_transaction_sensor_on_after_transaction_start", active_transaction_sensor.state, true);
+        assert_equal("active_transaction_id_after_start", connector.get_active_transaction_id(), 123U);
+
+        connector.clear_active_transaction();
+        assert_equal("active_transaction_sensor_off_after_transaction_stop", active_transaction_sensor.state, false);
+        assert_equal("active_transaction_id_after_stop", connector.get_active_transaction_id(), 0U);
+    }
+
+    {
         // Plugged binary sensor starts OFF when configured before any StatusNotification
         Connector connector;
         BinarySensor plugged_sensor;
