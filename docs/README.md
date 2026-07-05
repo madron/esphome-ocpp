@@ -110,32 +110,6 @@ Connector `active_phases` reports the number of active charging phases detected 
 
 Set connector `log_meter_values: true` to log a compact info-level summary of present sampled values, for example `A99999 MeterValues 1 Current: 10 A - Power: 6940 W - Energy: 7358900 Wh`. If a charger includes `phase`, the phase is shown next to that sampled value, for example `Current: L1=10 A, L2=10 A, L3=10 A`.
 
-### Current control model
-
-Current control is organized as a demand/allocation model. A connector owns its local limits and state, calculates the current it needs on each phase, and notifies the site when an allocation input changes. The site is the only layer that decides the final current allocation across all connectors and charge points. Charge points then execute the OCPP commands requested by the site.
-
-The connector's needed current is derived from `current_limit`, charge point `max_current`, and the connector's active phases. For each active phase, the connector exposes the effective needed current; inactive phases need `0 A`. If the active phases are not known yet, current sharing should safely assume that the connector may use all configured phases.
-
-| Concept                     | Name                           | Owner        | Meaning |
-| ---                         | ---                            | ---          | --- |
-| Hard charge-point cap       | `max_current`                  | Charge point | Physical or installation maximum for the whole charge point in `A`. |
-| Connector safety cap        | `current_limit`                | Connector    | Local maximum for one connector in `A`; useful for safety limits or automations. |
-| Connector demand            | `needed_current_l1`/`l2`/`l3`  | Connector    | Effective current needed by the connector on each phase after local limits and active-phase detection. |
-| Allocated connector current | `control_current`              | Site         | Current in `A` allocated by the site and applied through OCPP commands. |
-
-When a connector's needed current, measured current, status, transaction state, active phases, or another allocation-relevant value changes, the site recalculates allocations for all connectors. The site can then ask the related charge point to send `SetChargingProfile`, `RemoteStartTransaction`, or `RemoteStopTransaction` as needed. The OCPP command methods belong to the charge point, but the allocation decision belongs to the site.
-
-For multi-phase installations, charge point `phase_mapping` describes how charge point phases map to site phases. A rotated mapping such as `[2, 3, 1]` means charge point phase 1 is supplied by site phase 2. Connector `phase_mapping` follows the same rule relative to its parent charge point; `[2, 3, 1]` means connector phase 1 is supplied by charge point phase 2. Phase mappings are used when translating connector-local active phases into the phase currents that the site allocator must consider.
-
-| Connector 1 need | Connector 2 need | `max_current` | Site allocation result |
-| ---              | ---              | ---           | ---                    |
-| `20 A`           | `32 A`           | `32 A`        | `16 A` / `16 A`        |
-| `6 A`            | `32 A`           | `32 A`        | `6 A` / `26 A`         |
-| `10 A`           | `10 A`           | `32 A`        | `10 A` / `10 A`        |
-| `0 A`            | `32 A`           | `32 A`        | `0 A` / `32 A`         |
-
-OCPP charging profiles cannot request a charging current below `6 A`. When the allocated value is greater than `0 A` but lower than `6 A`, the site treats the connector as disabled and applies `0 A` instead of sending an invalid sub-`6 A` charging profile.
-
 Connector `plugged` is a binary sensor that is `on` when the connector status indicates a plugged-in vehicle (`Preparing`, `Charging`, `SuspendedEVSE`, `SuspendedEV`, `Finishing`, `Occupied`), and `off` otherwise. It is derived from the same `StatusNotification` messages that populate `status` and `error`.
 
 Connector `status` and `error` text sensors are populated from `StatusNotification` messages whose `connectorId` matches the connector's `connector_id`. `errorCode: NoError` is exposed as an empty string.

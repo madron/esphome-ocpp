@@ -77,19 +77,32 @@ ChangeConfiguration → charger   (set MeterValueSampleInterval = 5s)
 
 ## Current Control Model
 
-Demand/allocation model:
+Demand/allocation model. A connector owns its local limits and state, calculates the current it needs on each phase, and notifies the site when an allocation input changes. The site is the only layer that decides the final current allocation across all connectors and charge points. Charge points then execute the OCPP commands requested by the site.
 
-| Concept | Field | Owner |
-| --- | --- | --- |
-| Hard charge-point cap | `max_current` | Charge point |
-| Connector safety cap | `current_limit` | Connector (number entity) |
-| Connector demand | `requested_current` | Connector (number entity) |
-| Effective needed current | `needed_current_l1/l2/l3` | Connector (computed) |
-| Allocated current | `control_current` | Connector (computed from `calculate_control_current()`) |
+| Concept | Field | Owner | Meaning |
+| --- | --- | --- | --- |
+| Hard charge-point cap | `max_current` | Charge point | Physical or installation maximum for the whole charge point in `A`. |
+| Connector safety cap | `current_limit` | Connector (number entity) | Local maximum for one connector in `A`; useful for safety limits or automations. |
+| Connector demand | `requested_current` | Connector (number entity) | Explicit current request in `A` set by the user or an automation. |
+| Effective needed current | `needed_current_l1/l2/l3` | Connector (computed) | Current needed by the connector on each phase after local limits and active-phase detection. Inactive phases need `0 A`. If active phases are unknown, current sharing assumes the connector may use all configured phases. |
+| Allocated current | `control_current` | Site (computed) | Current in `A` allocated by the site and applied through OCPP commands. |
 
 `control_current = min(requested_current, current_limit, max_current)`. Values >0 but <6A clamp to 0A (OCPP minimum).
 
-When `control_current` changes, `ConnectorListener::on_connector_control_current_changed()` fires on the charge point, which then sends `SetChargingProfile`, `RemoteStartTransaction`, or `RemoteStopTransaction` as appropriate.
+When a connector's needed current, measured current, status, transaction state, active phases, or another allocation-relevant value changes, the site recalculates allocations for all connectors. When `control_current` changes, `ConnectorListener::on_connector_control_current_changed()` fires on the charge point, which then sends `SetChargingProfile`, `RemoteStartTransaction`, or `RemoteStopTransaction` as appropriate. The OCPP command methods belong to the charge point, but the allocation decision belongs to the site.
+
+### Allocation Examples
+
+| Connector 1 need | Connector 2 need | `max_current` | Site allocation result |
+| --- | --- | --- | --- |
+| `20 A` | `32 A` | `32 A` | `16 A` / `16 A` |
+| `6 A` | `32 A` | `32 A` | `6 A` / `26 A` |
+| `10 A` | `10 A` | `32 A` | `10 A` / `10 A` |
+| `0 A` | `32 A` | `32 A` | `0 A` / `32 A` |
+
+### Phase Mapping in Allocation
+
+For multi-phase installations, charge point `phase_mapping` describes how charge point phases map to site phases. A rotated mapping such as `[2, 3, 1]` means charge point phase 1 is supplied by site phase 2. Connector `phase_mapping` follows the same rule relative to its parent charge point. Phase mappings are used when translating connector-local active phases into the phase currents that the site allocator must consider.
 
 ## Phase Mapping
 
