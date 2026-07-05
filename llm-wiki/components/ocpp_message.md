@@ -52,8 +52,8 @@ SampledValue (value struct)
 | --- | --- | --- |
 | `DEFAULT_PHASE_VOLTAGE` | 230.0 V | Fallback voltage for phase inference |
 | `MIN_PHASE_INFERENCE_VOLTAGE` | 190.0 V | Minimum voltage to attempt inference |
-| `MIN_PHASE_INFERENCE_CURRENT` | 6.0 A | Minimum current to consider a phase active |
-| `MIN_PHASE_INFERENCE_POWER` | 1140 W | Derived: 190 V × 6 A |
+| `MIN_PHASE_INFERENCE_CURRENT` | 5.0 A | Minimum current to consider a phase active |
+| `MIN_PHASE_INFERENCE_POWER` | 950 W | Derived: 190 V × 5 A |
 | `MAX_PHASE_INFERENCE_ERROR` | 0.4 | Max deviation for phase count rounding |
 
 ## MeterValues Phase Inference

@@ -11,7 +11,7 @@ namespace esphome::ocpp {
 
 static constexpr float DEFAULT_PHASE_VOLTAGE = 230.0f;
 static constexpr float MIN_PHASE_INFERENCE_VOLTAGE = 190.0f;
-static constexpr float MIN_PHASE_INFERENCE_CURRENT = 6.0f;
+static constexpr float MIN_PHASE_INFERENCE_CURRENT = 5.0f;
 static constexpr float MIN_PHASE_INFERENCE_POWER = MIN_PHASE_INFERENCE_VOLTAGE * MIN_PHASE_INFERENCE_CURRENT;
 static constexpr float MAX_PHASE_INFERENCE_ERROR = 0.4f;
 
