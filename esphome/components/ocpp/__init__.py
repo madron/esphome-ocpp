@@ -39,6 +39,7 @@ CONF_TOTAL_ENERGY = "total_energy"
 CONF_VOLTAGE = "voltage"
 CONF_ACTIVE_PHASES = "active_phases"
 CONF_ACTIVE_TRANSACTION = "active_transaction"
+CONF_INITIAL_VALUE = "initial_value"
 CONF_CURRENT_L1 = "current_l1"
 CONF_CURRENT_L2 = "current_l2"
 CONF_CURRENT_L3 = "current_l3"
@@ -159,6 +160,7 @@ CONNECTOR_SCHEMA = cv.Schema(
         ).extend(
             {
                 cv.Optional(CONF_MAX_VALUE): cv.int_range(min=0),
+                cv.Optional(CONF_INITIAL_VALUE): cv.float_range(min=0),
             }
         ),
         cv.Optional(CONF_TOTAL_ENERGY): sensor.sensor_schema(
@@ -328,6 +330,14 @@ def validate_charge_points(config):
                     and current_limit[CONF_MAX_VALUE] > charge_point[CONF_MAX_CURRENT]
                 ):
                     raise cv.Invalid("current_limit max_value must be less than or equal to max_current")
+                current_limit_max = current_limit.get(CONF_MAX_VALUE, charge_point[CONF_MAX_CURRENT])
+                if (
+                    CONF_INITIAL_VALUE in current_limit
+                    and current_limit[CONF_INITIAL_VALUE] > current_limit_max
+                ):
+                    raise cv.Invalid(
+                        f"current_limit initial_value must be less than or equal to max_value ({current_limit_max})"
+                    )
         if CONF_CHARGE_POINT_ID not in charge_point:
             continue
         charge_point_id = charge_point[CONF_CHARGE_POINT_ID]
@@ -426,6 +436,8 @@ async def to_code(config):
                     max_value=current_limit_max_value,
                     step=1,
                 )
+                if CONF_INITIAL_VALUE in connector_conf[CONF_CURRENT_LIMIT]:
+                    cg.add(connector.set_current_limit(connector_conf[CONF_CURRENT_LIMIT][CONF_INITIAL_VALUE]))
                 cg.add(num.set_connector(connector))
                 cg.add(connector.set_current_limit_number(num))
             if CONF_REQUESTED_CURRENT in connector_conf:

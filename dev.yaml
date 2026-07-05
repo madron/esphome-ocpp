@@ -170,6 +170,7 @@ ocpp:
           # Control
           current_limit:
             name: current_limit
+            initial_value: 6
             web_server:
               sorting_group_id: sorting_group_control
               sorting_weight: 10

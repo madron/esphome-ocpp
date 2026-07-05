@@ -519,6 +519,85 @@ class ChargePointSchemaTests(unittest.TestCase):
                 }
             )
 
+    def test_connector_current_limit_initial_value_configured(self):
+        validated = CONFIG_SCHEMA(
+            {
+                "id": "ocpp_id",
+                "charge_points": [
+                    {
+                        "id": "garage_left",
+                        "charge_point_id": "A99999",
+                        "phases": 3,
+                        "max_current": 32,
+                        "connectors": [
+                            {
+                                "connector_id": 2,
+                                "current_limit": {
+                                    "name": "Garage Current Limit",
+                                    "max_value": 16,
+                                    "initial_value": 16,
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+        connector = validated["charge_points"][0]["connectors"][0]
+        self.assertEqual(connector["current_limit"]["initial_value"], 16)
+
+    def test_connector_current_limit_initial_value_above_max_value_rejected(self):
+        with self.assertRaises(Exception):
+            CONFIG_SCHEMA(
+                {
+                    "id": "ocpp_id",
+                    "charge_points": [
+                        {
+                            "id": "garage_left",
+                            "charge_point_id": "A99999",
+                            "phases": 3,
+                            "max_current": 32,
+                            "connectors": [
+                                {
+                                    "connector_id": 2,
+                                    "current_limit": {
+                                        "name": "Garage Current Limit",
+                                        "max_value": 16,
+                                        "initial_value": 20,
+                                    },
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+
+    def test_connector_current_limit_initial_value_above_max_current_rejected(self):
+        with self.assertRaises(Exception):
+            CONFIG_SCHEMA(
+                {
+                    "id": "ocpp_id",
+                    "charge_points": [
+                        {
+                            "id": "garage_left",
+                            "charge_point_id": "A99999",
+                            "phases": 3,
+                            "max_current": 16,
+                            "connectors": [
+                                {
+                                    "connector_id": 2,
+                                    "current_limit": {
+                                        "name": "Garage Current Limit",
+                                        "initial_value": 20,
+                                    },
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+
     def test_max_current_required(self):
         with self.assertRaises(Exception):
             CONFIG_SCHEMA(

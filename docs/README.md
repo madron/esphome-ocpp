@@ -63,6 +63,7 @@ ocpp:
           current_limit:
             name: Garage Current Limit
             max_value: 16
+            initial_value: 16
           needed_current_l1:
             name: Garage Needed Current L1
           needed_current_l2:
@@ -187,7 +188,7 @@ Connector `active_transaction` is a binary sensor that turns `on` when the conne
 | `current_l1` (Optional)         | Sensor populated from `Current.Import` `MeterValues` phase L1 in `A`. Missing values are published as unavailable/unknown. |
 | `current_l2` (Optional)         | Sensor populated from `Current.Import` `MeterValues` phase L2 in `A`. Missing values are published as unavailable/unknown. |
 | `current_l3` (Optional)         | Sensor populated from `Current.Import` `MeterValues` phase L3 in `A`. Missing values are published as unavailable/unknown. |
-| `current_limit` (Optional)      | Number entity for the connector current limit in `A`. Range is `0` to `max_value` when set, otherwise `0` to the charge point `max_current`, with a step of `1 A`. `max_value` must be less than or equal to the charge point `max_current`. |
+| `current_limit` (Optional)      | Number entity for the connector current limit in `A`. Range is `0` to `max_value` when set, otherwise `0` to the charge point `max_current`, with a step of `1 A`. `max_value` must be less than or equal to the charge point `max_current`. Optional `initial_value` sets the value published at boot when no restored state exists; must be less than or equal to `max_value` (or `max_current` if `max_value` is omitted). |
 | `needed_current_l1` (Optional)  | Sensor populated with the connector needed current on phase L1 in `A` after local limits and active-phase detection. |
 | `needed_current_l2` (Optional)  | Sensor populated with the connector needed current on phase L2 in `A` after local limits and active-phase detection. |
 | `needed_current_l3` (Optional)  | Sensor populated with the connector needed current on phase L3 in `A` after local limits and active-phase detection. |

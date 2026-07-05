@@ -44,7 +44,7 @@ Applied as `cv.All(...)` wrappers on `CONFIG_SCHEMA`:
 | Validator | Function | Behavior |
 | --- | --- | --- |
 | Socket accounting | `consume_sockets()` | Allocates `1 + len(charge_points)` sockets via `socket.consume_sockets()` |
-| Cross-entity validation | `validate_charge_points()` | Checks duplicate charge_point_ids, connector_ids within a CP, phase mapping consistency, min max_current (6A × connectors), current_limit max_value ≤ max_current |
+| Cross-entity validation | `validate_charge_points()` | Checks duplicate charge_point_ids, connector_ids within a CP, phase mapping consistency, min max_current (6A × connectors), current_limit max_value ≤ max_current, current_limit initial_value ≤ max_value |
 
 ### Phase Mapping Validation (`validate_phase_mapping()`)
 
@@ -73,7 +73,7 @@ Applied as `cv.All(...)` wrappers on `CONFIG_SCHEMA`:
 | `charge_points[].force_protocol` | `ChargePoint::set_force_protocol()` | |
 | `charge_points[].connectors` | `ChargePoint::add_connector()` | Composes phase mapping through CP |
 | Connector sensors | `Connector::set_*_sensor()` | Each optional sensor has its own setter |
-| `current_limit` | `CurrentLimit` number entity + `Connector::set_current_limit_number()` | `max_value` from config or falls back to `max_current` |
+| `current_limit` | `CurrentLimit` number entity + `Connector::set_current_limit_number()` | `max_value` from config or falls back to `max_current`; `initial_value` sets `NumberTraits::set_initial_value()` |
 | `requested_current` | `RequestedCurrent` number entity + `Connector::set_requested_current_number()` | Range 0 to `max_current`, step 0.1 |
 | `debug_ocpp_exclude_actions` | `ChargePoint::add_debug_ocpp_exclude_action()` | One call per action |
 | `debug_ocpp_messages` | `ChargePoint::set_debug_ocpp_messages()` | |
