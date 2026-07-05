@@ -53,6 +53,12 @@ ocpp:
           phase_mapping: [1, 2, 3]
           current:
             name: Garage Current
+          current_l1:
+            name: Garage Current L1
+          current_l2:
+            name: Garage Current L2
+          current_l3:
+            name: Garage Current L3
           log_meter_values: true
           current_limit:
             name: Garage Current Limit
@@ -65,6 +71,10 @@ ocpp:
             name: Garage Needed Current L3
           control_current:
             name: Garage Allocated Current
+          active_phases:
+            name: Garage Active Phases
+          plugged:
+            name: Garage Plugged
           power:
             name: Garage Power
           total_energy:
@@ -77,6 +87,12 @@ ocpp:
             name: Garage Active Transaction
           voltage:
             name: Garage Voltage
+          voltage_l1:
+            name: Garage Voltage L1
+          voltage_l2:
+            name: Garage Voltage L2
+          voltage_l3:
+            name: Garage Voltage L3
           status:
             name: Garage Status
           error:
@@ -85,9 +101,11 @@ ocpp:
 
 `debug_ocpp_messages` is optional per `charge_point`. When enabled, raw OCPP RX/TX payloads for that charger are logged at the ESPHome debug log level. Use `debug_ocpp_exclude_actions` to keep debug logging enabled while suppressing noisy action payloads, such as `MeterValues`, and their known related responses.
 
-Connector `current`, `power`, `total_energy`, and `voltage` sensors are populated from OCPP `MeterValues` messages whose `connectorId` for OCPP 1.6, or `evseId` for OCPP 2.0.1, matches the connector's `connector_id`. The component asks the charger to report `Current.Import`, `Power.Active.Import`, `Energy.Active.Import.Register`, and `Voltage`. If the charger omits one of those values, the corresponding sensor is published as unavailable/unknown instead of `0` so unsupported values are not confused with real zero measurements. Energy is exposed in `kWh`.
+Connector `current`, `current_l1`, `current_l2`, `current_l3`, `power`, `total_energy`, `voltage`, `voltage_l1`, `voltage_l2`, and `voltage_l3` sensors are populated from OCPP `MeterValues` messages whose `connectorId` for OCPP 1.6, or `evseId` for OCPP 2.0.1, matches the connector's `connector_id`. The per-phase `current_l*` and `voltage_l*` sensors report individual phase readings when the charger provides them; the aggregate `current` and `voltage` sensors report the total or representative value. The component asks the charger to report `Current.Import`, `Power.Active.Import`, `Energy.Active.Import.Register`, and `Voltage`. If the charger omits one of those values, the corresponding sensor is published as unavailable/unknown instead of `0` so unsupported values are not confused with real zero measurements. Energy is exposed in `kWh`.
 
 Connector `session_energy` and `session_time` reset to `0` when a car is plugged in. While the car remains plugged in, `session_energy` reports the difference from the connector's total energy reading at session start in `kWh`, and `session_time` reports elapsed whole seconds. When the car is unplugged, both sensors stop updating and keep the values from the last completed session.
+
+Connector `active_phases` reports the number of active charging phases detected from the most recent `MeterValues` message. The value is `NaN` until the first meter values arrive while the connector is plugged in; once latched, it is updated when the charger reports a different phase count.
 
 Set connector `log_meter_values: true` to log a compact info-level summary of present sampled values, for example `A99999 MeterValues 1 Current: 10 A - Power: 6940 W - Energy: 7358900 Wh`. If a charger includes `phase`, the phase is shown next to that sampled value, for example `Current: L1=10 A, L2=10 A, L3=10 A`.
 
@@ -117,9 +135,18 @@ For multi-phase installations, charge point `phase_mapping` describes how charge
 
 OCPP charging profiles cannot request a charging current below `6 A`. When the allocated value is greater than `0 A` but lower than `6 A`, the site treats the connector as disabled and applies `0 A` instead of sending an invalid sub-`6 A` charging profile.
 
+Connector `plugged` is a binary sensor that is `on` when the connector status indicates a plugged-in vehicle (`Preparing`, `Charging`, `SuspendedEVSE`, `SuspendedEV`, `Finishing`, `Occupied`), and `off` otherwise. It is derived from the same `StatusNotification` messages that populate `status` and `error`.
+
 Connector `status` and `error` text sensors are populated from `StatusNotification` messages whose `connectorId` matches the connector's `connector_id`. `errorCode: NoError` is exposed as an empty string.
 
 Connector `active_transaction` is a binary sensor that turns `on` when the connector has a non-zero active OCPP transaction ID and `off` otherwise. This is mainly useful for debugging transaction recovery and charging-profile edge cases.
+
+### Server options
+
+| Option          | Description |
+| ---             | --- |
+| `port` (Optional) | TCP port for the WebSocket server. Defaults to `9000`. |
+| `path` (Optional) | WebSocket server URI path. Must start with `/`. Defaults to `/`. Charger URLs must match this path. |
 
 ### Site options
 
@@ -141,6 +168,7 @@ Connector `active_transaction` is a binary sensor that turns `on` when the conne
 | `connectors` (Optional)                  | List of OCPP connectors for this charge point. Defaults to one connector with `connector_id: 1`. Connector IDs must be unique within the charge point. |
 | `debug_ocpp_messages` (Optional)         | Logs raw OCPP RX/TX payloads at debug level. Defaults to `false`. |
 | `debug_ocpp_exclude_actions` (Optional)  | List of exact, case-sensitive OCPP action names excluded from raw debug payload logging. Known related responses are also excluded. Defaults to an empty list. |
+| `force_protocol` (Optional)              | Force a specific OCPP protocol version instead of negotiating from the charger's offered protocols. Must be `ocpp1.6` or `ocpp2.0.1`. |
 | `startup_notifications_delay` (Optional) | Delay in seconds before sending `TriggerMessage` requests for missing startup notifications. `BootNotification` and `StatusNotification` are tracked independently; if both are missing, `BootNotification` is requested first and `StatusNotification` after its reply. Defaults to `300`. Set to `0` to disable. |
 | `charger_info` (Optional)                | Text sensor that reports charger vendor, model, and firmware from `BootNotification`, and clears after disconnect. |
 | `online` (Optional)                      | Binary sensor that is `on` after `BootNotification`, `Heartbeat`, or `StatusNotification`, and `off` after disconnect. |
@@ -156,17 +184,25 @@ Connector `active_transaction` is a binary sensor that turns `on` when the conne
 | `phase_mapping` (Optional)      | Ordered integer list mapping connector phases to parent charge point phases, for example `[2, 3, 1]` for a rotated three-phase connector. Entries must be unique, available on the charge point, and exactly match the connector phase count. Defaults to `[1, 2, 3]`, `[1, 2]`, or `[1]` according to `phases`. |
 | `log_meter_values` (Optional)   | Logs a compact info-level summary of received `MeterValues` sampled values for this connector. Defaults to `false`. |
 | `current` (Optional)            | Sensor populated from `Current.Import` `MeterValues` in `A`. Missing values are published as unavailable/unknown. |
+| `current_l1` (Optional)         | Sensor populated from `Current.Import` `MeterValues` phase L1 in `A`. Missing values are published as unavailable/unknown. |
+| `current_l2` (Optional)         | Sensor populated from `Current.Import` `MeterValues` phase L2 in `A`. Missing values are published as unavailable/unknown. |
+| `current_l3` (Optional)         | Sensor populated from `Current.Import` `MeterValues` phase L3 in `A`. Missing values are published as unavailable/unknown. |
 | `current_limit` (Optional)      | Number entity for the connector current limit in `A`. Range is `0` to `max_value` when set, otherwise `0` to the charge point `max_current`, with a step of `1 A`. `max_value` must be less than or equal to the charge point `max_current`. |
 | `needed_current_l1` (Optional)  | Sensor populated with the connector needed current on phase L1 in `A` after local limits and active-phase detection. |
 | `needed_current_l2` (Optional)  | Sensor populated with the connector needed current on phase L2 in `A` after local limits and active-phase detection. |
 | `needed_current_l3` (Optional)  | Sensor populated with the connector needed current on phase L3 in `A` after local limits and active-phase detection. |
 | `control_current` (Optional)    | Sensor populated with the current in `A` allocated by the site and applied through OCPP commands. |
+| `active_phases` (Optional)      | Sensor reporting the detected number of active charging phases. `NaN` until detection completes from the first `MeterValues` while plugged in. |
 | `power` (Optional)              | Sensor populated from `Power.Active.Import` `MeterValues` in `W`. Missing values are published as unavailable/unknown. |
 | `total_energy` (Optional)       | Sensor populated from the connector lifetime `Energy.Active.Import.Register` `MeterValues` in `kWh`. OCPP `Wh` values are converted to `kWh`. Missing values are published as unavailable/unknown. |
 | `session_energy` (Optional)     | Sensor reset to `0 kWh` when a car is plugged in. While plugged in, it reports the difference from the total energy baseline at session start in `kWh`; after unplugging, it keeps the last session value. |
 | `session_time` (Optional)       | Sensor reset to `0` seconds when a car is plugged in. While plugged in, it reports elapsed session time in whole seconds; after unplugging, it keeps the last session value. |
 | `active_transaction` (Optional) | Binary sensor that is `on` when the connector currently has a non-zero active OCPP transaction ID, and `off` otherwise. Useful for debugging transaction recovery. |
+| `plugged` (Optional)            | Binary sensor that is `on` when the connector status indicates a plugged-in vehicle (`Preparing`, `Charging`, `SuspendedEVSE`, `SuspendedEV`, `Finishing`, `Occupied`), and `off` otherwise. |
 | `voltage` (Optional)            | Sensor populated from `Voltage` `MeterValues` in `V`. Missing values are published as unavailable/unknown. |
+| `voltage_l1` (Optional)         | Sensor populated from `Voltage` `MeterValues` for phase L1 in `V`. Missing values are published as unavailable/unknown. |
+| `voltage_l2` (Optional)         | Sensor populated from `Voltage` `MeterValues` for phase L2 in `V`. Missing values are published as unavailable/unknown. |
+| `voltage_l3` (Optional)         | Sensor populated from `Voltage` `MeterValues` for phase L3 in `V`. Missing values are published as unavailable/unknown. |
 | `status` (Optional)             | Text sensor populated from `StatusNotification.status` for OCPP 1.6 or `StatusNotification.connectorStatus` for OCPP 2.0.1. Clears after disconnect. |
 | `error` (Optional)              | Text sensor populated from `StatusNotification.errorCode` when the charger provides it. `NoError` is published as an empty string. Clears after disconnect. |
 
@@ -175,6 +211,11 @@ Connector `active_transaction` is a binary sensor that turns `on` when the conne
 With the default server path `/`, configure the charger OCPP/WebSocket server URL as:
 ```text
 ws://<esp-ip>:9000
+```
+
+If a custom `server.path` is set (e.g. `/ocpp`), the charger URL must include that path:
+```text
+ws://<esp-ip>:9000/ocpp
 ```
 
 ### Units of Measure
