@@ -181,6 +181,22 @@ Connector `active_transaction` is a binary sensor that turns `on` when the conne
 | `status` (Optional)             | Text sensor populated from `StatusNotification.status` for OCPP 1.6 or `StatusNotification.connectorStatus` for OCPP 2.0.1. Clears after disconnect. |
 | `error` (Optional)              | Text sensor populated from `StatusNotification.errorCode` when the charger provides it. `NoError` is published as an empty string. Clears after disconnect. |
 
+### Connector status values
+
+The `status` text sensor reports the OCPP connector status. The following values are defined by the OCPP specification:
+
+| Status          | Description |
+| ---             | --- |
+| `Available`     | Connector is available for use (no vehicle plugged in). |
+| `Preparing`     | Connector is preparing for charging (vehicle plugged in, pre-conditioning or authentication in progress). |
+| `Charging`      | Connector is actively charging a vehicle. |
+| `SuspendedEVSE` | Charging is suspended by the EVSE (charger). The vehicle is still connected but not drawing current. |
+| `SuspendedEV`   | Charging is suspended by the EV (vehicle). The vehicle is still connected but not drawing current. |
+| `Finishing`     | Charging session is finishing (vehicle still plugged in, charging complete or nearly complete). |
+| `Reserved`      | Connector is reserved for a specific user or vehicle (not available for general use). |
+| `Unavailable`   | Connector is unavailable (out of service, maintenance, or communication lost). |
+| `Faulted`       | Connector has a fault and requires attention. Check the `error` sensor for details. |
+
 ### Charger configuration
 
 With the default server path `/`, configure the charger OCPP/WebSocket server URL as:
