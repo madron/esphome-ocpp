@@ -27,7 +27,6 @@ CONF_PHASES = "phases"
 CONF_PLUGGED = "plugged"
 CONF_POWER = "power"
 CONF_PROTOCOL = "protocol"
-CONF_REQUESTED_CURRENT = "requested_current"
 CONF_SERVER = "server"
 CONF_SERVER_PATH = "path"
 CONF_SITE = "site"
@@ -59,7 +58,6 @@ OcppComponent = ocpp_ns.class_("OcppComponent", cg.Component)
 ChargePoint = ocpp_ns.class_("ChargePoint")
 Connector = ocpp_ns.class_("Connector")
 CurrentLimit = ocpp_ns.class_("CurrentLimit", number.Number)
-RequestedCurrent = ocpp_ns.class_("RequestedCurrent", number.Number)
 
 
 def validate_phase_mapping_phase(value):
@@ -147,11 +145,6 @@ CONNECTOR_SCHEMA = cv.Schema(
             accuracy_decimals=1,
             device_class="current",
             state_class="measurement",
-        ),
-        cv.Optional(CONF_REQUESTED_CURRENT): number.number_schema(
-            RequestedCurrent,
-            unit_of_measurement="A",
-            device_class="current",
         ),
         cv.Optional(CONF_CURRENT_LIMIT): number.number_schema(
             CurrentLimit,
@@ -440,15 +433,6 @@ async def to_code(config):
                     cg.add(connector.set_current_limit(connector_conf[CONF_CURRENT_LIMIT][CONF_INITIAL_VALUE]))
                 cg.add(num.set_connector(connector))
                 cg.add(connector.set_current_limit_number(num))
-            if CONF_REQUESTED_CURRENT in connector_conf:
-                num = await number.new_number(
-                    connector_conf[CONF_REQUESTED_CURRENT],
-                    min_value=0,
-                    max_value=charge_point_conf[CONF_MAX_CURRENT],
-                    step=0.1,
-                )
-                cg.add(num.set_connector(connector))
-                cg.add(connector.set_requested_current_number(num))
             if CONF_POWER in connector_conf:
                 sens = await sensor.new_sensor(connector_conf[CONF_POWER])
                 cg.add(connector.set_power_sensor(sens))

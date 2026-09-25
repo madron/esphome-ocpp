@@ -18,10 +18,9 @@ Represents one OCPP connector (charging outlet) within a `ChargePoint`. Owns all
 | `connector_id_` | `uint32_t` | OCPP connector ID (matches `MeterValues.connectorId` / `StatusNotification.connectorId`) |
 | `phases_` | `uint8_t` | Number of configured supply phases |
 | `phase_mapping_` | `array<uint8_t, 3>` | Site-relative phase mapping (composed at `add_connector()` time) |
-| `max_current_` | `uint32_t` | Charge point `max_current` (installation limit) |
-| `current_limit_` | `float` | Local safety cap in A (settable via `CurrentLimit` number entity) |
-| `requested_current_` | `float` | Demand current in A (settable via `RequestedCurrent` number entity) |
-| `control_current_` | `float` | Effective allocated current: `min(requested, limit, max)`, clamped to 0 if <6A |
+| `max_current_` | `uint32_t` | Charge point `max_current` (installation limit; real safety must be enforced by electrical protections) |
+| `current_limit_` | `float` | User-settable manual limit in A (settable via `CurrentLimit` number entity); not safety-related, not intended for automations |
+| `control_current_` | `float` | Effective allocated current: `min(current_limit, max_current)`, clamped to 0 if <6A |
 | `active_phases_` | `uint8_t` | Detected active phase count (0 = unknown, latched from meter values) |
 | `status_` | `string` | Latest OCPP status string |
 | `plugged_` | `bool` | Whether car is plugged in (derived from status) |
@@ -36,7 +35,7 @@ Represents one OCPP connector (charging outlet) within a `ChargePoint`. Owns all
 ### `calculate_control_current()` (free function, `connector.cpp:23`)
 
 ```
-control_current = min(requested_current, current_limit, max_current)
+control_current = min(current_limit, max_current)
 if control_current in (0, 6) → 0
 ```
 
@@ -97,14 +96,9 @@ All sensors are optional (set to `nullptr` by default). The Python codegen wires
 | `status`, `error` | `text_sensor::TextSensor` | `set_status_text_sensor()`, `set_error_text_sensor()` |
 | `active_transaction`, `plugged` | `binary_sensor::BinarySensor` | `set_active_transaction_binary_sensor()`, `set_plugged_binary_sensor()` |
 | `current_limit` | `CurrentLimit` (Number) | `set_current_limit_number()` |
-| `requested_current` | `RequestedCurrent` (Number) | `set_requested_current_number()` |
 
 ## Number Entities
 
 ### `CurrentLimit` (`connector.h:181`)
 
-Extends `number::Number`. `control(value)` calls `Connector::set_current_limit(value)`. Range: `0` to `current_limit_max_` (default: `max_current`).
-
-### `RequestedCurrent` (`connector.h:191`)
-
-Extends `number::Number`. `control(value)` calls `Connector::set_requested_current(value)`. Range: `0` to `max_current`, step 0.1 A.
+Extends `number::Number`. `control(value)` calls `Connector::set_current_limit(value)`. Range: `0` to `current_limit_max_` (default: `max_current`). User-settable manual limit to deliberately slow charging; not safety-related and not intended for automations.

@@ -123,7 +123,7 @@ int main() {
         // control_current changes send SetChargingProfile only while a transaction is active
         TestChargePoint charge_point;
         charge_point.on_connected("A99999");
-        charge_point.connector.set_requested_current(12.3f);
+        charge_point.connector.set_current_limit(12.3f);
         assert_equal("profile_not_sent_without_transaction", charge_point.messages.size(), 0);
 
         charge_point.handle_ocpp_text(

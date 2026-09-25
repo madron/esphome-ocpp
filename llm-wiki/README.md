@@ -23,7 +23,7 @@ esphome/components/ocpp/
   __init__.py       # YAML schema + codegen
   ocpp.h/cpp        # OcppComponent (top-level)
   charge_point.h/cpp # ChargePoint
-  connector.h/cpp    # Connector, CurrentLimit, RequestedCurrent
+  connector.h/cpp    # Connector, CurrentLimit
   message.h          # OcppMessage hierarchy + MeterValues
   protocol.h/cpp     # OcppProtocol (parse/make)
   server.h/cpp       # OcppServer (WebSocket)

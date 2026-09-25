@@ -179,11 +179,6 @@ ocpp:
             web_server:
               sorting_group_id: sorting_group_control
               sorting_weight: 30
-          # requested_current:
-          #   name: requested_current
-          #   web_server:
-          #     sorting_group_id: sorting_group_control
-          #     sorting_weight: 20
           # needed_current_l1:
           #   name: needed_current_l1
           #   web_server:

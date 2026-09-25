@@ -20,12 +20,8 @@ bool get_plugged_from_status(const std::string &status) {
 
 }  // namespace
 
-float calculate_control_current(
-    float requested_current,
-    float current_limit,
-    uint32_t max_current
-) {
-    float control_current = std::min(requested_current, current_limit);
+float calculate_control_current(float current_limit, uint32_t max_current) {
+    float control_current = current_limit;
     if (max_current > 0)
         control_current = std::min(control_current, static_cast<float>(max_current));
     if (control_current > 0.0f && control_current < MIN_CHARGING_PROFILE_CURRENT)
@@ -38,7 +34,6 @@ void Connector::set_max_current(uint32_t max_current) {
     this->max_current_ = max_current;
     this->current_limit_max_ = max_current;
     this->current_limit_ = static_cast<float>(max_current);
-    this->requested_current_ = static_cast<float>(max_current);
     this->update_needed_current_();
     this->update_control_current_();
 }
@@ -85,24 +80,11 @@ void Connector::set_current_limit_number(CurrentLimit *current_limit_number) {
         this->current_limit_number_->publish_state(this->current_limit_);
 }
 
-void Connector::set_requested_current_number(RequestedCurrent *requested_current_number) {
-    this->requested_current_number_ = requested_current_number;
-    if (this->requested_current_number_ != nullptr)
-        this->requested_current_number_->publish_state(this->requested_current_);
-}
-
 void Connector::set_current_limit(float current_limit) {
     this->current_limit_ = this->clamp_current_limit_(std::round(current_limit));
     if (this->current_limit_number_ != nullptr)
         this->current_limit_number_->publish_state(this->current_limit_);
     this->update_needed_current_();
-    this->update_control_current_();
-}
-
-void Connector::set_requested_current(float requested_current) {
-    this->requested_current_ = this->clamp_current_(std::round(requested_current * 10.0f) / 10.0f);
-    if (this->requested_current_number_ != nullptr)
-        this->requested_current_number_->publish_state(this->requested_current_);
     this->update_control_current_();
 }
 
@@ -183,7 +165,6 @@ void Connector::update_needed_current_() {
 void Connector::update_control_current_() {
     float old_control_current = this->control_current_;
     this->control_current_ = calculate_control_current(
-        this->requested_current_,
         this->current_limit_,
         this->max_current_
     );
@@ -386,12 +367,6 @@ void CurrentLimit::control(float value) {
     if (this->connector_ == nullptr)
         return;
     this->connector_->set_current_limit(value);
-}
-
-void RequestedCurrent::control(float value) {
-    if (this->connector_ == nullptr)
-        return;
-    this->connector_->set_requested_current(value);
 }
 
 }  // namespace esphome::ocpp

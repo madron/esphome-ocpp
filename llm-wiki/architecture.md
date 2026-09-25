@@ -21,10 +21,9 @@ OcppComponent (esp::Component + OcppServerListener)
  │    └── ClientSessions   — connected charger sockets
  └── ChargePoint[]         — one per configured/connected charger
       ├── OcppProtocol     — JSON parse/make, version dispatch
-      ├── Connector[]      — per-outlet state + sensors
-      │    ├── CurrentLimit       (number entity)
-      │    └── RequestedCurrent   (number entity)
-      └── QueuedMessage[]  — outbound message queue
+       ├── Connector[]      — per-outlet state + sensors
+       │    └── CurrentLimit       (number entity)
+       └── QueuedMessage[]  — outbound message queue
 ```
 
 ## Data Flow
@@ -81,13 +80,12 @@ Demand/allocation model. A connector owns its local limits and state, calculates
 
 | Concept | Field | Owner | Meaning |
 | --- | --- | --- | --- |
-| Hard charge-point cap | `max_current` | Charge point | Physical or installation maximum for the whole charge point in `A`. |
-| Connector safety cap | `current_limit` | Connector (number entity) | Local maximum for one connector in `A`; useful for safety limits or automations. |
-| Connector demand | `requested_current` | Connector (number entity) | Explicit current request in `A` set by the user or an automation. |
+| Installation cap | `max_current` | Charge point | Physical or installation maximum for the whole charge point in `A`. Acts as a safety cap, but real safety must be enforced by an electrical technician via electrical protections (e.g., circuit breakers). |
+| User manual limit | `current_limit` | Connector (number entity) | User-settable manual limit for one connector in `A`; allows deliberately slowing the charge. Not safety-related and not intended for automations. |
 | Effective needed current | `needed_current_l1/l2/l3` | Connector (computed) | Current needed by the connector on each phase after local limits and active-phase detection. Inactive phases need `0 A`. If active phases are unknown, current sharing assumes the connector may use all configured phases. |
 | Allocated current | `control_current` | Site (computed) | Current in `A` allocated by the site and applied through OCPP commands. |
 
-`control_current = min(requested_current, current_limit, max_current)`. Values >0 but <6A clamp to 0A (OCPP minimum).
+`control_current = min(current_limit, max_current)`. Values >0 but <6A clamp to 0A (OCPP minimum).
 
 When a connector's needed current, measured current, status, transaction state, active phases, or another allocation-relevant value changes, the site recalculates allocations for all connectors. When `control_current` changes, `ConnectorListener::on_connector_control_current_changed()` fires on the charge point, which then sends `SetChargingProfile`, `RemoteStartTransaction`, or `RemoteStopTransaction` as appropriate. The OCPP command methods belong to the charge point, but the allocation decision belongs to the site.
 

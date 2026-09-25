@@ -25,9 +25,8 @@ class ConnectorListener {
             float new_control_current
         ) = 0;
 };
-class RequestedCurrent;
 
-float calculate_control_current(float requested_current, float current_limit, uint32_t max_current);
+float calculate_control_current(float current_limit, uint32_t max_current);
 
 class Connector {
     public:
@@ -65,7 +64,6 @@ class Connector {
         void set_needed_current_l3_sensor(sensor::Sensor *needed_current_l3_sensor);
         void set_control_current_sensor(sensor::Sensor *control_current_sensor);
         void set_current_limit_number(CurrentLimit *current_limit_number);
-        void set_requested_current_number(RequestedCurrent *requested_current_number);
         void set_power_sensor(sensor::Sensor *power_sensor) { this->power_sensor_ = power_sensor; }
         void set_total_energy_sensor(sensor::Sensor *total_energy_sensor) { this->total_energy_sensor_ = total_energy_sensor; }
         void set_session_energy_sensor(sensor::Sensor *session_energy_sensor) {
@@ -99,8 +97,6 @@ class Connector {
         void reset_active_phases();
         void set_current_limit(float current_limit);
         float get_current_limit() const { return this->current_limit_; }
-        void set_requested_current(float requested_current);
-        float get_requested_current() const { return this->requested_current_; }
         float get_needed_current_l1() const { return this->needed_current_l1_; }
         float get_needed_current_l2() const { return this->needed_current_l2_; }
         float get_needed_current_l3() const { return this->needed_current_l3_; }
@@ -137,7 +133,6 @@ class Connector {
         float phase_voltage_{DEFAULT_PHASE_VOLTAGE};
         uint32_t current_limit_max_{0};
         float current_limit_{0.0f};
-        float requested_current_{0.0f};
         float control_current_{0.0f};
         uint8_t active_phases_{0};
         sensor::Sensor *current_sensor_{nullptr};
@@ -152,7 +147,6 @@ class Connector {
         sensor::Sensor *needed_current_l3_sensor_{nullptr};
         sensor::Sensor *control_current_sensor_{nullptr};
         CurrentLimit *current_limit_number_{nullptr};
-        RequestedCurrent *requested_current_number_{nullptr};
         sensor::Sensor *power_sensor_{nullptr};
         sensor::Sensor *total_energy_sensor_{nullptr};
         sensor::Sensor *session_energy_sensor_{nullptr};
@@ -179,16 +173,6 @@ class Connector {
 };
 
 class CurrentLimit : public number::Number {
-    public:
-        void set_connector(Connector *connector) { this->connector_ = connector; }
-
-    protected:
-        void control(float value) override;
-
-        Connector *connector_{nullptr};
-};
-
-class RequestedCurrent : public number::Number {
     public:
         void set_connector(Connector *connector) { this->connector_ = connector; }
 

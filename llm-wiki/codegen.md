@@ -74,7 +74,6 @@ Applied as `cv.All(...)` wrappers on `CONFIG_SCHEMA`:
 | `charge_points[].connectors` | `ChargePoint::add_connector()` | Composes phase mapping through CP |
 | Connector sensors | `Connector::set_*_sensor()` | Each optional sensor has its own setter |
 | `current_limit` | `CurrentLimit` number entity + `Connector::set_current_limit_number()` | `max_value` from config or falls back to `max_current`; `initial_value` sets `NumberTraits::set_initial_value()` |
-| `requested_current` | `RequestedCurrent` number entity + `Connector::set_requested_current_number()` | Range 0 to `max_current`, step 0.1 |
 | `debug_ocpp_exclude_actions` | `ChargePoint::add_debug_ocpp_exclude_action()` | One call per action |
 | `debug_ocpp_messages` | `ChargePoint::set_debug_ocpp_messages()` | |
 | `startup_notifications_delay` | `ChargePoint::set_startup_notifications_delay()` | YAML seconds → C++ milliseconds |
