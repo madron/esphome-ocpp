@@ -25,9 +25,6 @@ wifi:
 
 logger:
 
-api:
-  reboot_timeout: 0s
-
 preferences:
   flash_write_interval: 1d
 
@@ -35,18 +32,8 @@ web_server:
   version: 3
   port: 80
   auth:
-    username: !secret web_server_username
-    password: !secret web_server_password
-  sorting_groups:
-    - id: sorting_group_status
-      name: "Status"
-      sorting_weight: 10
-    - id: sorting_group_control
-      name: "Control"
-      sorting_weight: 20
-    - id: sorting_group_values
-      name: "Values"
-      sorting_weight: 30
+    username: admin
+    password: admin
 
 
 external_components:
@@ -55,179 +42,5 @@ external_components:
       type: local
       path: ./esphome/components
 
-# mqtt:
-#   broker: !secret mqtt_broker
-#   username: !secret mqtt_username
-#   password: !secret mqtt_password
-#   reboot_timeout: 0s
-#   keepalive: 5s
-
-
-# sensor:
-#   - platform: mqtt_subscribe
-#     id: grid_power_l1
-#     name: grid_power_l1
-#     topic: inverter/sensor/grid_power_a/state
-#     device_class: power
-#     unit_of_measurement: "W"
-#     accuracy_decimals: 0
-#     filters:
-#       - multiply: -1
-#   - platform: mqtt_subscribe
-#     id: grid_power_l2
-#     name: grid_power_l2
-#     topic: inverter/sensor/grid_power_b/state
-#     device_class: power
-#     unit_of_measurement: "W"
-#     accuracy_decimals: 0
-#     filters:
-#       - multiply: -1
-#   - platform: mqtt_subscribe
-#     id: grid_power_l3
-#     name: grid_power_l3
-#     topic: inverter/sensor/grid_power_c/state
-#     device_class: power
-#     unit_of_measurement: "W"
-#     accuracy_decimals: 0
-#     filters:
-#       - multiply: -1
-#   - platform: mqtt_subscribe
-#     id: storage_power
-#     name: storage_power
-#     topic: inverter/sensor/battery_power/state
-#     device_class: power
-#     unit_of_measurement: "W"
-#     accuracy_decimals: 0
-#   - platform: mqtt_subscribe
-#     id: storage_soc
-#     name: storage_soc
-#     topic: inverter/sensor/battery_soc/state
-#     device_class: energy
-#     unit_of_measurement: "%"
-#     accuracy_decimals: 0
-#   - platform: mqtt_subscribe
-#     id: storage_energy
-#     name: storage_energy
-#     topic: inverter/sensor/battery_energy_kwh/state
-#     device_class: energy
-#     unit_of_measurement: "kWh"
-#     accuracy_decimals: 1
-
-
 ocpp:
   id: ocpp_id
-  site:
-    phases: 3
-    phase_voltage: 230
-
-  charge_points:
-    - id: garage
-      charge_point_id: A99999
-      phases: 3
-      phase_mapping: [1, 2, 3]
-      max_current: 32
-      debug_ocpp_messages: true
-      debug_ocpp_exclude_actions:
-        - MeterValues
-      startup_notifications_delay: 5
-      # protocol:
-      #   name: garage_protocol
-      # online:
-      #   name: garage_online
-      # charger_info:
-      #   name: garage_charger_info
-      connectors:
-        - id: garage_1
-          connector_id: 1
-          phase_mapping: [1, 2, 3]
-          log_meter_values: true
-          # Status
-          status:
-            name: status
-            web_server:
-              sorting_group_id: sorting_group_status
-              sorting_weight: 10
-          plugged:
-            name: plugged
-            web_server:
-              sorting_group_id: sorting_group_status
-              sorting_weight: 11
-          active_transaction:
-            name: active_transaction
-            web_server:
-              sorting_group_id: sorting_group_status
-              sorting_weight: 12
-          active_phases:
-            name: active_phases
-            web_server:
-              sorting_group_id: sorting_group_status
-              sorting_weight: 13
-          error:
-            name: error
-            web_server:
-              sorting_group_id: sorting_group_status
-              sorting_weight: 19
-          # Control
-          current_limit:
-            name: current_limit
-            initial_value: 6
-            web_server:
-              sorting_group_id: sorting_group_control
-              sorting_weight: 10
-          control_current:
-            name: control_current
-            web_server:
-              sorting_group_id: sorting_group_control
-              sorting_weight: 30
-          # needed_current_l1:
-          #   name: needed_current_l1
-          #   web_server:
-          #     sorting_group_id: sorting_group_control
-          #     sorting_weight: 40
-          # needed_current_l2:
-          #   name: needed_current_l2
-          #   web_server:
-          #     sorting_group_id: sorting_group_control
-          #     sorting_weight: 40
-          # needed_current_l3:
-          #   name: needed_current_l3
-          #   web_server:
-          #     sorting_group_id: sorting_group_control
-          #     sorting_weight: 40
-          # Values
-          current_l1:
-            name: current_l1
-            web_server:
-              sorting_group_id: sorting_group_values
-              sorting_weight: 10
-          current_l2:
-            name: current_l2
-            web_server:
-              sorting_group_id: sorting_group_values
-              sorting_weight: 10
-          current_l3:
-            name: current_l3
-            web_server:
-              sorting_group_id: sorting_group_values
-              sorting_weight: 10
-          power:
-            name: power
-            web_server:
-              sorting_group_id: sorting_group_values
-              sorting_weight: 20
-          # total_energy:
-          #   name: 51_total_energy
-          # session_time:
-          #   name: 61_session_time
-          # session_energy:
-          #  name: 62_session_energy
-          # voltage_l1:
-          #   name: 71_voltage_l1
-          # voltage_l2:
-          #   name: 72_voltage_l2
-          # voltage_l3:
-          #   name: 73_voltage_l3
-    - id: unknown
-      phases: 3
-      max_current: 32
-      debug_ocpp_messages: true

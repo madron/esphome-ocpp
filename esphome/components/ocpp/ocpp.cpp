@@ -11,122 +11,13 @@ static const char *const TAG = "ocpp";
 }  // namespace
 
 void OcppComponent::setup() {
-    this->server_.set_listener(this);
-    this->server_.set_max_clients(this->charge_points_.size());
-    if (!this->server_.setup()) {
-        ESP_LOGE(TAG, "Could not start OCPP server");
-        this->mark_failed();
-    }
 }
 
 void OcppComponent::loop() {
-    this->server_.loop();
-    uint32_t now = App.get_loop_component_start_time();
-    for (auto *charge_point : this->charge_points_) {
-        if (charge_point != nullptr)
-            charge_point->loop(now);
-    }
-    this->send_queued_message_();
 }
 
 void OcppComponent::dump_config() {
     ESP_LOGCONFIG(TAG, "OCPP:");
-    std::string charger_url = this->server_.get_charger_url();
-    ESP_LOGCONFIG(TAG, "  %s", charger_url.c_str());
-    ESP_LOGCONFIG(TAG, "  Charge points: %u", static_cast<unsigned>(this->charge_points_.size()));
-    for (auto *charge_point : this->charge_points_) {
-        if (charge_point != nullptr) {
-            ESP_LOGCONFIG(TAG, "    - charge_point_id: %s", charge_point->get_charge_point_id().c_str());
-            if (charge_point->get_debug_ocpp_messages())
-                ESP_LOGCONFIG(TAG, "      debug_ocpp_messages: true");
-            ESP_LOGCONFIG(TAG, "      startup_notifications_delay: %us",
-                          static_cast<unsigned>(charge_point->get_startup_notifications_delay() / 1000));
-        }
-    }
-}
-
-float OcppComponent::get_setup_priority() const { return setup_priority::WIFI - 1.0f; }
-
-void OcppComponent::add_charge_point(ChargePoint *charge_point) {
-    this->charge_points_.push_back(charge_point);
-}
-
-std::string OcppComponent::select_websocket_protocol(const std::string &connection_id,
-                                                     const std::string &client_protocols,
-                                                     std::string *reject_reason) {
-    ChargePoint *charge_point = this->assign_charge_point_for_connection_(connection_id);
-    if (charge_point == nullptr) {
-        if (reject_reason != nullptr)
-            *reject_reason = "no charge point is available for this connection";
-        return "";
-    }
-    return select_supported_protocol(client_protocols, charge_point->get_force_protocol(), reject_reason);
-}
-
-void OcppComponent::on_websocket_connected(const std::string &connection_id, const std::string &protocol) {
-    ChargePoint *charge_point = this->find_charge_point_by_connection_id_(connection_id);
-    if (charge_point == nullptr) {
-        ESP_LOGW(TAG, "No charge point available for '%s'", connection_id.c_str());
-    } else {
-        charge_point->on_connected(connection_id, protocol, App.get_loop_component_start_time());
-    }
-}
-
-void OcppComponent::on_websocket_disconnected(const std::string &connection_id) {
-    ChargePoint *charge_point = this->find_charge_point_by_connection_id_(connection_id);
-    if (charge_point != nullptr) {
-        bool dynamic_slot = charge_point->get_charge_point_id().empty();
-        charge_point->on_disconnected();
-        if (dynamic_slot)
-            charge_point->set_connection_id("");
-    }
-}
-
-void OcppComponent::on_websocket_text(const std::string &connection_id, const std::string &message) {
-    ChargePoint *charge_point = this->find_charge_point_by_connection_id_(connection_id);
-    if (charge_point != nullptr)
-        charge_point->handle_ocpp_text(message, App.get_loop_component_start_time());
-}
-
-bool OcppComponent::send_queued_message_() {
-    if (this->charge_points_.empty())
-        return false;
-    if (this->next_outbound_charge_point_ >= this->charge_points_.size())
-        this->next_outbound_charge_point_ = 0;
-    for (size_t checked = 0; checked < this->charge_points_.size(); checked++) {
-        size_t index = (this->next_outbound_charge_point_ + checked) % this->charge_points_.size();
-        ChargePoint *charge_point = this->charge_points_[index];
-        if (charge_point == nullptr)
-            continue;
-        std::string message;
-        if (!charge_point->pop_queued_message(&message, App.get_loop_component_start_time()))
-            continue;
-        this->next_outbound_charge_point_ = (index + 1) % this->charge_points_.size();
-        this->server_.send_text(charge_point->get_connection_id(), message);
-        return true;
-    }
-    return false;
-}
-
-ChargePoint *OcppComponent::find_charge_point_by_connection_id_(const std::string &connection_id) const {
-    for (auto *charge_point : this->charge_points_) {
-        if (charge_point != nullptr && charge_point->get_connection_id() == connection_id)
-            return charge_point;
-    }
-    return nullptr;
-}
-
-ChargePoint *OcppComponent::assign_charge_point_for_connection_(const std::string &connection_id) const {
-    ChargePoint *charge_point = this->find_charge_point_by_connection_id_(connection_id);
-    if (charge_point != nullptr)
-        return charge_point;
-    for (auto *charge_point : this->charge_points_) {
-        if (charge_point != nullptr && charge_point->get_connection_id().empty()) {
-            charge_point->set_connection_id(connection_id);
-            return charge_point;
-        }
-    }
-    return nullptr;
 }
 
 }  // namespace esphome::ocpp
