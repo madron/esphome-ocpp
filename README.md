@@ -15,6 +15,3 @@ Not yet implemented — see [`llm-wiki/architecture.md`](llm-wiki/architecture.m
 - Talks directly to ancillary (non-charger) ESPHome devices — e.g. a whole-home energy meter for
   smart-charging decisions — over ESPHome's Native API, without a broker.
 - Deployment target is a Raspberry Pi-class host, run "set and forget" (read-only root, minimal writes).
-
-An earlier direction of this project explored also shipping an ESPHome charge-point *client* component;
-that is out of scope now — this repository is the Central System only.

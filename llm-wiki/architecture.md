@@ -1,93 +1,99 @@
 # Architecture
 
-This project is two separate deployables that together let ESPHome-based EV charger hardware
-participate in OCPP, with results visible in Home Assistant. They communicate over open, documented
-protocols only — there is no shared code, shared process, or required broker between them beyond what
-each protocol itself needs.
+This project is a single service — an OCPP Central System (CSMS) — communicating with the outside world
+over three independent, open protocols. Not yet implemented; this is the design.
 
 ```
 ┌─────────────────────────────┐        OCPP 1.6/2.0.1        ┌───────────────────────────────────┐
-│  Charge point node(s)       │◄──────over WebSocket─────────►│  Central System (CSMS)            │
-│  esphome/components/ocpp/   │        (direct, no broker)    │  Python, companion service         │
-│  ESP32 + MicroOcpp (client) │                                │  (not yet implemented)             │
-│  relay / meter / connector  │◄────ESPHome Native API─────────┤  aioesphomeapi (client role)       │
-└─────────────────────────────┘   (direct, no broker,          └───────────────────┬────────────────┘
-                                    only for non-OCPP ancillary                     │
-┌─────────────────────────────┐    ESPHome nodes, e.g. a                           │ MQTT discovery
-│  Ancillary ESPHome node(s)  │◄───whole-home energy meter)                        │ (outbound only)
-│  e.g. whole-home energy     │                                                    ▼
-│  meter, unrelated to OCPP   │                                          ┌───────────────────┐
-└─────────────────────────────┘                                          │  Home Assistant /   │
-                                                                          │  MQTT broker         │
+│  OCPP charge point(s)        │◄──────over WebSocket─────────►│  Central System (CSMS)            │
+│  (any OCPP-J charger,        │        (direct, no broker)    │  Python, this repository           │
+│  not built by this project)  │                                │  (not yet implemented)             │
+└─────────────────────────────┘                                └───────────────────┬────────────────┘
+                                                                                     │
+┌─────────────────────────────┐    ESPHome Native API                              │
+│  Ancillary ESPHome node(s)  │◄───(aioesphomeapi, direct,                         │ MQTT (pub/sub:
+│  e.g. whole-home energy      │    no broker, no HA needed)                        │ state + commands)
+│  meter, unrelated to OCPP    │                                                    ▼
+└─────────────────────────────┘                                          ┌───────────────────┐
+                                                                          │  MQTT broker ◄────►│
+                                                                          │  Home Assistant and/ │
+                                                                          │  or other subscribers│
                                                                           └───────────────────┘
 ```
 
-## Components
+## What this project is
 
-### 1. Charge point client — `esphome/components/ocpp/` (this repo, ESP32/ESPHome)
+A Python service implementing the OCPP **Central System (CSMS)** role: it accepts WebSocket connections
+from OCPP 1.6/2.0.1 charge points, handles the protocol (BootNotification, Heartbeat, StatusNotification,
+Authorize, and transactions — StartTransaction/StopTransaction/MeterValues), keeps a small persistent
+registry of known chargers/connectors/transactions, and exposes the result to Home Assistant.
 
-- **Role**: OCPP 1.6/2.0.1 *charge point* (client), one per physical charger/connector set.
-- **Runtime**: ESP32, ESP-IDF framework (`dev.yaml:7`), ESPHome `Component` lifecycle.
-- **Protocol backend**: [MicroOcpp](https://github.com/matth-x/MicroOcpp) — see `llm-wiki/decisions.md`
-  for why it was chosen and the ESP-IDF integration details (platform binding, filesystem, ArduinoJson
-  version skew).
-- **Hardware I/O**: bridges MicroOcpp's callback API to ordinary ESPHome `switch_`/`sensor::Sensor`/
-  `binary_sensor` entities the user configures in YAML (contactor relay, energy meter, plug-detect).
-- **Talks to**: the Central System, over OCPP-J (WebSocket + JSON-RPC), and nothing else. It has no
-  awareness of MQTT, Home Assistant, or the CSMS's implementation language — from its perspective the
-  CSMS is just an OCPP backend URL.
-- **Gets HA integration "for free"** the normal ESPHome way (its own MQTT discovery / native API), which
-  is unaffected by anything below — see `llm-wiki/components/ocpp.md`.
+## What this project is not
 
-### 2. Central System (CSMS) — companion service, **not yet implemented**
+- **Not a charge-point firmware.** It does not build or flash EV charger hardware; it manages whatever
+  OCPP-J-compliant chargers connect to it.
+- **Not tied to ESPHome for its own identity.** The CSMS does not implement the ESPHome Native API as a
+  *server* (it doesn't try to make itself discoverable as if it were an ESPHome device) — only as a
+  *client*, to read/control other ESPHome nodes that aren't OCPP chargers.
+- **Not tied to Home Assistant specifically.** MQTT is a first-class, general-purpose integration bus of
+  the CSMS (state publishing and remote control), not an HA-only side channel; HA discovery is one
+  consumer of it, layered on top via `ha-mqtt-discoverable`. The CSMS does not depend on HA Core being
+  present, and does not use HA's native (non-MQTT) API.
+- **No web dashboard planned.** Home Assistant's own auto-generated dashboard (via the MQTT discovery
+  entities below) is the primary UI.
 
-- **Role**: OCPP 1.6/2.0.1 *Central System*, accepting connections from one or more charge point clients
-  (this repo's ESPHome nodes, or any other OCPP-J charge point).
-- **Runtime target**: a Raspberry Pi-class host (or similar), **not** the ESP32. A full CSMS (multiple
-  long-lived connections, persistence, business logic) does not fit a microcontroller's resource
-  envelope or ESPHome's programming model — see `llm-wiki/decisions.md` for the evaluation of
-  embedding it on ESP32 (rejected) and of the candidate C++ libraries (open-ocpp supports the Central
-  System role but needs OpenSSL/libwebsockets/SQLite — no ESP-IDF port exists).
-- **Language/stack**: Python, using [`mobilityhouse/ocpp`](https://github.com/mobilityhouse/ocpp) (MIT,
-  `pip install ocpp`) for the protocol layer (message framing, ID correlation, JSON schema validation,
-  `@on()`-decorated handlers) for both OCPP 1.6 and 2.0.1, including transactions
-  (StartTransaction/StopTransaction/MeterValues).
-- **Reliability model ("set and forget", no local dashboard)**:
-  - Runs on a read-only root filesystem with a RAM (tmpfs/OverlayFS) overlay for everything transient
-    (`raspi-config` → *Performance Options* → *Overlay File System*, or DietPi as a turnkey base) —
-    eliminates most SD/SSD wear and makes an unplanned power loss safe.
-  - The one thing that must survive a reboot — the charge-point/transaction registry — lives in a single
-    small dedicated writable partition (flash-friendly filesystem, e.g. F2FS; SQLite in WAL mode with
-    reduced fsync frequency), isolated from the read-only OS.
-  - Hardware watchdog enabled for unattended recovery from hangs.
-  - No built-in web dashboard — considered expendable (debugging-only). Home Assistant's own
-    auto-generated dashboard (via MQTT discovery, below) is the primary UI.
-- **HA integration**: [`ha-mqtt-discoverable`](https://github.com/unixorn/ha-mqtt-discoverable)
-  (Apache-2.0) publishes the CSMS's own entities (per-connector status, active transaction, energy
-  delivered, etc.) to the MQTT broker using Home Assistant's documented MQTT discovery protocol
-  (`homeassistant/<component>/<object_id>/config`). This is the **only** place MQTT is used in the whole
-  system, and only in the outbound direction (CSMS → HA).
-- **Talking to ESPHome nodes that are *not* OCPP charge points** (e.g. a whole-home energy meter used for
-  smart/dynamic charging decisions): direct, via
-  [`aioesphomeapi`](https://github.com/esphome/aioesphomeapi) (the same library Home Assistant core uses
-  internally) against the target device's Native API port (6053). No MQTT broker, and no Home Assistant
-  instance, sits in this path — it's a direct TCP connection.
+## Components / protocols
 
-## Explicit non-goals
+### OCPP server (charge points ↔ CSMS)
 
-- The Central System does **not** run on the ESP32 and is **not** an ESPHome component. The `server:` /
-  `charge_points:` YAML block that briefly appeared in `docs/README.md` during design discussion was
-  incorrect and has been removed — that configuration belongs to the separate Python service, not to
-  `esphome/components/ocpp/`'s YAML schema.
-- The CSMS does not implement the ESPHome Native API as a *server* (i.e. it does not try to make itself
-  discoverable by Home Assistant as if it were an ESPHome device) — only as a *client*, to read/control
-  other ESPHome nodes.
-- No local web dashboard is planned for the CSMS.
-- No feature parity requirement with the C++ Central System libraries evaluated (open-ocpp's TLS/PKI/
-  ISO15118 depth) — scope is "basic" plus transactions, per `llm-wiki/decisions.md`.
+- Library: [`mobilityhouse/ocpp`](https://github.com/mobilityhouse/ocpp) (PyPI `ocpp`, MIT) — handles
+  OCPP-J message framing, unique-ID correlation, JSON schema validation, and `@on(Action.x)`-decorated
+  handler routing for OCPP 1.6 and 2.0.1. See `decisions.md` for why this library and not a C++
+  alternative.
+- Scope: connection handling, status (BootNotification/Heartbeat/StatusNotification/Authorize), and
+  transactions (StartTransaction/StopTransaction/MeterValues). No TLS and no full persistence-of-everything
+  in the first pass.
+- Persistence: a small dedicated writable store for the charger/connector/transaction registry (see
+  Deployment below) — everything else about the host stays read-only.
+
+### MQTT integration (CSMS ↔ broker, bidirectional)
+
+- MQTT is a real, general-purpose pub/sub integration of the CSMS, not just an HA discovery side effect:
+  the CSMS **publishes** state (per-connector status, active transaction, energy delivered) to its own
+  topics, and **subscribes** to command topics so it can be controlled by other MQTT clients/automations
+  — not only through OCPP itself (e.g. a RemoteStartTransaction equivalent triggered over MQTT). Any
+  MQTT-capable subscriber can use this, with or without Home Assistant.
+- Library: [`ha-mqtt-discoverable`](https://github.com/unixorn/ha-mqtt-discoverable) (Apache-2.0, built on
+  `paho-mqtt`) sits on top of that real MQTT connection and additionally publishes Home Assistant's
+  documented discovery payloads (`homeassistant/<component>/[<node_id>/]<object_id>/config`) so HA
+  auto-creates entities pointing at the same state/command topics — it is a convenience layer for HA
+  auto-discovery, not a replacement for general MQTT pub/sub. Without a real, working MQTT client
+  underneath it, `ha-mqtt-discoverable` has nothing to attach discovery payloads to and is useless on its
+  own.
+
+### Direct communication with ancillary ESPHome devices (CSMS ↔ ESPHome, no broker)
+
+- Library: [`aioesphomeapi`](https://github.com/esphome/aioesphomeapi) (`esphome` org) — the same client
+  Home Assistant core uses internally for ESPHome's Native API (protobuf/TCP, port 6053), usable fully
+  standalone.
+- Purpose: reading/controlling ESPHome devices that are *not* themselves OCPP charge points — e.g. a
+  whole-home energy meter feeding smart/dynamic charging decisions — directly, without MQTT or HA in the
+  path.
+
+### Deployment / reliability
+
+- Target: a Raspberry Pi-class host, not a microcontroller — a full CSMS (multiple long-lived
+  connections, persistence, business logic) doesn't fit a microcontroller's resource envelope.
+- Read-only root filesystem with a RAM/OverlayFS overlay for everything transient (`raspi-config` →
+  *Performance Options* → *Overlay File System*, or DietPi as a turnkey base), so unplanned writes/power
+  loss can't corrupt the OS or wear the storage.
+- The one thing that must survive a reboot — the charger/transaction registry — lives in one small
+  dedicated writable partition (flash-friendly filesystem, SQLite in WAL mode with reduced fsync
+  frequency), isolated from the read-only OS.
+- Hardware watchdog enabled for unattended recovery from hangs — matching the "set and forget, no moving
+  parts" bar the user wants.
 
 ## Where decisions are recorded
 
 `llm-wiki/decisions.md` has the detailed evaluation and reasoning for every choice above (library
-comparisons, ESP-IDF integration constraints, why Python for the CSMS, why MQTT is scoped to one
-direction only). This file is the map; that file is the log.
+comparisons against C++ alternatives, why Python, and how MQTT and `ha-mqtt-discoverable` relate).
