@@ -3,6 +3,11 @@
 #include "esphome/core/application.h"
 #include "esphome/core/log.h"
 
+// MicroOcpp is wired up as a build dependency (see llm-wiki/decisions.md) but
+// not used yet: this include only proves the library resolves and compiles
+// against this project's ESP-IDF build. No MicroOcpp API is called below.
+#include <MicroOcpp.h>
+
 namespace esphome::ocpp {
 namespace {
 
