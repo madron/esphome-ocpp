@@ -1,1 +1,5 @@
-esphome==2026.5.3
+# Planned dependencies for the Central System (CSMS) service — see llm-wiki/decisions.md.
+# Not yet pinned: no implementation exists yet.
+#   ocpp                  - OCPP 1.6/2.0.1 protocol layer (mobilityhouse/ocpp)
+#   ha-mqtt-discoverable   - Home Assistant MQTT discovery entities
+#   aioesphomeapi          - direct client for ancillary ESPHome devices' Native API

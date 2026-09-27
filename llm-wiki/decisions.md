@@ -134,3 +134,83 @@ without editing a single line of the library:
    and call `mocpp_loop()`.
 6. Update `docs/README.md` and add/extend a `docs/` topic file once the YAML schema gains user-facing
    options (this is a user-facing change per the dual-docs rules, unlike the current dependency wiring).
+
+## Central System (CSMS): separate Python service, not an ESP32/ESPHome component
+
+- **Status**: Design decided; not yet implemented. See `llm-wiki/architecture.md` for the system-level
+  picture this fits into.
+- **Decision**: The OCPP Central System role is **not** built into `esphome/components/ocpp/` or run on
+  the ESP32. It is a separate companion service, in Python, intended for a Raspberry Pi-class host.
+- **Why not on ESP32 / not in C++**: The only C++ library found that implements the Central System role
+  (`c-jimenez/open-ocpp`, LGPL-2.1) depends on OpenSSL, libwebsockets (server mode), and SQLite, built via
+  CMake/pkg-config for a POSIX/desktop-class target — no PlatformIO package, no ESP-IDF port, no evidence
+  of anyone running it on a microcontroller. Porting that dependency stack to ESP-IDF would be a larger
+  and less certain effort than the hand-rolled OCPP-J server the user had already found painful to write
+  from scratch. All ESP32-appropriate C++ OCPP libraries evaluated (MicroOcpp, OpenOCPP/ChargeLab,
+  libocpp/EVerest, tfocpp) are Charge-Point-only by design.
+- **Why Python**: [`mobilityhouse/ocpp`](https://github.com/mobilityhouse/ocpp) (PyPI `ocpp`, MIT,
+  actively released, `2.0.0` Jan 2025) explicitly models both the Charge Point and Central System/CSMS
+  roles on `asyncio` + `websockets`, with the protocol layer handled (Call/CallResult/CallError framing,
+  unique-ID correlation, JSON schema validation against the official OCPP schemas, `@on(Action.x)`
+  handler routing) for OCPP 1.6 and 2.0.1 — closing the "lots of edge cases" gap from hand-rolled OCPP-J
+  without open-ocpp's non-portable dependency stack. It is explicitly "building blocks, not a complete
+  solution" — transaction bookkeeping, persistence, and the connection registry are still the CSMS's own
+  code, but the RPC/schema layer is not.
+- **Scope for the first implementation**: connection handling + status (BootNotification, Heartbeat,
+  StatusNotification, Authorize) **plus transactions** (StartTransaction, StopTransaction, MeterValues).
+  No persistence-of-everything, no TLS, in the first pass.
+
+### Home Assistant integration: MQTT discovery outbound only, no ESPHome dependency
+
+- Losing ESPHome's automatic MQTT/HA integration by moving the CSMS off ESPHome is not a real gap: HA's
+  MQTT discovery (`homeassistant/<component>/[<node_id>/]<object_id>/config`) is an open, documented
+  protocol that ESPHome is just one of ~20 listed implementers of, not a prerequisite for it.
+- **Decision**: use [`ha-mqtt-discoverable`](https://github.com/unixorn/ha-mqtt-discoverable)
+  (Apache-2.0, actively released through Nov 2025, `v0.25.2`) to publish the CSMS's own entities
+  (per-connector status, active transaction, energy delivered) to HA. This is the **only** direction MQTT
+  is used in the whole system — CSMS → HA, outbound. It is not used between the CSMS and any ESPHome
+  device.
+- **Home Assistant's native (non-MQTT) API is explicitly out of scope** for the CSMS: no requirement to
+  make the CSMS discoverable via that protocol, and no dependency on Home Assistant Core being present at
+  all — MQTT discovery works with just a broker.
+
+### Direct CSMS ↔ ESPHome communication: `aioesphomeapi`, not MQTT
+
+- **Decision**: for any ESPHome node the CSMS needs to talk to that is *not* itself an OCPP charge point
+  (e.g. a whole-home energy meter used for smart/dynamic charging decisions), use
+  [`aioesphomeapi`](https://github.com/esphome/aioesphomeapi) (`esphome` org, actively maintained, v46.x)
+  against that device's Native API port (6053) directly. This is the same library Home Assistant core
+  uses internally, but works standalone with no HA instance or MQTT broker in the path — a direct,
+  peer-to-peer TCP connection, matching ESPHome's own description of the Native API as built "to
+  communicate with clients directly."
+- Combined with the OCPP-over-WebSocket link to charge-point nodes, **no MQTT broker sits between the
+  CSMS and any ESPHome device in either direction** — MQTT's only remaining role is the CSMS's outbound
+  announcement to Home Assistant, above.
+
+### Deployment/reliability: Raspberry Pi-class host, "set and forget"
+
+- **Decision**: run the CSMS on a Raspberry Pi (or similar SBC) with a **read-only root filesystem and a
+  RAM/OverlayFS overlay** for everything transient (`raspi-config` → *Performance Options* → *Overlay File
+  System*, or DietPi as a turnkey base with `log2ram`-style defaults) — this is a well-documented,
+  off-the-shelf technique, not custom engineering.
+- **Rationale**: this removes the *unplanned* writes (OS churn, logs, journaling) that actually kill SD
+  cards and corrupt filesystems on power loss — closer to ESPHome's own "flash and forget" reliability
+  model than a stock Raspberry Pi OS install. The CSMS's own actual write volume (BootNotification,
+  Heartbeat, StatusNotification, StartTransaction/StopTransaction, periodic MeterValues) is small (KB/day
+  for a handful of chargers), so isolating it to one small dedicated writable partition (flash-friendly
+  filesystem, e.g. F2FS; SQLite in WAL mode with reduced fsync frequency) is enough to make wear a
+  non-issue regardless of whether that partition sits on a microSD, an industrial/high-endurance SD card,
+  or a small USB SSD.
+- A hardware watchdog should be enabled for unattended recovery from hangs, to match the "no moving
+  parts, no maintenance" bar ESPHome nodes already meet.
+- **No local web dashboard** is planned for the CSMS — it was used mostly for debugging on ESPHome nodes
+  and is considered expendable here; Home Assistant's own auto-generated dashboard (via the MQTT
+  discovery entities above) is the primary UI.
+
+### Correction: `docs/README.md`'s `server:`/`charge_points:` block was wrong
+
+An earlier design pass added a `server:`/`charge_points:` block to `docs/README.md`'s example
+`ocpp:` YAML, implying the Central System would be configured as part of the ESPHome component. That
+contradicts every decision above (the CSMS is a separate Python service, not ESPHome YAML) and has been
+removed from `docs/README.md`. The charge-point registry concept it was gesturing at belongs to the
+CSMS's own (not yet implemented) configuration, not to `esphome/components/ocpp/`'s `CONFIG_SCHEMA`.
