@@ -78,13 +78,54 @@ non-default wiring for MicroOcpp:
 - **Verification**: `./esphome-wrapper compile` (with `dev.yaml`) builds clean with these flags —
   `esphome/components/ocpp/ocpp.cpp:9` includes `<MicroOcpp.h>` but calls no MicroOcpp API yet.
 
+### Superseding the SPIFFS path: custom `Connection`/`FilesystemAdapter` instead
+
+The SPIFFS partition + `require_vfs_dir()` prerequisites above are **not** the recommended path. MicroOcpp
+exposes both platform bindings as clean, documented extension points meant to be replaced per-project,
+without editing a single line of the library:
+
+- `MicroOcpp::Connection` (`MicroOcpp/Core/Connection.h`) is a 5-method abstract class
+  (`loop`, `sendTXT`, `setReceiveTXTcallback`, `getLastConnected`, `isConnected`). The maintainer's own
+  guidance (matth-x/MicroOcpp#219, #322) is to subclass it for any transport (Ethernet, GSM/AT-commands,
+  the separate `matth-x/MicroOcppMongoose` adapter) — writing one over ESP-IDF's native
+  `esp_websocket_client` was already planned (see below) and needs no other change.
+- `MicroOcpp::FilesystemAdapter` (`MicroOcpp/Core/FilesystemAdapter.h`) is a 4-method abstract class
+  (`stat`, `open`, `remove`, `ftw_root`). `mocpp_initialize(connection, ..., filesystem, ...)` takes a
+  `std::shared_ptr<FilesystemAdapter>` directly — `makeDefaultFilesystemAdapter()` is only the *default
+  argument*, not a requirement. Passing a custom adapter instance bypasses SPIFFS entirely.
+- Setting the build flag `-DMO_USE_FILEAPI=DISABLE_FS` (`MicroOcpp/Core/FilesystemAdapter.h`) removes the
+  SPIFFS/LittleFS/POSIX branches from `FilesystemAdapter.cpp`'s compilation altogether (it compiles down
+  to a one-line stub), so `esp_spiffs.h`, the `mo` partition, and `esp32.require_vfs_dir()` are **not
+  needed at all** — `include_builtin_idf_component("spiffs")` in `__init__.py` can be dropped once a
+  custom adapter is in place.
+- A custom adapter can implement `ftw_root()` by walking its own manifest of known keys/filenames instead
+  of calling `opendir`/`readdir` — sidestepping ESPHome's `CONFIG_VFS_SUPPORT_DIR=n` default rather than
+  fighting it. Backing store is a free choice: raw `esp_partition_read/write/erase` (no extra IDF
+  component, smallest footprint) is the most "ESPHome-standard" option, since ESPHome itself never uses a
+  filesystem abstraction (its own `preferences:` component talks to flash/NVS directly).
+- Console/timer/RNG are independently swappable the same way, without needing `MO_PLATFORM_ESPIDF` at
+  all: `MO_CUSTOM_CONSOLE` + `mocpp_set_console_out()` can route MicroOcpp's logs through ESPHome's
+  `ESP_LOGx`, and `MO_CUSTOM_TIMER`/`MO_CUSTOM_RNG` can route the clock/RNG through ESPHome's own
+  `millis()`/`random_uint32()` (`MicroOcpp/Platform.h`) — again with zero changes to MicroOcpp itself.
+- Scope of new code: two small adapter classes (`Connection` over `esp_websocket_client`,
+  `FilesystemAdapter` over `esp_partition_*` or similar), roughly 300-600 LOC combined, replacing nothing
+  in the upstream library. Everything else — all ~35 `Operations/*` handlers, the entire `Model/*` layer
+  (Authorization, Availability, Boot, Certificates, Diagnostics, FirmwareManagement, Heartbeat, Metering,
+  RemoteControl, Reservation, Reset, SmartCharging, Transactions, Variables), and `Core/*`'s
+  protocol/request/configuration machinery — is used unmodified from upstream. That's roughly 23,000 of
+  MicroOcpp's ~24,000 source lines (>95%) reused as-is; this is an adapter swap, not a rewrite.
+- Not addressed by this: the ArduinoJson 6.20.1-vs-7.4.2 skew above is orthogonal to the
+  Connection/FilesystemAdapter choice (it comes from `<ArduinoJson.h>` used throughout the library) and
+  remains an open item regardless of which platform bindings are used.
+
 ### Next steps (not yet implemented)
 
 1. Implement a `MicroOcpp::Connection` over ESP-IDF's `esp_websocket_client` (no Arduino WebSocket
    dependency).
-2. Add the `mo` SPIFFS partition (`esp32.add_partition("mo", "data", "spiffs", size)`) and call
-   `esp32.require_vfs_dir()` so MicroOcpp's persistence actually works; size the partition against the
-   reduced OTA app slots.
+2. Implement a custom `MicroOcpp::FilesystemAdapter` (e.g. over `esp_partition_*`) and pass it to
+   `mocpp_initialize()` explicitly; set `-DMO_USE_FILEAPI=DISABLE_FS` and drop
+   `include_builtin_idf_component("spiffs")` — supersedes the SPIFFS/partition/`require_vfs_dir()` path
+   above.
 3. Decide the logging story: either keep MicroOcpp's raw `esp_log` "MicroOcpp" tag, or route it through
    `mocpp_set_console_out()` into ESPHome's logger for level filtering and web-server log streaming.
 4. Extend `esphome/components/ocpp/__init__.py`'s `CONFIG_SCHEMA` with the OCPP backend URL, charge-box
